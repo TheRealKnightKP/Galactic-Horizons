@@ -95,7 +95,7 @@ const SHIPS = {
   Wasp:       { price: 140000,   hp: 500,   shields: 560,  armor: 100, missiles: 12, speed: 3.2,  weaponType: "laser_repeater",    weaponSize: 4,  bespoke: false, pdc: 1,  pdcSize: 4,                         image: "Hornet.png",        color: "#0099ff", size: 3,  missileType: 2, armorType: "medium"                     },
   Supernova:  { price: 160000,   hp: 1000,  shields: 900,  armor: 100, missiles: 52, speed: 1.0,  weaponType: "laser_repeater",    weaponSize: 5,  bespoke: false, pdc: 3,  pdcSize: 3,                         image: "Constellation.png", color: "#44ff88", size: 4,  missileType: 1, armorType: "heavy",    extraAllySlots: 1 },
   // --- SUBCAPITAL ---
-  Bulwark:    { price: 30000,   hp: 1750,  shields: 1200, armor: 100, missiles: 16, speed: 0.75, weaponType: "none",              weaponSize: 0,  bespoke: true,  pdc: 10, pdcSize: 4,                         image: "Hammerhead.png",    color: "#4488ff", size: 6,  missileType: 3, armorType: "subcapital"                 },
+  Bulwark:    { price: 30000,   hp: 1750,  shields: 1200, armor: 100, missiles: 16, speed: 0.75, weaponType: "none",              weaponSize: 0,  bespoke: true,  pdc: 10, pdcSize: 4,                         image: "HammerHead.png",    color: "#4488ff", size: 6,  missileType: 3, armorType: "subcapital"                 },
   Tempest:    { price: 380000,   hp: 2000,  shields: 2200, armor: 100, missiles: 32, speed: 0.70, weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  doubleShot: true, pdc: 4, pdcSizes: [5,5,4,4], image: "StarlancerTAC.png", color: "#00ffcc", size: 7, missileType: 1, armorType: "subcapital", extraAllySlots: 1 },
   // --- CAPITAL ---
   Nemesis:    { price: 280000,   hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Perseus.png",       color: "#ffff44", size: 6,  missileType: 3, armorType: "capital"                    },
@@ -267,4 +267,5 @@ function generateInfiniteWave(waveNum) {
   if (waveNum % 15 === 0) enemies.push("Dominion");
   if (waveNum % 25 === 0) enemies.push("Dreadnaught");
   return { enemies, reward: waveNum * 1500 };
+
 }
