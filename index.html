@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Arena Commander</title>
+  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#000; overflow:hidden; width:100vw; height:100vh; }
+  </style>
+</head>
+<body>
+<div id="gameContainer" style="position:absolute;background:#000;">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+  <div id="hud">
+    HP: <span id="health">100</span> |
+    Armor: <span id="armorHUD">100</span>% |
+    Shields: <span id="shields">200</span> |
+    Credits: <span id="money">0</span> |
+    Wave: <span id="wave">0</span> |
+    Missiles: <span id="missiles">2</span>
+  </div>
+
+  <div id="mainMenu" class="menu">
+    <h1>Arena Commander</h1>
+    <p>WASD/Arrows: Move &nbsp; Mouse: Aim &nbsp; Click/Space: Shoot &nbsp; M: Missile</p>
+    <button onclick="startGame(false)">Campaign (20 Waves)</button>
+    <button onclick="startGame(true)">Infinite Mode</button>
+    <button onclick="openShopFromMenu()">Ship Shop</button>
+    <button onclick="openLoadout()">Loadout</button>
+  </div>
+
+  <div id="shopMenu" class="menu" style="display:none; min-width:700px">
+    <h2>Ship Shop</h2>
+    <p id="shopMoney"></p>
+    <div style="margin-bottom:8px">
+      <button id="shopTabShips"   onclick="setShopTab('ships')"   style="width:auto;display:inline-block;margin:2px">Ships</button>
+      <button id="shopTabWeapons" onclick="setShopTab('weapons')" style="width:auto;display:inline-block;margin:2px">Weapons</button>
+    </div>
+    <div id="shopBody"></div>
+    <br>
+    <button onclick="closeShop()">Continue →</button>
+  </div>
+
+  <div id="loadoutMenu" class="menu" style="display:none; min-width:540px">
+    <h2>Loadout</h2>
+    <p id="loadoutMoney"></p>
+    <div id="loadoutTabs">
+      <button id="tabShip"   onclick="loadoutTab('ship')"   style="width:auto;display:inline-block;margin:2px">Your Ship</button>
+      <button id="tabAllies" onclick="loadoutTab('allies')" style="width:auto;display:inline-block;margin:2px">Your Allies</button>
+    </div>
+    <div id="loadoutShipPanel"></div>
+    <div id="loadoutAlliesPanel" style="display:none"></div>
+    <br>
+    <button onclick="closeLoadout()">← Back to Menu</button>
+  </div>
+
+  <div id="gameOverMenu" class="menu" style="display:none">
+    <h2 id="gameOverText">Game Over</h2>
+    <p>Final Credits: <span id="finalMoney">0</span></p>
+    <button onclick="returnToMenuPreserveMoney()">Play Again</button>
+  </div>
+
+
+
+  <script src="data.js"></script>
+  <script src="shop.js"></script>
+  <script src="cheat.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

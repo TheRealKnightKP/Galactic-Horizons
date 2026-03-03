@@ -1,0 +1,53 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: #000; overflow: hidden; }
+canvas { display: block; }
+
+#hud {
+  position: absolute; top: 10px; left: 10px;
+  color: lime; font-family: monospace; font-size: 14px;
+  pointer-events: none; text-shadow: 0 0 6px lime;
+}
+
+.menu {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center; color: white; font-family: monospace;
+  background: rgba(0,0,0,0.88);
+  padding: 30px 40px; border: 1px solid #0af;
+  min-width: 400px; max-height: 90vh; overflow-y: auto;
+}
+.menu h1, .menu h2 { color: #0af; margin-top: 0; }
+
+button {
+  display: block; width: 100%; margin: 6px 0; padding: 10px 16px;
+  background: #003355; color: white; border: 1px solid #0af;
+  cursor: pointer; font-size: 14px; font-family: monospace;
+}
+button:hover { background: #005588; }
+button:disabled { opacity: 0.4; cursor: default; }
+
+.ship-card {
+  display: inline-block; border: 1px solid #335;
+  margin: 5px; padding: 10px; width: 175px;
+  vertical-align: top; text-align: left; font-size: 12px;
+}
+.ship-card strong { color: #0af; }
+
+#loadoutTabs { margin-bottom: 10px; }
+#loadoutTabs button { display: inline-block; width: auto; margin: 0 4px; }
+
+#loadoutShipPanel p, #loadoutShipPanel select { font-family: monospace; font-size: 13px; }
+#loadoutShipPanel select {
+  background: #001122; color: #eee; border: 1px solid #0af;
+  padding: 3px 6px; font-family: monospace; font-size: 13px;
+}
+
+.ally-slot {
+  display: inline-block; border: 1px solid #334;
+  margin: 5px; padding: 10px; width: 220px;
+  vertical-align: top; text-align: left; font-size: 12px;
+}
+.ally-slot select {
+  background: #001122; color: #eee; border: 1px solid #0af;
+  padding: 2px 4px; font-family: monospace; font-size: 12px; margin-top: 4px;
+}
