@@ -8,6 +8,12 @@
     * { margin:0; padding:0; box-sizing:border-box; }
     body { background:#000; overflow:hidden; width:100vw; height:100vh; }
   </style>
+  <link rel="manifest" href="manifest.json">
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js");
+  }
+</script>
 </head>
 <body>
 <div id="gameContainer" style="position:absolute;background:#000;">
@@ -70,4 +76,5 @@
   <script src="cheat.js"></script>
   <script src="game.js"></script>
 </body>
+
 </html>
