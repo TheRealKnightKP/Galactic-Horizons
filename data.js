@@ -86,7 +86,7 @@ const SHIP_DESCRIPTIONS = {
 
 const SHIPS = {
   // --- LIGHT ---
-  Starlight:  { price: 0,         hp: 90,    shields: 120,  armor: 100, missiles: 2,  speed: 2.8,  weaponType: "laser_repeater",    weaponSize: 1,  bespoke: false, pdc: 0,  pdcSize: 0,                         image: "Aurora.png",        color: "#88aaff", size: 1,  missileType: 1, armorType: "light"                      },
+  Starlight:  { price: 0,         hp: 90,    shields: 120,  armor: 100, missiles: 2,  speed: 2.8,  weaponType: "laser_repeater",    weaponSize: 1,  bespoke: false, pdc: 0,  pdcSize: 0,                         image: "Starlight.png",        color: "#88aaff", size: 1,  missileType: 1, armorType: "light"                      },
   Falcon:     { price: 20000,    hp: 70,    shields: 100,  armor: 100, missiles: 3,  speed: 3.8,  weaponType: "laser_repeater",    weaponSize: 2,  bespoke: false, pdc: 0,  pdcSize: 0,                         image: "Mustang.png",       color: "#ffbb00", size: 1,  missileType: 1, armorType: "light"                      },
   // --- MEDIUM ---
   Rouge:      { price: 55000,    hp: 300,   shields: 450,  armor: 100, missiles: 12, speed: 1.7,  weaponType: "laser_repeater",    weaponSize: 3,  bespoke: false, pdc: 1,  pdcSize: 0,                         image: "Cutlass.png",       color: "#ff8844", size: 2,  missileType: 2, armorType: "medium"                     },
@@ -98,7 +98,7 @@ const SHIPS = {
   Bulwark:    { price: 30000,   hp: 1750,  shields: 1200, armor: 100, missiles: 16, speed: 0.75, weaponType: "none",              weaponSize: 0,  bespoke: true,  pdc: 10, pdcSize: 4,                         image: "HammerHead.png",    color: "#4488ff", size: 6,  missileType: 3, armorType: "subcapital"                 },
   Tempest:    { price: 380000,   hp: 2000,  shields: 2200, armor: 100, missiles: 32, speed: 0.70, weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  doubleShot: true, pdc: 4, pdcSizes: [5,5,4,4], image: "StarlancerTAC.png", color: "#00ffcc", size: 7, missileType: 1, armorType: "subcapital", extraAllySlots: 1 },
   // --- CAPITAL ---
-  Nemesis:    { price: 280000,   hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Perseus.png",       color: "#ffff44", size: 6,  missileType: 3, armorType: "capital"                    },
+  Nemesis:    { price: 280000,   hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Nemesis.png",       color: "#ffff44", size: 6,  missileType: 3, armorType: "capital"                    },
   Prometheus: { price: 500000,   hp: 5000,  shields: 4000, armor: 100, missiles: 30, speed: 0.6,  weaponType: "ballistic_cannon",  weaponSize: 6,  bespoke: true,  pdc: 6,  pdcSize: 4,                         image: "Polaris.png",       color: "#ff44ff", size: 7,  missileType: 3, armorType: "capital",   extraAllySlots: 2 },
   // --- SUPER CAPITAL ---
   Leviathan:  { price: 750000,   hp: 7500,  shields: 700,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "laser_repeater",    weaponSize: 7,  bespoke: false, doubleShot: true, pdc: 8, pdcSizes: [6,6,5,5,5,5,4,4], image: "Kraken.png", color: "#88ff00", size: 8, missileType: 3, armorType: "capital", extraAllySlots: 6 },
@@ -269,3 +269,4 @@ function generateInfiniteWave(waveNum) {
   return { enemies, reward: waveNum * 1500 };
 
 }
+
