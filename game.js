@@ -2,37 +2,29 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-const GAME_W = 1600, GAME_H = 900;
+let GAME_W = window.innerWidth;
+let GAME_H = window.innerHeight;
+const SIZE_SCALE = 1.5;
 let displayScale = 1;
 
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1);
 
 function resizeCanvas() {
-  const TARGET_RATIO = 16 / 9;
-  const useW = Math.max(window.innerWidth, window.innerHeight);
-  const useH = Math.min(window.innerWidth, window.innerHeight);
-  const actualW = IS_MOBILE ? useW : window.innerWidth;
-  const actualH = IS_MOBILE ? useH : window.innerHeight;
-  const screenRatio = actualW / actualH;
-  let drawW, drawH;
-  if (screenRatio > TARGET_RATIO) { drawH = actualH; drawW = actualH * TARGET_RATIO; }
-  else { drawW = actualW; drawH = actualW / TARGET_RATIO; }
-  displayScale = drawW / GAME_W;
+  GAME_W = window.innerWidth;
+  GAME_H = window.innerHeight;
+  displayScale = 1;
   canvas.width  = GAME_W;
   canvas.height = GAME_H;
-  canvas.style.width  = drawW + "px";
-  canvas.style.height = drawH + "px";
-  const offsetX = (actualW - drawW) / 2;
-  const offsetY = (actualH - drawH) / 2;
+  canvas.style.width  = GAME_W + "px";
+  canvas.style.height = GAME_H + "px";
   const container = document.getElementById("gameContainer");
   if (container) {
-    container.style.width    = drawW + "px";
-    container.style.height   = drawH + "px";
-    container.style.left     = offsetX + "px";
-    container.style.top      = offsetY + "px";
+    container.style.width    = GAME_W + "px";
+    container.style.height   = GAME_H + "px";
+    container.style.left     = "0px";
+    container.style.top      = "0px";
     container.style.position = "fixed";
   }
-  // Mobile UI is fixed to viewport edges — no repositioning needed
 }
 
 window.addEventListener("resize", () => { setTimeout(resizeCanvas, 50); });
@@ -246,7 +238,7 @@ function playShootSound(category, isPlayer) {
 }
 function playHitSound(category) {
   const p = 0.85 + Math.random()*0.3;
-  if (category==="ballistic")       playSound("hit_ballistic",  { volume:0.5,  pitch:p });
+  if (category==="ballistic")       playSound("hit_balistic",  { volume:0.5,  pitch:p });
   else if (category==="distortion") playSound("hit_distortion", { volume:0.45, pitch:p });
   else                              playSound("hit_laser",       { volume:0.4,  pitch:p });
 }
@@ -388,7 +380,7 @@ function buildAlly(i,totalSlots) {
   const wStats=getWeaponStats(wType,aDef.weaponSize);
   return {
     type:sName, x:player.x-80-i*50, y:player.y+(i-(totalSlots-1)/2)*70,
-    w:aDef.w, h:aDef.h, hp:aDef.hp, maxHp:aDef.hp,
+    w:Math.round(aDef.w*SIZE_SCALE), h:Math.round(aDef.h*SIZE_SCALE), hp:aDef.hp, maxHp:aDef.hp,
     shields:Math.round(aDef.shields*shieldMult), maxShields:Math.round(aDef.shields*shieldMult),
     armor:100, maxArmor:100, armorType:aDef.armorType,
     img:getImage(aDef.image), color:aDef.color,
@@ -418,7 +410,7 @@ function setPlayerShip(name) {
   const dodgeBase=Math.min(0.90,(isComet?0.35:0.0)+engTier.dodgeBonus);
   const dodgeBoosted=Math.min(0.95,(isComet?0.75:0.25)+engTier.dodgeBonus);
   player={
-    x:80, y:GAME_H/2-20, w:40+(d.size||1)*16, h:24+(d.size||1)*8,
+    x:80, y:GAME_H/2-20, w:Math.round((40+(d.size||1)*16)*SIZE_SCALE), h:Math.round((24+(d.size||1)*8)*SIZE_SCALE),
     hp:baseHp, maxHp:baseHp, shields:baseShields, maxShields:baseShields,
     armor:baseArmor, maxArmor:baseArmor, armorType:d.armorType||"light",
     missiles:d.missiles, speed:baseSpeed, maxSpeed:baseSpeed, accel:baseSpeed*0.20,
@@ -466,7 +458,7 @@ function spawnWave() {
   waveData.enemies.forEach(name=>{
     const d=ENEMIES[name];
     const sizeNum=d.size||2;
-    const ew=32+sizeNum*18, eh=20+sizeNum*10;
+    const ew=Math.round((32+sizeNum*18)*SIZE_SCALE), eh=Math.round((20+sizeNum*10)*SIZE_SCALE);
     const spawnX=name==="Dreadnaught"?GAME_W-ew/2:Math.floor(GAME_W*0.5+Math.random()*GAME_W*0.45);
     const spawnY=name==="Dreadnaught"?GAME_H/2:Math.floor(40+Math.random()*(GAME_H-80));
     const e={
@@ -499,6 +491,8 @@ function nextWave() {
   currentWave++;
   if(!infiniteMode&&currentWave>WAVES.length){endGame(true);return;}
   respawnDeadAllies(); spawnWave(); state="playing";
+  document.getElementById("hud").style.display="block";
+  document.getElementById("inGameBack").style.display="block";
   if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="block";}
 }
 
@@ -523,6 +517,8 @@ function endGame(won) {
   document.getElementById("gameOverText").textContent=won?"🏆 Victory!":"💀 Game Over";
   document.getElementById("finalMoney").textContent=money;
   document.getElementById("gameOverMenu").style.display="block";
+  document.getElementById("hud").style.display="none";
+  document.getElementById("inGameBack").style.display="none";
   if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="none";}
 }
 
@@ -1104,12 +1100,15 @@ function render() {
 // HUD + LOOP
 // ============================================================
 function updateHUD() {
-  document.getElementById("health").textContent   = Math.max(0,Math.floor(player.hp));
-  document.getElementById("armorHUD").textContent = Math.max(0,Math.floor(player.armor));
-  document.getElementById("shields").textContent  = Math.max(0,Math.floor(player.shields));
+  const inGame = state==="playing"||state==="waveTransition";
+  document.getElementById("hud").style.display = inGame ? "block" : "none";
+  document.getElementById("inGameBack").style.display = inGame ? "block" : "none";
+  document.getElementById("health").textContent   = Math.max(0,Math.floor(player.hp||0));
+  document.getElementById("armorHUD").textContent = Math.max(0,Math.floor(player.armor||0));
+  document.getElementById("shields").textContent  = Math.max(0,Math.floor(player.shields||0));
   document.getElementById("money").textContent    = money;
   document.getElementById("wave").textContent     = currentWave;
-  document.getElementById("missiles").textContent = player.missiles;
+  document.getElementById("missiles").textContent = player.missiles||0;
 }
 
 function gameLoop() {
@@ -1133,6 +1132,17 @@ function gameLoop() {
   }
   render();
   requestAnimationFrame(gameLoop);
+}
+
+function confirmLeaveGame() {
+  if(confirm("Are you sure you want to leave? All progress will be lost.")) {
+    enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; hitEffects=[]; deathEffects=[];
+    state="menu";
+    document.getElementById("mainMenu").style.display="block";
+    document.getElementById("hud").style.display="none";
+    document.getElementById("inGameBack").style.display="none";
+    if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="none";}
+  }
 }
 
 gameLoop();
