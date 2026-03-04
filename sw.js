@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.0.3"; // Size Fixes
+const CACHE = "galactic-horizons-v1.0.4"; // Size Fixes
 const ASSETS = [
   "./",
   "./index.html",
@@ -58,4 +58,5 @@ Versions:
 -V1.0.1 - QOL updates and sizes changed.
 -V1.0.2 - Fixed sizes
 -V1.0.3 - Fixed sizes again
+-V1.0.4 - Tried fixing sizes and added Version counter in menu HUD
 */
