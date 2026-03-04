@@ -191,9 +191,9 @@ let audioReady = false;
 
 const SOUND_FILES = {
   shoot_laser:     "assets/sounds/shoot_laser.wav",
-  shoot_ballistic: "assets/sounds/shoot_balistic.wav",
+  shoot_balistic: "assets/sounds/shoot_balistic.wav",
   shoot_railgun:   "assets/sounds/shoot_railgun.wav",
-  hit_ballistic:   "assets/sounds/hit_balistic.wav",
+  hit_balistic:   "assets/sounds/hit_balistic.wav",
   hit_laser:       "assets/sounds/hit_laser.wav",
   hit_distortion:  "assets/sounds/hit_distortion.wav",
   explode:         "assets/sounds/explode.wav",
@@ -233,12 +233,12 @@ function playExplosion(size) {
 function playShootSound(category, isPlayer) {
   if (!isPlayer) return;
   const p = 0.9 + Math.random()*0.2;
-  if (category==="ballistic") playSound("shoot_ballistic", { volume:0.35, pitch:p });
+  if (category==="ballistic") playSound("shoot_balistic", { volume:0.35, pitch:p });
   else if (category==="laser"||category==="distortion") playSound("shoot_laser", { volume:0.28, pitch:p });
 }
 function playHitSound(category) {
   const p = 0.85 + Math.random()*0.3;
-  if (category==="ballistic")       playSound("hit_ballistic",  { volume:0.5,  pitch:p });
+  if (category==="ballistic")       playSound("hit_balistic",  { volume:0.5,  pitch:p });
   else if (category==="distortion") playSound("hit_distortion", { volume:0.45, pitch:p });
   else                              playSound("hit_laser",       { volume:0.4,  pitch:p });
 }
@@ -1146,6 +1146,7 @@ function confirmLeaveGame() {
 }
 
 gameLoop();
+
 
 
 
