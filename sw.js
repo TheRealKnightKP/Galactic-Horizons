@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.0.8";
+const CACHE = "galactic-horizons-v1.0.9";
 const ASSETS = [
   "./",
   "./index.html",
@@ -21,23 +21,19 @@ const ASSETS = [
   "./assets/Polaris.png",
   "./assets/Kraken.png",
   "./assets/Idris.png",
-  "./assets/Meteor.png",
   "./assets/Gladius.png",
   "./assets/Corsair.png",
   "./assets/Merlin.png",
-  "./assets/VanduulKingship.png",
-  "./assets/sounds/shoot_laser.wav",
-  "./assets/sounds/shoot_ballistic.wav",
-  "./assets/sounds/shoot_railgun.wav",
-  "./assets/sounds/hit_ballistic.wav",
-  "./assets/sounds/hit_laser.wav",
-  "./assets/sounds/hit_distortion.wav",
-  "./assets/sounds/explode.wav"
+  "./assets/VanduulKingship.png"
 ];
 
 self.addEventListener("install", e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(ASSETS))
+    caches.open(CACHE).then(c => {
+      return Promise.allSettled(
+        ASSETS.map(url => c.add(url).catch(err => console.warn("Failed to cache:", url, err)))
+      );
+    })
   );
   self.skipWaiting();
 });
@@ -68,4 +64,5 @@ Versions:
 -V1.0.6 - Seeing if version changing works
 -V1.0.7 - Trying to fix version changing
 -V1.0.8 - Still trying to fix version changing + Audio errors
+-V1.0.8 - Fixing install issues
 */
