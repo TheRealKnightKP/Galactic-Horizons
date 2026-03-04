@@ -67,6 +67,49 @@ let playerLoadout = {
   unlockedAllyShips: ["Sprite"],
 };
 
+// Per-ship upgrade storage
+let shipUpgrades = {};
+function getShipUpgrades(name) {
+  if (!shipUpgrades[name]) shipUpgrades[name] = {
+    mainWeapon:"builtin", pdcWeapons:[],
+    shieldTier:1, ownedShieldTiers:[1],
+    armorTier:1,  ownedArmorTiers:[1],
+    engineTier:1, ownedEngineTiers:[1],
+  };
+  return shipUpgrades[name];
+}
+function saveShipUpgrades(name) {
+  const u = getShipUpgrades(name);
+  u.mainWeapon        = playerLoadout.mainWeapon;
+  u.pdcWeapons        = [...(playerLoadout.pdcWeapons||[])];
+  u.shieldTier        = playerLoadout.shieldTier;
+  u.ownedShieldTiers  = [...playerLoadout.ownedShieldTiers];
+  u.armorTier         = playerLoadout.armorTier;
+  u.ownedArmorTiers   = [...playerLoadout.ownedArmorTiers];
+  u.engineTier        = playerLoadout.engineTier;
+  u.ownedEngineTiers  = [...playerLoadout.ownedEngineTiers];
+}
+function loadShipUpgrades(name) {
+  const u = getShipUpgrades(name);
+  playerLoadout.mainWeapon       = u.mainWeapon;
+  playerLoadout.pdcWeapons       = [...u.pdcWeapons];
+  playerLoadout.shieldTier       = u.shieldTier;
+  playerLoadout.ownedShieldTiers = [...u.ownedShieldTiers];
+  playerLoadout.armorTier        = u.armorTier;
+  playerLoadout.ownedArmorTiers  = [...u.ownedArmorTiers];
+  playerLoadout.engineTier       = u.engineTier;
+  playerLoadout.ownedEngineTiers = [...u.ownedEngineTiers];
+}
+
+// Ally inventory - how many of each ship you own
+let allyInventory = { Sprite: 2 };
+function allyOwned(name)     { return allyInventory[name] || 0; }
+function allyEquipped(name)  { return playerLoadout.allies.filter(a=>a.ship===name).length; }
+function allyAvailable(name, excludeIdx=-1) {
+  const equipped = playerLoadout.allies.filter((a,i)=>a.ship===name&&i!==excludeIdx).length;
+  return allyOwned(name) - equipped;
+}
+
 let _shopTab    = "ships";
 let _loadoutTab = "ship";
 
@@ -134,7 +177,7 @@ function renderShopShips(container) {
       </div>
       <!-- Ship name + price -->
       <div style="padding:8px">
-        <div style="color:#eee;font:bold 14px monospace">${name}</div>
+        <div style="color:#eee;font:bold 14px monospace">${name}${isSpecial?` <span style="background:#ff4400;color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;vertical-align:middle">SPECIAL</span>`:""}</div>
         <div style="color:${tierColor};font:11px monospace;margin:2px 0">${ARMOR_TYPES[tier]?.name || ""} class</div>
         <div style="color:${canAfford?"#0f0":owned?"#aaa":"#f44"};font:12px monospace;margin:4px 0">
           ${ship.price !== null ? ship.price.toLocaleString() + " cr" : "???"}
@@ -201,11 +244,17 @@ function buyShip(name) {
   if (!ship || money < ship.price) return;
   money -= ship.price;
   if (!ownedShips.includes(name)) ownedShips.push(name);
+  saveShipUpgrades(currentShipName);
+  playerLoadout.ship = name;
+  loadShipUpgrades(name);
   setPlayerShip(name); currentShipName = name;
   showShop(); updateHUD();
 }
 function equipShip(name) {
   if (!ownedShips || !ownedShips.includes(name)) return;
+  saveShipUpgrades(currentShipName);
+  playerLoadout.ship = name;
+  loadShipUpgrades(name);
   setPlayerShip(name); currentShipName = name;
   showShop(); updateHUD();
 }
@@ -379,16 +428,20 @@ function renderAllyLoadoutPanel(container) {
     html += `<div class="ally-slot"><b>Slot ${i+1}</b><br>`;
     html += `Ship: <select onchange="setAllyShip(${i},this.value)">`;
     for (const sn of ALLY_SHIP_ORDER) {
-      if (playerLoadout.unlockedAllyShips.includes(sn))
-        html += `<option value="${sn}" ${slot.ship===sn?"selected":""}>${sn}</option>`;
+      if (!playerLoadout.unlockedAllyShips.includes(sn)) continue;
+      const avail = allyAvailable(sn, i);
+      const isCurrent = slot.ship === sn;
+      if (avail <= 0 && !isCurrent) continue;
+      html += `<option value="${sn}" ${isCurrent?"selected":""}>${sn} (×${allyOwned(sn)} owned, ${avail+(isCurrent?1:0)} avail)</option>`;
     }
     html += `</select>`;
     const curIdx = ALLY_SHIP_ORDER.indexOf(slot.ship);
     const nextShip = ALLY_SHIP_ORDER[curIdx + 1];
-    if (nextShip && !playerLoadout.unlockedAllyShips.includes(nextShip)) {
+    if (nextShip) {
       const cost = ALLY_SHIP_DEFS[nextShip].price;
       const canBuy = money >= cost;
-      html += ` <button style="width:auto;display:inline-block;font-size:11px;${canBuy?"":"opacity:0.4"}" onclick="buyAllyShip('${nextShip}',${i})" ${canBuy?"":"disabled"}>Unlock ${nextShip} (${cost.toLocaleString()} cr)</button>`;
+      const owned = allyOwned(nextShip);
+      html += ` <button style="width:auto;display:inline-block;font-size:11px;${canBuy?"":"opacity:0.4"}" onclick="buyAllyShip('${nextShip}',${i})" ${canBuy?"":"disabled"}>Buy ${nextShip} ×${owned+1} (${cost.toLocaleString()} cr)</button>`;
     }
     html += `<br>Weapon (S${aDef.weaponSize}): ${buildWeaponSelect(aDef.weaponSize, slot.weapon, `setAllyWeapon(${i},this.value)`)}<br>`;
     html += `Shield: ${buildShieldSelect(slot.ownedShieldTiers||[1], slot.shieldTier||1, `setAllyShieldTier(${i},parseInt(this.value))`, `buyAllyShield_${i}`, aDef.shields)}`;
@@ -404,7 +457,7 @@ function setPDCWeapon(idx, wk)       { if (!playerLoadout.pdcWeapons) playerLoad
 function setPlayerShieldTier(tier)   { if ((playerLoadout.ownedShieldTiers||[1]).includes(tier)) { playerLoadout.shieldTier = tier; renderLoadout(); } }
 function setPlayerArmorTier(tier)    { if ((playerLoadout.ownedArmorTiers||[1]).includes(tier))  { playerLoadout.armorTier  = tier; renderLoadout(); } }
 function setPlayerEngineTier(tier)   { if ((playerLoadout.ownedEngineTiers||[1]).includes(tier)) { playerLoadout.engineTier = tier; setPlayerShip(currentShipName); renderLoadout(); } }
-function setAllyShip(idx, name)      { if (!playerLoadout.unlockedAllyShips.includes(name)) return; playerLoadout.allies[idx].ship = name; playerLoadout.allies[idx].weapon = "builtin"; renderLoadout(); }
+function setAllyShip(idx, name)      { if (!playerLoadout.unlockedAllyShips.includes(name)) return; if (allyAvailable(name, idx) <= 0) return; playerLoadout.allies[idx].ship = name; playerLoadout.allies[idx].weapon = "builtin"; renderLoadout(); }
 function setAllyWeapon(idx, wk)      { playerLoadout.allies[idx].weapon = wk; renderLoadout(); }
 function setAllyShieldTier(idx,tier) { const s=playerLoadout.allies[idx]; if(!s||(!(s.ownedShieldTiers||[1]).includes(tier)))return; s.shieldTier=tier; renderLoadout(); }
 
@@ -416,6 +469,7 @@ function buyPlayerShield(tier) {
   money -= price;
   if (!playerLoadout.ownedShieldTiers) playerLoadout.ownedShieldTiers=[1];
   playerLoadout.ownedShieldTiers.push(tier); playerLoadout.shieldTier=tier;
+  saveShipUpgrades(currentShipName);
   renderLoadout(); updateHUD();
 }
 function buyPlayerArmor(tier) {
@@ -425,6 +479,7 @@ function buyPlayerArmor(tier) {
   money -= price;
   if (!playerLoadout.ownedArmorTiers) playerLoadout.ownedArmorTiers=[1];
   playerLoadout.ownedArmorTiers.push(tier); playerLoadout.armorTier=tier;
+  saveShipUpgrades(currentShipName);
   renderLoadout(); updateHUD();
 }
 function buyPlayerEngine(tier) {
@@ -434,7 +489,8 @@ function buyPlayerEngine(tier) {
   money -= price;
   if (!playerLoadout.ownedEngineTiers) playerLoadout.ownedEngineTiers=[1];
   playerLoadout.ownedEngineTiers.push(tier); playerLoadout.engineTier=tier;
-  setPlayerShip(currentShipName); // rebuild player stats with new engine tier
+  saveShipUpgrades(currentShipName);
+  setPlayerShip(currentShipName);
   renderLoadout(); updateHUD();
 }
 function buyAllyShield(idx, tier) {
@@ -450,11 +506,14 @@ function buyAllyShield(idx, tier) {
 }
 function buyAllyShip(shipName, slotIdx) {
   const aDef = ALLY_SHIP_DEFS[shipName];
-  if (!aDef||money<aDef.price||playerLoadout.unlockedAllyShips.includes(shipName)) return;
+  if (!aDef || money < aDef.price) return;
   money -= aDef.price;
-  playerLoadout.unlockedAllyShips.push(shipName);
-  playerLoadout.allies[slotIdx].ship = shipName;
-  playerLoadout.allies[slotIdx].weapon = "builtin";
+  allyInventory[shipName] = (allyInventory[shipName] || 0) + 1;
+  if (!playerLoadout.unlockedAllyShips.includes(shipName))
+    playerLoadout.unlockedAllyShips.push(shipName);
+  if (allyAvailable(shipName, slotIdx) > 0) {
+    playerLoadout.allies[slotIdx].ship = shipName;
+    playerLoadout.allies[slotIdx].weapon = "builtin";
+  }
   renderLoadout(); updateHUD();
-
 }
