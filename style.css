@@ -1,20 +1,38 @@
 * { box-sizing: border-box; }
-body { margin: 0; background: #000; overflow: hidden; }
+body {
+  margin: 0; background: #000; overflow: hidden;
+  width: 100vw; height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
 canvas { display: block; }
 
 #hud {
-  position: absolute; top: 10px; left: 10px;
+  position: fixed; top: 10px; left: 10px;
   color: lime; font-family: monospace; font-size: 14px;
   pointer-events: none; text-shadow: 0 0 6px lime;
+  display: none;
+  z-index: 100;
 }
 
+#inGameBack {
+  position: fixed; top: 10px; right: 10px;
+  z-index: 500; display: none;
+}
+#inGameBack button {
+  width: auto; padding: 6px 14px; font-size: 13px;
+  background: rgba(0,0,0,0.7); border: 1px solid #f44;
+  color: #f44;
+}
+#inGameBack button:hover { background: rgba(80,0,0,0.8); }
+
 .menu {
-  position: absolute; top: 50%; left: 50%;
+  position: fixed; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   text-align: center; color: white; font-family: monospace;
   background: rgba(0,0,0,0.88);
   padding: 30px 40px; border: 1px solid #0af;
   min-width: 400px; max-height: 90vh; overflow-y: auto;
+  z-index: 200;
 }
 .menu h1, .menu h2 { color: #0af; margin-top: 0; }
 
