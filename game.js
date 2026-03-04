@@ -951,7 +951,12 @@ function updateBullets() {
   enemyBullets=enemyBullets.filter(inBounds);
 }
 
-function overlaps(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+function overlaps(a,b){
+  const acx=a.x+a.w/2, acy=a.y+a.h/2;
+  const bcx=b.x+b.w/2, bcy=b.y+b.h/2;
+  const r=(Math.min(a.w,a.h)*0.45)+(Math.min(b.w,b.h)*0.45);
+  return Math.hypot(acx-bcx,acy-bcy)<r;
+}
 
 function checkCollisions() {
   playerBullets.forEach(b=>{
@@ -992,7 +997,24 @@ function drawEntity(obj) {
   ctx.save();ctx.translate(cx,cy);ctx.rotate((obj.rotation||0)+(obj.spriteAngleOffset||0));
   if(hasImg)ctx.drawImage(obj.img,-obj.w/2,-obj.h/2,obj.w,obj.h);
   else{ctx.fillStyle=obj.color||"#fff";ctx.fillRect(-obj.w/2,-obj.h/2,obj.w,obj.h);}
+
+  // Corner frame
+  const isPlayer=obj===player, isAlly=obj.isAlly;
+  const frameColor=isPlayer?"#4488ff":isAlly?"#44ff88":"#ff4444";
+  const hw=obj.w/2, hh=obj.h/2, cs=Math.min(hw,hh)*0.35, lw=2.5;
+  ctx.strokeStyle=frameColor; ctx.lineWidth=lw;
+  ctx.shadowColor=frameColor; ctx.shadowBlur=6;
+  // top-left
+  ctx.beginPath();ctx.moveTo(-hw,-hh+cs);ctx.lineTo(-hw,-hh);ctx.lineTo(-hw+cs,-hh);ctx.stroke();
+  // top-right
+  ctx.beginPath();ctx.moveTo(hw-cs,-hh);ctx.lineTo(hw,-hh);ctx.lineTo(hw,-hh+cs);ctx.stroke();
+  // bottom-left
+  ctx.beginPath();ctx.moveTo(-hw,hh-cs);ctx.lineTo(-hw,hh);ctx.lineTo(-hw+cs,hh);ctx.stroke();
+  // bottom-right
+  ctx.beginPath();ctx.moveTo(hw-cs,hh);ctx.lineTo(hw,hh);ctx.lineTo(hw,hh-cs);ctx.stroke();
+
   ctx.restore();
+
   if(obj.stunTimer>0){ctx.fillStyle="rgba(160,80,255,0.25)";ctx.fillRect(obj.x,obj.y,obj.w,obj.h);}
   const bx=obj.x,bw=obj.w;
   if(obj.maxShields>0){ctx.fillStyle="#222";ctx.fillRect(bx,obj.y-17,bw,4);ctx.fillStyle="#0af";ctx.fillRect(bx,obj.y-17,bw*Math.max(0,obj.shields/obj.maxShields),4);}
@@ -1146,6 +1168,7 @@ function confirmLeaveGame() {
 }
 
 gameLoop();
+
 
 
 
