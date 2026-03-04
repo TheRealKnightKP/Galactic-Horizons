@@ -44,7 +44,11 @@ if (!IS_MOBILE) {
   });
   canvas.addEventListener("mousedown", () => { mouse.down = true; initAudio(); });
   canvas.addEventListener("mouseup",   () => mouse.down = false);
-  document.addEventListener("keydown", e => { keys[e.code] = true;  e.preventDefault(); });
+  document.addEventListener("keydown", e => {
+    keys[e.code] = true;
+    if(e.code==="KeyE"&&state==="playing") cycleFormation();
+    e.preventDefault();
+  });
   document.addEventListener("keyup",   e => { keys[e.code] = false; });
 } else {
   window.addEventListener("load", buildMobileControls);
@@ -249,22 +253,23 @@ function playHitSound(category) {
 let hitEffects = [];
 
 function spawnHitEffect(x, y, bullet) {
+  if(hitEffects.length >= MAX_HIT_EFFECTS) return;
   const cat=bullet.category||"laser", size=bullet.weaponSize||1, bw=bullet.w||4, LIFE=12;
   if (cat==="ballistic") {
     hitEffects.push({ type:"ballistic", x, y, maxR:bw>=15?size*9:size*5, life:LIFE, maxLife:LIFE });
   } else if (cat==="laser") {
-    const count=3+Math.floor(size*0.8);
+    const count=Math.min(3, 2+Math.floor(size*0.4));
     for (let i=0;i<count;i++) {
       const a=Math.random()*Math.PI*2, spd=1.5+Math.random()*2.5;
       hitEffects.push({ type:"laser_pellet", x, y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, len:4+size*1.5, life:LIFE, maxLife:LIFE });
     }
   } else if (cat==="distortion") {
-    for (let i=0;i<3;i++) hitEffects.push({ type:"distortion_wave", x, y, maxR:18+size*6, delay:i*3, life:LIFE, maxLife:LIFE });
+    for (let i=0;i<2;i++) hitEffects.push({ type:"distortion_wave", x, y, maxR:18+size*6, delay:i*3, life:LIFE, maxLife:LIFE });
   }
 }
 
 function spawnRailgunEffect(x, y, size) {
-  const LIFE=16, count=6+Math.floor(size*1.2);
+  const LIFE=16, count=Math.min(5, 3+Math.floor(size*0.4));
   for (let i=0;i<count;i++) {
     const ox=(Math.random()-0.5)*size*14, oy=(Math.random()-0.5)*size*14;
     hitEffects.push({ type:"railgun_circle", x:x+ox, y:y+oy, maxR:4+Math.random()*size*5, life:LIFE, maxLife:LIFE });
@@ -308,7 +313,9 @@ function spawnDeathEffect(enemy) {
   const cx=enemy.x+enemy.w/2, cy=enemy.y+enemy.h/2;
   const size=ENEMIES[enemy.type]?.size||2;
   const colors=["#ff2200","#ff5500","#ff9900","#ffcc00","#4488ff","#ffffff"];
-  for (let i=0;i<3+size*2;i++) {
+  const count=Math.min(8, 2+Math.floor(size*1.5));
+  for (let i=0;i<count;i++) {
+    if(deathEffects.length>=MAX_DEATH_EFFECTS) break;
     const delay=Math.floor(Math.random()*Math.max(1,size*3));
     const radius=6+Math.random()*size*9;
     const life=18+Math.floor(Math.random()*22);
@@ -349,6 +356,11 @@ let state="menu", money=0, currentWave=0, infiniteMode=false, currentShipName="S
 let player={}, allies=[], enemies=[], playerBullets=[], enemyBullets=[];
 let missileTimer=0, ownedShips=[], shopOpenedFromMenu=false;
 let waveTransitionTimer=0, waveTransitionText="", beamFlashes=[];
+let frameCount = 0;
+let allyFormation = "behind"; // "behind", "front", "surround"
+let playerTookDamageThisWave = false;
+const MAX_HIT_EFFECTS = 80;
+const MAX_DEATH_EFFECTS = 40;
 
 const imgCache={};
 function getImage(fn) {
@@ -530,6 +542,7 @@ function applyDamage(target,bullet) {
   if(target===player){
     const dodge=player.boosting?player.dodgeBoosted:player.dodgeBase;
     if(dodge>0&&Math.random()<dodge)return;
+    playerTookDamageThisWave=true;
   }
   if(target.isAlly){
     if(Math.random()<0.25)return;
@@ -794,15 +807,30 @@ function updatePlayer() {
 function updateAllies() {
   const shieldDown=player.shields<=0;
   const cos=Math.cos(player.rotation),sin=Math.sin(player.rotation);
+  const pcx=player.x+player.w/2, pcy=player.y+player.h/2;
   allies.forEach((a,i)=>{
     a.vx=a.vx||0;a.vy=a.vy||0;
     let fx,fy;
     if(shieldDown){
       const dist=70+i*45,perp=(i-(allies.length-1)/2)*60;
-      fx=player.x+player.w/2+cos*dist-sin*perp-a.w/2;
-      fy=player.y+player.h/2+sin*dist+cos*perp-a.h/2;
-    } else {fx=player.x-80-i*50;fy=player.y+(i-(allies.length-1)/2)*65;}
-    const springK=shieldDown?0.06:0.0024,maxSpd=shieldDown?14:4;
+      fx=pcx+cos*dist-sin*perp-a.w/2;
+      fy=pcy+sin*dist+cos*perp-a.h/2;
+    } else if(allyFormation==="front"){
+      const dist=80+i*50,perp=(i-(allies.length-1)/2)*65;
+      fx=pcx+cos*dist-sin*perp-a.w/2;
+      fy=pcy+sin*dist+cos*perp-a.h/2;
+    } else if(allyFormation==="surround"){
+      const n=Math.max(1,allies.length);
+      const angle=(Math.PI*2*i/n)+player.rotation;
+      const r=90+n*18;
+      fx=pcx+Math.cos(angle)*r-a.w/2;
+      fy=pcy+Math.sin(angle)*r-a.h/2;
+    } else {
+      const dist=80+i*50,perp=(i-(allies.length-1)/2)*65;
+      fx=pcx-cos*dist-sin*perp-a.w/2;
+      fy=pcy-sin*dist+cos*perp-a.h/2;
+    }
+    const springK=0.05,maxSpd=14;
     a.vx+=(fx-a.x)*springK;a.vy+=(fy-a.y)*springK;
     const spd=Math.hypot(a.vx,a.vy);
     if(spd>maxSpd){a.vx*=maxSpd/spd;a.vy*=maxSpd/spd;}
@@ -849,15 +877,25 @@ function updateEnemies() {
       });
       e.beamTimer--;
       const vkDef=ENEMIES.Dreadnaught;
-      if(e.beamTimer===vkDef.beamWarningFrames)e.beamWarningAngle=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2);
+      if(e.beamTimer===vkDef.beamWarningFrames){
+        const baseAngle=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2);
+        const count=vkDef.beamCount||1;
+        const spread=vkDef.beamSpread||0;
+        e.beamWarningAngles=[];
+        for(let b=0;b<count;b++){
+          e.beamWarningAngles.push(baseAngle+(b-(count-1)/2)*spread);
+        }
+      }
       if(e.beamTimer<=0){
         const ecx=e.x+e.w/2,ecy=e.y+e.h/2;
-        const cos=Math.cos(e.beamWarningAngle),sin=Math.sin(e.beamWarningAngle);
-        const ep=rayEndpoint(ecx,ecy,cos,sin);
-        if(rayHitsRect(ecx,ecy,cos,sin,player))player.hp=-1;
-        allies.forEach(a=>{if(rayHitsRect(ecx,ecy,cos,sin,a))a.hp=-1;});
-        beamFlashes.push({x1:ecx,y1:ecy,x2:ep.x,y2:ep.y,life:45,maxLife:45,color:"#ff2200",width:14});
-        e.beamTimer=vkDef.beamCooldownFrames;e.beamWarningAngle=null;
+        (e.beamWarningAngles||[]).forEach(angle=>{
+          const cos=Math.cos(angle),sin=Math.sin(angle);
+          const ep=rayEndpoint(ecx,ecy,cos,sin);
+          if(rayHitsRect(ecx,ecy,cos,sin,player))player.hp=-1;
+          allies.forEach(a=>{if(rayHitsRect(ecx,ecy,cos,sin,a))a.hp=-1;});
+          beamFlashes.push({x1:ecx,y1:ecy,x2:ep.x,y2:ep.y,life:45,maxLife:45,color:"#ff2200",width:14});
+        });
+        e.beamTimer=vkDef.beamCooldownFrames;e.beamWarningAngles=null;
       }
       return;
     }
@@ -963,9 +1001,20 @@ function checkCollisions() {
     if(b.visualOnly||b.dead)return;
     enemies.forEach(e=>{
       if(e.dead||!overlaps(b,e))return;
-      spawnHitEffect(b.x+b.w/2,b.y+b.h/2,b);
-      playHitSound(b.category);
-      if(b.piercing){if(!b.hitSet)b.hitSet=new Set();if(b.hitSet.has(e))return;b.hitSet.add(e);}else b.dead=true;
+      if(b.piercing){
+        if(!b.hitSet)b.hitSet=new Set();
+        if(b.hitSet.has(e))return;
+        b.hitSet.add(e);
+        if(!b.lastEffectFrame||b.lastEffectFrame<frameCount){
+          spawnHitEffect(b.x+b.w/2,b.y+b.h/2,b);
+          playHitSound(b.category);
+          b.lastEffectFrame=frameCount;
+        }
+      } else {
+        spawnHitEffect(b.x+b.w/2,b.y+b.h/2,b);
+        playHitSound(b.category);
+        b.dead=true;
+      }
       applyDamage(e,b);
       if(e.hp<=0){spawnDeathEffect(e);playExplosion(ENEMIES[e.type]?.size||2);e.dead=true;money+=e.score;}
     });
@@ -1041,16 +1090,19 @@ function drawBeamFlashes() {
 
 function drawBeamWarnings() {
   enemies.forEach(e=>{
-    if(e.type!=="Dreadnaught"||e.beamWarningAngle===null||e.beamWarningAngle===undefined)return;
+    if(e.type!=="Dreadnaught"||!e.beamWarningAngles)return;
     const ecx=e.x+e.w/2,ecy=e.y+e.h/2;
-    const cos=Math.cos(e.beamWarningAngle),sin=Math.sin(e.beamWarningAngle);
-    const ep=rayEndpoint(ecx,ecy,cos,sin);
     const secs=Math.ceil(e.beamTimer/60);
     const pulse=0.35+0.55*Math.abs(Math.sin(Date.now()/120));
-    ctx.save();ctx.globalAlpha=pulse;ctx.strokeStyle="#ff2200";ctx.lineWidth=10;
-    ctx.setLineDash([24,14]);ctx.shadowColor="#ff4400";ctx.shadowBlur=30;
-    ctx.beginPath();ctx.moveTo(ecx,ecy);ctx.lineTo(ep.x,ep.y);ctx.stroke();ctx.setLineDash([]);
-    ctx.globalAlpha=0.9;ctx.fillStyle="#ff2200";ctx.font="bold 26px monospace";ctx.textAlign="center";
+    e.beamWarningAngles.forEach(angle=>{
+      const cos=Math.cos(angle),sin=Math.sin(angle);
+      const ep=rayEndpoint(ecx,ecy,cos,sin);
+      ctx.save();ctx.globalAlpha=pulse;ctx.strokeStyle="#ff2200";ctx.lineWidth=10;
+      ctx.setLineDash([24,14]);ctx.shadowColor="#ff4400";ctx.shadowBlur=30;
+      ctx.beginPath();ctx.moveTo(ecx,ecy);ctx.lineTo(ep.x,ep.y);ctx.stroke();
+      ctx.setLineDash([]);ctx.restore();
+    });
+    ctx.save();ctx.globalAlpha=0.9;ctx.fillStyle="#ff2200";ctx.font="bold 26px monospace";ctx.textAlign="center";
     ctx.fillText(`⚠ DREADNAUGHT BEAM — MOVE! (${secs}s)`,GAME_W/2,60);
     ctx.textAlign="left";ctx.restore();
   });
@@ -1133,7 +1185,40 @@ function updateHUD() {
   document.getElementById("missiles").textContent = player.missiles||0;
 }
 
+function cycleFormation() {
+  const modes=["behind","front","surround"];
+  const idx=modes.indexOf(allyFormation);
+  allyFormation=modes[(idx+1)%modes.length];
+  const labels={behind:"◀ BEHIND",front:"▶ FRONT",surround:"⬟ SURROUND"};
+  const btn=document.getElementById("formationBtn");
+  if(btn) btn.textContent=labels[allyFormation];
+  let toast=document.getElementById("formationToast");
+  if(!toast){
+    toast=document.createElement("div");
+    toast.id="formationToast";
+    toast.style.cssText="position:fixed;top:50px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#0af;font:bold 16px monospace;padding:6px 18px;border:1px solid #0af;border-radius:4px;z-index:9999;pointer-events:none;transition:opacity 0.4s";
+    document.body.appendChild(toast);
+  }
+  toast.textContent=labels[allyFormation];
+  toast.style.opacity="1";
+  clearTimeout(toast._t);
+  toast._t=setTimeout(()=>toast.style.opacity="0",1500);
+}
+
+function checkMeteorUnlock() {
+  if(!playerTookDamageThisWave&&!ownedShips.includes("Comet")){
+    ownedShips.push("Comet");
+    cometUnlocked=true;
+    const msg=document.createElement("div");
+    msg.innerHTML="🚀 PERFECT WAVE!<br>SECRET SHIP UNLOCKED: COMET";
+    msg.style.cssText="position:fixed;top:30%;left:50%;transform:translateX(-50%);background:#0a0a0a;color:#ff4400;font:bold 22px monospace;padding:20px 36px;border:2px solid #ff4400;z-index:9999;border-radius:8px;pointer-events:none;text-align:center;line-height:1.5";
+    document.body.appendChild(msg);
+    setTimeout(()=>msg.remove(),4000);
+  }
+}
+
 function gameLoop() {
+  frameCount++;
   if(state==="playing"){
     updatePlayer();updateAllies();updateEnemies();updateBullets();checkCollisions();
     if(enemies.length===0){
@@ -1141,6 +1226,7 @@ function gameLoop() {
       money+=reward;
       player.shields=player.maxShields;player.armor=player.maxArmor;
       allies.forEach(a=>{a.shields=a.maxShields;a.armor=a.maxArmor;});
+      checkMeteorUnlock();
       waveTransitionText=`Wave ${currentWave} Cleared!  +${reward} credits`;
       waveTransitionTimer=300;state="waveTransition";updateHUD();
     }
@@ -1168,10 +1254,3 @@ function confirmLeaveGame() {
 }
 
 gameLoop();
-
-
-
-
-
-
-
