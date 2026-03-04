@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.0.6";
+const CACHE = "galactic-horizons-v1.0.7";
 const ASSETS = [
   "./",
   "./index.html",
@@ -66,4 +66,5 @@ Versions:
 -V1.0.4 - Tried fixing sizes and added Version counter in menu HUD
 -V1.0.5 - Final Size fixes hopefully
 -V1.0.6 - Seeing if version changing works
+-V1.0.7 - Trying to fix version changing
 */
