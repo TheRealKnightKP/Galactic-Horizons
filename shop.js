@@ -143,6 +143,7 @@ function renderShopShips(container) {
   for (const [name, ship] of Object.entries(SHIPS)) {
     // Hide secret ships unless unlocked
     if (ship.secret && !cometUnlocked) continue;
+    const isSpecial = ship.secret;
     const canAfford = ship.price !== null && money >= ship.price;
     const owned = ownedShips && ownedShips.includes(name);
     const desc  = SHIP_DESCRIPTIONS[name] || "";
