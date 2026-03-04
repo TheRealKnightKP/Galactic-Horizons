@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.0.1"; // Release version
+const CACHE = "galactic-horizons-v1.0.2"; // Size Fixes
 const ASSETS = [
   "./",
   "./index.html",
@@ -55,5 +55,6 @@ self.addEventListener("fetch", e => {
 /*
 Versions:
 -V1 - Release (3/3/2026)
--V1.0.1 - QOL updates and sizes fixed.
+-V1.0.1 - QOL updates and sizes changed.
+-V1.0.2 - Fixed sizes
 */
