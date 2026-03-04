@@ -830,8 +830,16 @@ function updateAllies() {
       fx=pcx-cos*dist-sin*perp-a.w/2;
       fy=pcy-sin*dist+cos*perp-a.h/2;
     }
-    const springK=0.05,maxSpd=14;
-    a.vx+=(fx-a.x)*springK;a.vy+=(fy-a.y)*springK;
+    const dx=fx-a.x, dy=fy-a.y, dist=Math.hypot(dx,dy)||1;
+    const deadZone=18, maxSpd=12, accel=0.32, friction=0.78;
+    if(dist>deadZone){
+      const force=Math.min(accel*(dist/80), accel*2.5);
+      a.vx+=(dx/dist)*force; a.vy+=(dy/dist)*force;
+    } else {
+      // Inside dead zone — just dampen velocity strongly
+      a.vx*=0.6; a.vy*=0.6;
+    }
+    a.vx*=friction; a.vy*=friction;
     const spd=Math.hypot(a.vx,a.vy);
     if(spd>maxSpd){a.vx*=maxSpd/spd;a.vy*=maxSpd/spd;}
     a.x+=a.vx;a.y+=a.vy;
@@ -939,6 +947,11 @@ function updateEnemies() {
       e.vx*=friction;e.vy*=friction;
       const spd=Math.hypot(e.vx,e.vy);
       if(spd>e.speed){e.vx*=e.speed/spd;e.vy*=e.speed/spd;}
+      // Extra damping when near target range to prevent oscillation
+      if(!isSmallEnemy(e.type)){
+        const dToPlayer=Math.hypot(pcx-e.x-e.w/2,pcy-e.y-e.h/2);
+        if(Math.abs(dToPlayer-430)<60){e.vx*=0.88;e.vy*=0.88;}
+      }
       e.x+=e.vx;e.y+=e.vy;
       const m=25;
       if(e.x<m)e.vx+=accel*1.5;if(e.x>GAME_W-e.w-m)e.vx-=accel*1.5;
