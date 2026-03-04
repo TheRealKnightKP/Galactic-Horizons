@@ -64,11 +64,11 @@ function buildMobileControls() {
   const leftPanel = document.createElement("div");
   leftPanel.style.cssText = "position:absolute;left:0;bottom:0;width:220px;height:280px;pointer-events:none";
 
-  const boostBtn = document.createElement("div");
-  boostBtn.textContent = "BOOST";
-  boostBtn.style.cssText = "position:absolute;left:65px;bottom:185px;width:70px;height:70px;background:rgba(0,180,255,0.18);border:2px solid rgba(0,180,255,0.7);border-radius:50%;color:#0af;font:bold 13px monospace;display:flex;align-items:center;justify-content:center;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none";
-  boostBtn.addEventListener("touchstart", e => { e.preventDefault(); keys["ShiftLeft"] = true;  initAudio(); }, { passive: false });
-  boostBtn.addEventListener("touchend",   e => { e.preventDefault(); keys["ShiftLeft"] = false; }, { passive: false });
+  const missileBtn = document.createElement("div");
+  missileBtn.textContent = "MISSILE";
+  missileBtn.style.cssText = "position:absolute;left:65px;bottom:185px;width:70px;height:70px;background:rgba(255,120,0,0.18);border:2px solid rgba(255,120,0,0.7);border-radius:50%;color:#f80;font:bold 12px monospace;display:flex;align-items:center;justify-content:center;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none";
+  missileBtn.addEventListener("touchstart", e => { e.preventDefault(); keys["KeyF"] = true;  initAudio(); }, { passive: false });
+  missileBtn.addEventListener("touchend",   e => { e.preventDefault(); keys["KeyF"] = false; }, { passive: false });
 
   const leftBase = document.createElement("div");
   leftBase.style.cssText = "position:absolute;left:10px;bottom:20px;width:160px;height:160px;background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.2);border-radius:50%;pointer-events:all;touch-action:none";
@@ -113,18 +113,18 @@ function buildMobileControls() {
     }
   });
 
-  leftPanel.appendChild(boostBtn);
+  leftPanel.appendChild(missileBtn);
   leftPanel.appendChild(leftBase);
 
   // ── RIGHT SIDE ─────────────────────────────────────────────
   const rightPanel = document.createElement("div");
   rightPanel.style.cssText = "position:absolute;right:0;bottom:0;width:220px;height:280px;pointer-events:none";
 
-  const missileBtn = document.createElement("div");
-  missileBtn.textContent = "MISSILE";
-  missileBtn.style.cssText = "position:absolute;right:65px;bottom:185px;width:70px;height:70px;background:rgba(255,120,0,0.18);border:2px solid rgba(255,120,0,0.7);border-radius:50%;color:#f80;font:bold 12px monospace;display:flex;align-items:center;justify-content:center;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none";
-  missileBtn.addEventListener("touchstart", e => { e.preventDefault(); keys["KeyF"] = true;  }, { passive: false });
-  missileBtn.addEventListener("touchend",   e => { e.preventDefault(); keys["KeyF"] = false; }, { passive: false });
+  const boostBtn = document.createElement("div");
+  boostBtn.textContent = "BOOST";
+  boostBtn.style.cssText = "position:absolute;right:65px;bottom:185px;width:70px;height:70px;background:rgba(0,180,255,0.18);border:2px solid rgba(0,180,255,0.7);border-radius:50%;color:#0af;font:bold 13px monospace;display:flex;align-items:center;justify-content:center;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none";
+  boostBtn.addEventListener("touchstart", e => { e.preventDefault(); keys["ShiftLeft"] = true;  initAudio(); }, { passive: false });
+  boostBtn.addEventListener("touchend",   e => { e.preventDefault(); keys["ShiftLeft"] = false; }, { passive: false });
 
   const rightBase = document.createElement("div");
   rightBase.style.cssText = "position:absolute;right:10px;bottom:20px;width:160px;height:160px;background:rgba(255,80,80,0.05);border:2px solid rgba(255,80,80,0.25);border-radius:50%;pointer-events:all;touch-action:none";
@@ -178,8 +178,16 @@ function buildMobileControls() {
     }
   });
 
-  rightPanel.appendChild(missileBtn);
+  rightPanel.appendChild(boostBtn);
   rightPanel.appendChild(rightBase);
+
+  // Formation button - bottom center, small
+  const formationBtn = document.createElement("div");
+  formationBtn.id = "formationBtn";
+  formationBtn.textContent = "◀ BEHIND";
+  formationBtn.style.cssText = "position:absolute;bottom:28px;left:50%;transform:translateX(-50%);padding:5px 14px;background:rgba(0,170,255,0.18);border:2px solid rgba(0,170,255,0.7);border-radius:16px;color:#0af;font:bold 10px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
+  formationBtn.addEventListener("touchstart", e => { e.preventDefault(); cycleFormation(); }, { passive: false });
+  ui.appendChild(formationBtn);
 
   ui.appendChild(leftPanel);
   ui.appendChild(rightPanel);
