@@ -392,20 +392,35 @@ function getEnemyInaccuracySpread() {
 }
 
 function buildAlly(i,totalSlots) {
-  const slot=playerLoadout.allies[i]||{ship:"Sprite",weapon:"builtin",shieldTier:1};
-  const sName=slot.ship||"Sprite";
+  const slot=playerLoadout.allies[i];
+  if(!slot||!slot.ship) return null; // empty slot
+  const sName=slot.ship;
   const aDef=ALLY_SHIP_DEFS[sName]||ALLY_SHIP_DEFS.Sprite;
   const shieldMult=SHIELD_TIERS[slot.shieldTier||1].mult;
   const wType=resolveWType(slot.weapon,"laser_repeater");
-  const wStats=getWeaponStats(wType,aDef.weaponSize);
+  // Apply behavior modifiers
+  const _AB=typeof ALLY_BEHAVIORS!=="undefined"?ALLY_BEHAVIORS:{0:{name:"Balanced",speedMult:1,dmgMult:1,dodgeMult:1,shieldMult:1,rpmMult:1}};
+  const beh=_AB[slot.behavior||0]||_AB[0];
+  const shieldsFinal=Math.round(aDef.shields*shieldMult*beh.shieldMult);
+  const wStatBase=getWeaponStats(wType,aDef.weaponSize);
+  let wStats=null;
+  if(wStatBase){
+    wStats={...wStatBase,
+      damage:Math.round(wStatBase.damage*beh.dmgMult),
+      fireInterval:Math.round(wStatBase.fireInterval/beh.rpmMult),
+    };
+  }
+  const dodge=Math.min(0.95, Math.max(0, 0.25*beh.dodgeMult));
   return {
-    type:sName, x:player.x-80-i*50, y:player.y+(i-(totalSlots-1)/2)*70,
+    type:sName, name:slot.name||sName,
+    x:player.x-80-i*50, y:player.y+(i-(totalSlots-1)/2)*70,
     w:Math.round(aDef.w*SIZE_SCALE), h:Math.round(aDef.h*SIZE_SCALE), hp:aDef.hp, maxHp:aDef.hp,
-    shields:Math.round(aDef.shields*shieldMult), maxShields:Math.round(aDef.shields*shieldMult),
+    shields:shieldsFinal, maxShields:shieldsFinal,
     armor:100, maxArmor:100, armorType:aDef.armorType,
     img:getImage(aDef.image), color:aDef.color,
     shootTimer:Math.floor(Math.random()*30), vx:0, vy:0, rotation:0, spriteAngleOffset:Math.PI,
     weaponType:wType, weaponSize:aDef.weaponSize, weaponStats:wStats, isAlly:true,
+    dodge, speedMult:beh.speedMult,
   };
 }
 
@@ -453,23 +468,17 @@ function setPlayerShip(name) {
     player.turrets.push({rx:0,ry,fireRate:pdcStats?pdcStats.fireInterval*2:40,shootTimer:Math.floor(Math.random()*40),weaponStats:pdcStats});
   }
   const totalSlots=2+(d.extraAllySlots||0);
-  if (name==="Leviathan") {
-    while(playerLoadout.allies.length<totalSlots) playerLoadout.allies.push({ship:"Rouge",weapon:"builtin",shieldTier:1,ownedShieldTiers:[1]});
-    for(let i=0;i<totalSlots;i++){
-      if(!playerLoadout.allies[i]) playerLoadout.allies[i]={ship:"Rouge",weapon:"builtin",shieldTier:1,ownedShieldTiers:[1]};
-      else if(playerLoadout.allies[i].ship==="Sprite") playerLoadout.allies[i].ship="Rouge";
-    }
-    if(!playerLoadout.unlockedAllyShips.includes("Rouge")) playerLoadout.unlockedAllyShips.push("Rouge");
-  }
+  // Ensure enough null slots exist for this ship's total slots
+  while(playerLoadout.allies.length<totalSlots) playerLoadout.allies.push(null);
   allies=[];
-  for(let i=0;i<totalSlots;i++) allies.push(buildAlly(i,totalSlots));
+  for(let i=0;i<totalSlots;i++){const a=buildAlly(i,totalSlots);if(a)allies.push(a);}
 }
 
 function respawnDeadAllies() {
   const d=SHIPS[currentShipName];
   const totalSlots=2+(d.extraAllySlots||0);
-  allies=allies.filter(a=>a.hp>0);
-  while(allies.length<totalSlots) allies.push(buildAlly(allies.length,totalSlots));
+  allies=[];
+  for(let i=0;i<totalSlots;i++){const a=buildAlly(i,totalSlots);if(a)allies.push(a);}
 }
 
 function spawnWave() {
@@ -553,7 +562,8 @@ function applyDamage(target,bullet) {
     playerTookDamageThisWave=true;
   }
   if(target.isAlly){
-    if(Math.random()<0.25)return;
+    const allyDodge=target.dodge||0.25;
+    if(Math.random()<allyDodge)return;
     bullet={...bullet,damage:(bullet.damage||0)*0.75};
   }
   if(bullet.missile){
@@ -839,17 +849,13 @@ function updateAllies() {
       fy=pcy-sin*dist+cos*perp-a.h/2;
     }
     const dx=fx-a.x, dy=fy-a.y, dist=Math.hypot(dx,dy)||1;
-    const deadZone=18, maxSpd=12, accel=0.32, friction=0.78;
-    if(dist>deadZone){
-      const force=Math.min(accel*(dist/80), accel*2.5);
-      a.vx+=(dx/dist)*force; a.vy+=(dy/dist)*force;
-    } else {
-      // Inside dead zone — just dampen velocity strongly
-      a.vx*=0.6; a.vy*=0.6;
-    }
-    a.vx*=friction; a.vy*=friction;
+    const baseMaxSpd=22*(a.speedMult||1);
+    const speedFrac=Math.max(0.05, Math.min(1.0, dist/160));
+    const targetSpd=baseMaxSpd*speedFrac;
+    a.vx+=(dx/dist)*2.0; a.vy+=(dy/dist)*2.0;
     const spd=Math.hypot(a.vx,a.vy);
-    if(spd>maxSpd){a.vx*=maxSpd/spd;a.vy*=maxSpd/spd;}
+    if(spd>targetSpd){a.vx*=targetSpd/spd;a.vy*=targetSpd/spd;}
+    a.vx*=0.84; a.vy*=0.84;
     a.x+=a.vx;a.y+=a.vy;
     if(a.shields<a.maxShields)a.shields+=0.03;
     let closest=null,closestD=1e9;
