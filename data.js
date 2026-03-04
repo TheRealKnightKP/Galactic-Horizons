@@ -4,10 +4,10 @@ const WEAPON_DEFS = {
   laser_repeater:      { name: "Laser Repeater",       category: "laser",      fireInterval: 10,  dmgMult: 0.5,  penMult: 1.0, speed: 12, w: 7,  h: 3, spread: 0,    playerColor: "#00eeff", enemyColor: "#ff3333" },
   laser_cannon:        { name: "Laser Cannon",          category: "laser",      fireInterval: 22,  dmgMult: 1.1,  penMult: 1.4, speed: 9,  w: 11, h: 4, spread: 0,    playerColor: "#0055ff", enemyColor: "#ff6600" },
   ballistic_gatling:   { name: "Ballistic Gatling",     category: "ballistic",  fireInterval: 7,   dmgMult: 0.45, penMult: 1.3, speed: 15, w: 6,  h: 3, spread: 0.05, playerColor: "#ffee44", enemyColor: "#ffbb00" },
-  ballistic_cannon:    { name: "Ballistic Cannon",      category: "ballistic",  fireInterval: 30,  dmgMult: 1.9,  penMult: 2.2, speed: 8,  w: 15, h: 5, spread: 0,    playerColor: "#ffcc00", enemyColor: "#ff8800" },
-  ballistic_railgun:   { name: "Ballistic Railgun",     category: "ballistic",  fireInterval: 90,  dmgMult: 6.0,  penMult: 5.0, speed: 22, w: 36, h: 3, spread: 0,    playerColor: "#ffffff", enemyColor: "#ffff88", hitscan: true },
+  ballistic_cannon:    { name: "Ballistic Cannon",      category: "ballistic",  fireInterval: 30,  dmgMult: 1.9,  penMult: 2.2, speed: 9,  w: 15, h: 5, spread: 0,    playerColor: "#ffcc00", enemyColor: "#ff8800" },
+  ballistic_railgun:   { name: "Ballistic Railgun",     category: "ballistic",  fireInterval: 90,  dmgMult: 10.0,  penMult: 5.0, speed: 22, w: 36, h: 3, spread: 0,    playerColor: "#ffffff", enemyColor: "#ffff88", hitscan: true },
   scattergun_ballistic:{ name: "Ballistic Scattergun",  category: "ballistic",  fireInterval: 20,  dmgMult: 0.75, penMult: 2.0, speed: 9,  w: 6,  h: 4, spread: 0.3,  playerColor: "#ffcc44", enemyColor: "#ffaa44", scattergun: true, pellets: 5, rangeFraction: 0.22, piercing: true },
-  scattergun_laser:    { name: "Laser Scattergun",      category: "laser",      fireInterval: 20,  dmgMult: 0.15, penMult: 1.8, speed: 11, w: 6,  h: 4, spread: 0.3,  playerColor: "#00ffbb", enemyColor: "#ff44bb", scattergun: true, pellets: 5, rangeFraction: 0.22, piercing: true },
+  scattergun_laser:    { name: "Laser Scattergun",      category: "laser",      fireInterval: 20,  dmgMult: 0.75, penMult: 1.8, speed: 11, w: 6,  h: 4, spread: 0.3,  playerColor: "#00ffbb", enemyColor: "#ff44bb", scattergun: true, pellets: 5, rangeFraction: 0.22, piercing: true },
   distortion:          { name: "Distortion Repeater",   category: "distortion", fireInterval: 15,  dmgMult: 0.25, penMult: 0.4, speed: 9,  w: 8,  h: 4, spread: 0,    playerColor: "#aa44ff", enemyColor: "#cc66ff", stunOnHull: true },
 };
 
@@ -104,7 +104,7 @@ const SHIPS = {
   Leviathan:  { price: 750000,   hp: 7500,  shields: 700,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "laser_repeater",    weaponSize: 7,  bespoke: false, doubleShot: true, pdc: 8, pdcSizes: [6,6,5,5,5,5,4,4], image: "Kraken.png", color: "#88ff00", size: 8, missileType: 3, armorType: "capital", extraAllySlots: 6 },
   Dominion:   { price: 1200000,  hp: 10000, shields: 8000, armor: 100, missiles: 32, speed: 0.45, weaponType: "ballistic_railgun", weaponSize: 10, bespoke: true,  pdc: 8,  pdcSizes: [6,6,5,5,4,4,3,3],        image: "Idris.jpg",         color: "#cc88ff", size: 10, missileType: 3, armorType: "capital",   extraAllySlots: 4 },
   // --- SECRET ---
-  Comet:      { price: null,     hp: 100,   shields: 90,   armor: 100, missiles: 4,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  pdc: 0,  pdcSize: 0,                         image: "Meteor.png",        color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
+  Comet:      { price: null,     hp: 100,   shields: 90,   armor: 100, missiles: 4,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  pdc: 0,  pdcSize: 0,                         image: "Meteor.png",        color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
 };
 
 const ENEMIES = {
@@ -285,3 +285,4 @@ function generateInfiniteWave(waveNum) {
   return { enemies, reward: waveNum * 1500 };
 
 }
+
