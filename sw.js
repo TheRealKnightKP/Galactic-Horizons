@@ -16,15 +16,14 @@ const ASSETS = [
   "./assets/Freelancer.png",
   "./assets/Hornet.png",
   "./assets/Constellation.png",
-  "./assets/Hammerhead.png",
+  "./assets/HammerHead.png",
   "./assets/StarlancerTAC.png",
   "./assets/Polaris.png",
   "./assets/Kraken.png",
-  "./assets/Idris.png",
+  "./assets/Idris.jpg",
   "./assets/Gladius.png",
   "./assets/Corsair.png",
   "./assets/Merlin.png",
-  "./assets/VanduulKingship.png"
 ];
 
 self.addEventListener("install", e => {
