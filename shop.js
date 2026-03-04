@@ -60,11 +60,8 @@ let playerLoadout = {
   ownedArmorTiers: [1],
   engineTier: 1,
   ownedEngineTiers: [1],
-  allies: [
-    { ship: "Sprite", weapon: "builtin", shieldTier: 1, ownedShieldTiers: [1] },
-    { ship: "Sprite", weapon: "builtin", shieldTier: 1, ownedShieldTiers: [1] },
-  ],
-  unlockedAllyShips: ["Sprite"],
+  allies: [null, null],
+  unlockedAllyShips: [],
 };
 
 // Per-ship upgrade storage
@@ -102,13 +99,24 @@ function loadShipUpgrades(name) {
 }
 
 // Ally inventory - how many of each ship you own
-let allyInventory = { Sprite: 2 };
+let allyInventory = {};
+let allyPurchaseCount = {}; // tracks total bought per ship type for naming
 function allyOwned(name)     { return allyInventory[name] || 0; }
-function allyEquipped(name)  { return playerLoadout.allies.filter(a=>a.ship===name).length; }
+function allyEquipped(name)  { return playerLoadout.allies.filter(a=>a&&a.ship===name).length; }
 function allyAvailable(name, excludeIdx=-1) {
-  const equipped = playerLoadout.allies.filter((a,i)=>a.ship===name&&i!==excludeIdx).length;
+  const equipped = playerLoadout.allies.filter((a,i)=>a&&a.ship===name&&i!==excludeIdx).length;
   return allyOwned(name) - equipped;
 }
+
+// Ally behavior presets
+const ALLY_BEHAVIORS = {
+  0: { name: "Balanced",   speedMult:1.00, dmgMult:1.00, dodgeMult:1.00, shieldMult:1.00, rpmMult:1.00, desc:"No specialization." },
+  1: { name: "Interceptor",speedMult:1.15, dmgMult:1.00, dodgeMult:1.00, shieldMult:1.00, rpmMult:1.00, desc:"+15% speed, -10% accuracy.", accuracyPenalty:0.10 },
+  2: { name: "Gunner",     speedMult:1.00, dmgMult:1.15, dodgeMult:0.90, shieldMult:1.00, rpmMult:1.00, desc:"+15% damage, -10% dodge." },
+  3: { name: "Evader",     speedMult:1.00, dmgMult:0.90, dodgeMult:1.15, shieldMult:1.00, rpmMult:1.00, desc:"+15% dodge, -10% damage." },
+  4: { name: "Tank",       speedMult:1.00, dmgMult:1.00, dodgeMult:1.00, shieldMult:1.15, rpmMult:0.90, desc:"+15% shields, -10% RPM." },
+  5: { name: "Rapid",      speedMult:1.00, dmgMult:1.00, dodgeMult:1.00, shieldMult:0.90, rpmMult:1.15, desc:"+15% RPM, -10% shields." },
+};
 
 let _shopTab    = "ships";
 let _loadoutTab = "ship";
@@ -130,11 +138,23 @@ function setShopTab(tab) { _shopTab = tab; renderShopTab(); }
 function renderShopTab() {
   const s = document.getElementById("shopTabShips");
   const w = document.getElementById("shopTabWeapons");
+  let a = document.getElementById("shopTabAllies");
+  if (!a) {
+    // Inject allies tab button dynamically
+    a = document.createElement("button");
+    a.id = "shopTabAllies";
+    a.textContent = "Allies";
+    a.style.cssText = "background:none;border:none;color:#0af;font:bold 14px monospace;padding:8px 16px;cursor:pointer;border-bottom:none";
+    a.onclick = () => setShopTab("allies");
+    if (w && w.parentNode) w.parentNode.insertBefore(a, w.nextSibling);
+  }
   if (s) s.style.borderBottom = _shopTab === "ships"   ? "2px solid #0af" : "none";
   if (w) w.style.borderBottom = _shopTab === "weapons" ? "2px solid #0af" : "none";
+  if (a) a.style.borderBottom = _shopTab === "allies"  ? "2px solid #0af" : "none";
   const body = document.getElementById("shopBody");
   if (!body) return;
-  if (_shopTab === "ships") renderShopShips(body);
+  if (_shopTab === "ships")   renderShopShips(body);
+  else if (_shopTab === "allies") renderShopAllies(body);
   else renderShopWeapons(body);
 }
 
@@ -198,6 +218,35 @@ function renderShopShips(container) {
 function toggleShipInfo(name) {
   const el = document.getElementById("shipinfo_" + name);
   if (el) el.style.display = el.style.display === "none" ? "block" : "none";
+}
+
+function renderShopAllies(container) {
+  let html = `<div style="padding:10px;color:#aaa;font:12px monospace">
+    <p style="color:#0af;font:bold 14px monospace;margin-bottom:8px">Ally Ships</p>
+    <p style="margin-bottom:12px">Buy individual ally units. Each purchased ally can be assigned to a slot in your <b>Loadout → Allies</b> panel. Allies are named on purchase and can be renamed anytime.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:12px">`;
+  for (const sn of ALLY_SHIP_ORDER) {
+    const aDef = ALLY_SHIP_DEFS[sn];
+    const owned = allyOwned(sn);
+    const equipped = allyEquipped(sn);
+    const available = owned - equipped;
+    const canAfford = money >= aDef.price;
+    html += `<div style="background:#0a0e1a;border:1px solid #223;border-radius:8px;width:190px;padding:10px">
+      <img src="assets/${aDef.image}" style="width:100%;height:80px;object-fit:contain;image-rendering:pixelated" onerror="this.style.display='none'">
+      <div style="color:#eee;font:bold 13px monospace;margin:6px 0">${sn}</div>
+      <div style="color:#888;font:11px monospace;line-height:1.6">
+        HP: ${aDef.hp} | Shields: ${aDef.shields}<br>
+        Armor: ${aDef.armorType} | Weapon: S${aDef.weaponSize}<br>
+        Owned: <span style="color:#0af">${owned}</span> &nbsp; Equipped: <span style="color:#ff8">${equipped}</span> &nbsp; Available: <span style="color:#0f0">${available}</span>
+      </div>
+      <div style="color:${canAfford?"#0f0":"#f44"};font:12px monospace;margin:6px 0">${sn==="Sprite"?"Free":aDef.price.toLocaleString()+" cr"}</div>
+      <button style="width:100%;${canAfford?"":"opacity:0.4"}" onclick="buyAllyShipFromShop('${sn}')" ${canAfford?"":"disabled"}>
+        Buy ${sn} #${(allyPurchaseCount[sn]||0)+1}
+      </button>
+    </div>`;
+  }
+  html += `</div></div>`;
+  container.innerHTML = html;
 }
 
 function renderShopWeapons(container) {
@@ -281,7 +330,7 @@ function ensureAllySlots() {
   const d = SHIPS[playerLoadout.ship || "Starlight"];
   const n = 2 + (d.extraAllySlots || 0);
   while (playerLoadout.allies.length < n)
-    playerLoadout.allies.push({ ship: "Sprite", weapon: "builtin", shieldTier: 1, ownedShieldTiers: [1] });
+    playerLoadout.allies.push(null);
 }
 
 function openLoadout() {
@@ -422,31 +471,50 @@ function renderAllyLoadoutPanel(container) {
   ensureAllySlots();
   const sd = SHIPS[playerLoadout.ship || "Starlight"];
   const totalSlots = 2 + (sd.extraAllySlots || 0);
-  let html = `<p style="color:#aaa;margin:4px 0">Ally slots: ${totalSlots}</p>`;
+  let html = `<p style="color:#aaa;margin:4px 0 8px">Ally slots: ${totalSlots} &nbsp;<span style="color:#666;font-size:11px">Buy allies in Shop → Allies tab</span></p>`;
   for (let i = 0; i < totalSlots; i++) {
-    const slot = playerLoadout.allies[i] || { ship: "Sprite", weapon: "builtin", shieldTier: 1, ownedShieldTiers: [1] };
-    const aDef = ALLY_SHIP_DEFS[slot.ship] || ALLY_SHIP_DEFS.Sprite;
-    html += `<div class="ally-slot"><b>Slot ${i+1}</b><br>`;
-    html += `Ship: <select onchange="setAllyShip(${i},this.value)">`;
-    for (const sn of ALLY_SHIP_ORDER) {
-      if (!playerLoadout.unlockedAllyShips.includes(sn)) continue;
-      const avail = allyAvailable(sn, i);
-      const isCurrent = slot.ship === sn;
-      if (avail <= 0 && !isCurrent) continue;
-      html += `<option value="${sn}" ${isCurrent?"selected":""}>${sn} (×${allyOwned(sn)} owned, ${avail+(isCurrent?1:0)} avail)</option>`;
+    const slot = playerLoadout.allies[i];
+    if (!slot) {
+      // Empty slot
+      html += `<div class="ally-slot" style="background:#0a0a14;border:1px dashed #334;border-radius:6px;padding:8px;margin-bottom:8px;color:#555;font:12px monospace">
+        <b style="color:#444">Slot ${i+1} — Empty</b><br>
+        <div style="margin-top:6px">`;
+      // Show available allies to assign
+      const available = ALLY_SHIP_ORDER.filter(sn => allyAvailable(sn, i) > 0);
+      if (available.length > 0) {
+        html += `Assign: `;
+        available.forEach(sn => {
+          html += `<button style="width:auto;display:inline-block;font-size:11px;margin:2px" onclick="assignAllyToSlot(${i},'${sn}')">+ ${sn} (${allyAvailable(sn,i)} avail)</button>`;
+        });
+      } else {
+        html += `<span style="color:#444">No allies available — buy some in Shop → Allies</span>`;
+      }
+      html += `</div></div>`;
+    } else {
+      const aDef = ALLY_SHIP_DEFS[slot.ship] || ALLY_SHIP_DEFS.Sprite;
+      const beh = ALLY_BEHAVIORS[slot.behavior||0];
+      html += `<div class="ally-slot" style="background:#0a0e1a;border:1px solid #334;border-radius:6px;padding:8px;margin-bottom:8px">`;
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">`;
+      html += `<b style="color:#0af">Slot ${i+1}: <span id="allyNameDisplay_${i}">${slot.name||slot.ship}</span></b>`;
+      html += `<button style="width:auto;font-size:10px;padding:2px 7px;background:rgba(255,50,50,0.15);border-color:#f44;color:#f44" onclick="removeAllyFromSlot(${i})">Remove</button>`;
+      html += `</div>`;
+      // Name field
+      html += `<div style="margin:4px 0">Name: <input id="allyNameInput_${i}" value="${slot.name||slot.ship}" style="background:#111;border:1px solid #445;color:#eee;font:11px monospace;padding:2px 5px;width:130px" onchange="setAllyName(${i},this.value)"></div>`;
+      // Ship info
+      html += `<div style="color:#666;font:10px monospace;margin-bottom:4px">${slot.ship} | S${aDef.weaponSize} weapon | ${aDef.armorType} armor</div>`;
+      // Behavior
+      html += `<div style="margin:4px 0">Behavior: <select onchange="setAllyBehavior(${i},parseInt(this.value))">`;
+      for (let b = 0; b <= 5; b++) {
+        const bDef = ALLY_BEHAVIORS[b];
+        html += `<option value="${b}" ${(slot.behavior||0)===b?"selected":""}>${bDef.name}</option>`;
+      }
+      html += `</select> <span style="color:#666;font-size:10px">${beh.desc}</span></div>`;
+      // Weapon
+      html += `<div style="margin:4px 0">Weapon (S${aDef.weaponSize}): ${buildWeaponSelect(aDef.weaponSize, slot.weapon, `setAllyWeapon(${i},this.value)`)}</div>`;
+      // Shield
+      html += `<div style="margin:4px 0">Shield: ${buildShieldSelect(slot.ownedShieldTiers||[1], slot.shieldTier||1, `setAllyShieldTier(${i},parseInt(this.value))`, `buyAllyShield_${i}`, aDef.shields)}</div>`;
+      html += `</div>`;
     }
-    html += `</select>`;
-    const curIdx = ALLY_SHIP_ORDER.indexOf(slot.ship);
-    const nextShip = ALLY_SHIP_ORDER[curIdx + 1];
-    if (nextShip) {
-      const cost = ALLY_SHIP_DEFS[nextShip].price;
-      const canBuy = money >= cost;
-      const owned = allyOwned(nextShip);
-      html += ` <button style="width:auto;display:inline-block;font-size:11px;${canBuy?"":"opacity:0.4"}" onclick="buyAllyShip('${nextShip}',${i})" ${canBuy?"":"disabled"}>Buy ${nextShip} ×${owned+1} (${cost.toLocaleString()} cr)</button>`;
-    }
-    html += `<br>Weapon (S${aDef.weaponSize}): ${buildWeaponSelect(aDef.weaponSize, slot.weapon, `setAllyWeapon(${i},this.value)`)}<br>`;
-    html += `Shield: ${buildShieldSelect(slot.ownedShieldTiers||[1], slot.shieldTier||1, `setAllyShieldTier(${i},parseInt(this.value))`, `buyAllyShield_${i}`, aDef.shields)}`;
-    html += `</div>`;
   }
   container.innerHTML = html;
   for (let i = 0; i < totalSlots; i++) window[`buyAllyShield_${i}`] = (tier) => buyAllyShield(i, tier);
@@ -459,6 +527,10 @@ function setPlayerShieldTier(tier)   { if ((playerLoadout.ownedShieldTiers||[1])
 function setPlayerArmorTier(tier)    { if ((playerLoadout.ownedArmorTiers||[1]).includes(tier))  { playerLoadout.armorTier  = tier; renderLoadout(); } }
 function setPlayerEngineTier(tier)   { if ((playerLoadout.ownedEngineTiers||[1]).includes(tier)) { playerLoadout.engineTier = tier; setPlayerShip(currentShipName); renderLoadout(); } }
 function setAllyShip(idx, name)      { if (!playerLoadout.unlockedAllyShips.includes(name)) return; if (allyAvailable(name, idx) <= 0) return; playerLoadout.allies[idx].ship = name; playerLoadout.allies[idx].weapon = "builtin"; renderLoadout(); }
+function setAllyName(idx, name)      { if (!playerLoadout.allies[idx]) return; playerLoadout.allies[idx].name = name.trim()||playerLoadout.allies[idx].ship; renderLoadout(); }
+function setAllyBehavior(idx, beh)   { if (!playerLoadout.allies[idx]) return; playerLoadout.allies[idx].behavior = beh; renderLoadout(); }
+function assignAllyToSlot(idx, sn)   { if (allyAvailable(sn, idx) <= 0) return; playerLoadout.allies[idx] = { ship:sn, name:`${sn}#${allyPurchaseCount[sn]||1}`, weapon:"builtin", shieldTier:1, ownedShieldTiers:[1], behavior:0 }; renderLoadout(); }
+function removeAllyFromSlot(idx)     { playerLoadout.allies[idx] = null; renderLoadout(); }
 function setAllyWeapon(idx, wk)      { playerLoadout.allies[idx].weapon = wk; renderLoadout(); }
 function setAllyShieldTier(idx,tier) { const s=playerLoadout.allies[idx]; if(!s||(!(s.ownedShieldTiers||[1]).includes(tier)))return; s.shieldTier=tier; renderLoadout(); }
 
@@ -505,16 +577,38 @@ function buyAllyShield(idx, tier) {
   slot.ownedShieldTiers.push(tier); slot.shieldTier=tier;
   renderLoadout(); updateHUD();
 }
-function buyAllyShip(shipName, slotIdx) {
+function _purchaseAlly(shipName) {
   const aDef = ALLY_SHIP_DEFS[shipName];
-  if (!aDef || money < aDef.price) return;
+  if (!aDef || money < aDef.price) return null;
   money -= aDef.price;
   allyInventory[shipName] = (allyInventory[shipName] || 0) + 1;
+  allyPurchaseCount[shipName] = (allyPurchaseCount[shipName] || 0) + 1;
   if (!playerLoadout.unlockedAllyShips.includes(shipName))
     playerLoadout.unlockedAllyShips.push(shipName);
-  if (allyAvailable(shipName, slotIdx) > 0) {
-    playerLoadout.allies[slotIdx].ship = shipName;
-    playerLoadout.allies[slotIdx].weapon = "builtin";
-  }
+  return {
+    ship: shipName,
+    name: `${shipName}#${allyPurchaseCount[shipName]}`,
+    weapon: "builtin",
+    shieldTier: 1,
+    ownedShieldTiers: [1],
+    behavior: 0,
+  };
+}
+
+// Called from ally shop tab — just adds to inventory, no slot assignment
+function buyAllyShipFromShop(shipName) {
+  const slot = _purchaseAlly(shipName);
+  if (!slot) return;
+  // Auto-assign to first empty slot if any
+  const emptyIdx = playerLoadout.allies.indexOf(null);
+  if (emptyIdx !== -1) playerLoadout.allies[emptyIdx] = slot;
+  renderShopTab(); updateHUD();
+}
+
+// Called from loadout panel — buys and assigns to specific slot
+function buyAllyShip(shipName, slotIdx) {
+  const slot = _purchaseAlly(shipName);
+  if (!slot) return;
+  playerLoadout.allies[slotIdx] = slot;
   renderLoadout(); updateHUD();
 }
