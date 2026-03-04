@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1";
+const CACHE = "galactic-horizons-v1"; // Release version
 const ASSETS = [
   "./",
   "./index.html",
@@ -51,3 +51,8 @@ self.addEventListener("fetch", e => {
     caches.match(e.request).then(r => r || fetch(e.request))
   );
 });
+
+/*
+Versions:
+-V1 - Release (3/3/2026)
+*/
