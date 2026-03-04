@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.3.2";
+const CACHE = "galactic-horizons-v1.3.3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -69,4 +69,5 @@ Versions:
 -V1.3.0 - Formation system, per ship upgrades, and others... (4/3/2026)
 -V1.3.1 - Fixing shop issues and ai movement wobble.
 -V1.3.2 - Swapped missile and boost buttons and added the formation button in mobile.
+-V1.3.3 - Trying to fix mobile update issues
 */
