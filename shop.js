@@ -77,6 +77,8 @@ function showShop() {
   _shopTab = "ships";
   document.getElementById("shopMenu").style.display = "block";
   document.getElementById("shopMoney").textContent = "Credits: " + money;
+  const backBtn = document.getElementById("shopBackBtn");
+  if(backBtn) backBtn.style.display = shopOpenedFromMenu ? "block" : "none";
   renderShopTab();
 }
 
@@ -454,4 +456,5 @@ function buyAllyShip(shipName, slotIdx) {
   playerLoadout.allies[slotIdx].ship = shipName;
   playerLoadout.allies[slotIdx].weapon = "builtin";
   renderLoadout(); updateHUD();
+
 }
