@@ -193,7 +193,7 @@ const SOUND_FILES = {
   shoot_laser:     "assets/sounds/shoot_laser.wav",
   shoot_ballistic: "assets/sounds/shoot_balistic.wav",
   shoot_railgun:   "assets/sounds/shoot_railgun.wav",
-  hit_ballistic:   "assets/sounds/hit_ballistic.wav",
+  hit_ballistic:   "assets/sounds/hit_balistic.wav",
   hit_laser:       "assets/sounds/hit_laser.wav",
   hit_distortion:  "assets/sounds/hit_distortion.wav",
   explode:         "assets/sounds/explode.wav",
@@ -1146,6 +1146,7 @@ function confirmLeaveGame() {
 }
 
 gameLoop();
+
 
 
 
