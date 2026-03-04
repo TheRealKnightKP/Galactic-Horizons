@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.3.0";
+const CACHE = "galactic-horizons-v1.3.1";
 const ASSETS = [
   "./",
   "./index.html",
@@ -67,4 +67,5 @@ Versions:
 -V1.0.10 - Final fixings for a lot of stuff hopefully 
 -V1.2.0 - Rework of hitboxes and frames for identification
 -V1.3.0 - Formation system, per ship upgrades, and others... (4/3/2026)
+-V1.3.1 - Fixing shop issues and ai movement wobble.
 */
