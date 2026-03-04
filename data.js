@@ -187,41 +187,57 @@ ENEMIES.Dominion.beamDamage = 1200;
 
 ENEMIES.Dreadnaught.turrets = (function () {
   const positions = [
-    [15,12],[15,36],[15,60],[15,84],
-    [50,8], [50,44],[50,80],
-    [90,8], [90,44],[90,80],
-    [130,12],[130,36],[130,60],[130,84],
-    [170,30],[170,58],
+    [15,15],[15,50],[15,85],[15,120],
+    [45,8], [45,60],[45,115],
+    [75,8], [75,60],[75,115],
+    [105,8],[105,60],[105,115],
+    [135,15],[135,50],[135,85],[135,120],
+    [165,25],[165,70],
+    [30,5], [30,130],
+    [90,5], [90,130],
+    [150,5],[150,130],
   ];
   const configs = [
-    { weaponType: "laser_cannon",     weaponSize: 8 },
-    { weaponType: "laser_cannon",     weaponSize: 8 },
-    { weaponType: "laser_cannon",     weaponSize: 8 },
-    { weaponType: "laser_cannon",     weaponSize: 8 },
-    { weaponType: "ballistic_cannon", weaponSize: 8 },
-    { weaponType: "ballistic_cannon", weaponSize: 8 },
-    { weaponType: "ballistic_cannon", weaponSize: 8 },
-    { weaponType: "ballistic_cannon", weaponSize: 8 },
-    { weaponType: "laser_cannon",     weaponSize: 6 },
-    { weaponType: "laser_cannon",     weaponSize: 6 },
-    { weaponType: "laser_repeater",   weaponSize: 5 },
-    { weaponType: "laser_repeater",   weaponSize: 5 },
-    { weaponType: "laser_repeater",   weaponSize: 5 },
-    { weaponType: "laser_repeater",   weaponSize: 5 },
-    { weaponType: "ballistic_cannon", weaponSize: 7 },
-    { weaponType: "ballistic_cannon", weaponSize: 7 },
+    {weaponType:"laser_cannon",     weaponSize:8},
+    {weaponType:"laser_cannon",     weaponSize:8},
+    {weaponType:"laser_cannon",     weaponSize:8},
+    {weaponType:"laser_cannon",     weaponSize:8},
+    {weaponType:"ballistic_cannon", weaponSize:8},
+    {weaponType:"ballistic_cannon", weaponSize:8},
+    {weaponType:"ballistic_cannon", weaponSize:8},
+    {weaponType:"ballistic_cannon", weaponSize:8},
+    {weaponType:"laser_cannon",     weaponSize:6},
+    {weaponType:"laser_cannon",     weaponSize:6},
+    {weaponType:"laser_repeater",   weaponSize:5},
+    {weaponType:"laser_repeater",   weaponSize:5},
+    {weaponType:"laser_repeater",   weaponSize:5},
+    {weaponType:"laser_repeater",   weaponSize:5},
+    {weaponType:"ballistic_cannon", weaponSize:7},
+    {weaponType:"ballistic_cannon", weaponSize:7},
+    {weaponType:"laser_cannon",     weaponSize:7},
+    {weaponType:"laser_cannon",     weaponSize:7},
+    {weaponType:"ballistic_railgun",weaponSize:5},
+    {weaponType:"ballistic_railgun",weaponSize:5},
+    {weaponType:"laser_repeater",   weaponSize:4},
+    {weaponType:"laser_repeater",   weaponSize:4},
+    {weaponType:"ballistic_gatling",weaponSize:5},
+    {weaponType:"ballistic_gatling",weaponSize:5},
+    {weaponType:"laser_repeater",   weaponSize:6},
+    {weaponType:"laser_repeater",   weaponSize:6},
   ];
-  return positions.map((p, i) => ({
-    rx: p[0], ry: p[1],
-    weaponType: configs[i].weaponType,
-    weaponSize: configs[i].weaponSize,
-    fireRate: i < 8 ? 20 : 12,
+  return positions.map((p,i)=>({
+    rx:p[0], ry:p[1],
+    weaponType:configs[i].weaponType,
+    weaponSize:configs[i].weaponSize,
+    fireRate:i<8?18:i<16?12:8,
   }));
 })();
-ENEMIES.Dreadnaught.size = 14;
-ENEMIES.Dreadnaught.beamCooldownFrames = 1200;
-ENEMIES.Dreadnaught.beamWarningFrames  = 300;
+ENEMIES.Dreadnaught.size = 16;
+ENEMIES.Dreadnaught.beamCooldownFrames = 720;
+ENEMIES.Dreadnaught.beamWarningFrames  = 180;
 ENEMIES.Dreadnaught.beamDamage         = 999999;
+ENEMIES.Dreadnaught.beamCount          = 3;
+ENEMIES.Dreadnaught.beamSpread         = 0.28;
 
 const MISSILE_TYPES = {
   1: { name: "Type 1 (Fast Strike)", speed: 8, damage: 400,  color: "#ff8800" },
@@ -269,4 +285,3 @@ function generateInfiniteWave(waveNum) {
   return { enemies, reward: waveNum * 1500 };
 
 }
-
