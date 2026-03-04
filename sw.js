@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.0.10";
+const CACHE = "galactic-horizons-v1.2.0";
 const ASSETS = [
   "./",
   "./index.html",
@@ -65,4 +65,5 @@ Versions:
 -V1.0.8 - Still trying to fix version changing + Audio errors
 -V1.0.9 - Fixing install issues
 -V1.0.10 - Final fixings for a lot of stuff hopefully 
+-V1.2.0 - Rework of hitboxes and frames for identification
 */
