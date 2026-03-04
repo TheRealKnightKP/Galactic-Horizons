@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.2.0";
+const CACHE = "galactic-horizons-v1.3.0";
 const ASSETS = [
   "./",
   "./index.html",
@@ -54,7 +54,7 @@ self.addEventListener("fetch", e => {
 
 /*
 Versions:
--V1 - Release (3/3/2026)
+-V1 - Release (3/3/2026) [D,M,Y]
 -V1.0.1 - QOL updates and sizes changed.
 -V1.0.2 - Fixed sizes
 -V1.0.3 - Fixed sizes again
@@ -66,4 +66,5 @@ Versions:
 -V1.0.9 - Fixing install issues
 -V1.0.10 - Final fixings for a lot of stuff hopefully 
 -V1.2.0 - Rework of hitboxes and frames for identification
+-V1.3.0 - Formation system, per ship upgrades, and others... (4/3/2026)
 */
