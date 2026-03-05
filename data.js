@@ -104,7 +104,7 @@ const SHIPS = {
   Leviathan:  { price: 750000,   hp: 7500,  shields: 700,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "laser_repeater",    weaponSize: 7,  bespoke: false, doubleShot: true, pdc: 8, pdcSizes: [6,6,5,5,5,5,4,4], image: "Kraken.png", color: "#88ff00", size: 8, missileType: 3, armorType: "capital", extraAllySlots: 6 },
   Dominion:   { price: 1200000,  hp: 10000, shields: 8000, armor: 100, missiles: 32, speed: 0.45, weaponType: "ballistic_railgun", weaponSize: 10, bespoke: true,  pdc: 8,  pdcSizes: [6,6,5,5,4,4,3,3],        image: "Idris.jpg",         color: "#cc88ff", size: 10, missileType: 3, armorType: "capital",   extraAllySlots: 4 },
   // --- SECRET ---
-  Comet:      { price: null,     hp: 100,   shields: 90,   armor: 100, missiles: 4,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  pdc: 0,  pdcSize: 0,                         image: "Meteor.png",        color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
+  Comet:      { price: null,     hp: 100,   shields: 90,   armor: 100, missiles: 4,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  pdc: 0,  pdcSize: 0,                         image: "Meteor.png",        color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
 };
 
 const ENEMIES = {
@@ -267,6 +267,23 @@ const WAVES = [
   { enemies: ["Prometheus","Dominion","Bulwark","Corsair","Corsair","Corsair","Corsair"],                                            reward: 160000 },
   { enemies: ["Dreadnaught","Dominion","Bulwark","Corsair","Corsair","Corsair"],                                                     reward: 500000 },
 ];
+
+
+const SHIP_SPECIALS = {
+  Starlight:  { name:"Evasive Maneuver", cooldown:600,  duration:60,  desc:"Random-direction speed burst + brief invulnerability." },
+  Falcon:     { name:"Ghost Protocol",   cooldown:480,  duration:120, desc:"2 seconds of full invulnerability." },
+  Rouge:      { name:"Suppression Burst",cooldown:600,  duration:180, desc:"All weapons fire at 3× RPM for 3s." },
+  Marauder:   { name:"Damage Control",   cooldown:720,  duration:240, desc:"50% damage reduction for 4s." },
+  Wasp:       { name:"Wingman",          cooldown:900,  duration:600, desc:"Summons your best ally as a temporary wingman for 10s." },
+  Supernova:  { name:"Resupply Mode",    cooldown:600,  duration:360, desc:"Fire missiles free for 6s — or hold fire to restock some." },
+  Bulwark:    { name:"Overshoot",        cooldown:720,  duration:300, desc:"All PDC turrets fire at double RPM for 5s." },
+  Tempest:    { name:"Combat Medic",     cooldown:900,  duration:300, desc:"Repair pulse — heals you and all allies over 5s." },
+  Nemesis:    { name:"Overclock",        cooldown:720,  duration:300, desc:"−25% damage taken and +25% speed for 5s." },
+  Prometheus: { name:"Torpedo Salvo",    cooldown:1800, duration:300, desc:"Fires 1/4 of missiles in sequence over 5s. No ammo cost." },
+  Leviathan:  { name:"Fleet Vanguard",   cooldown:1800, duration:240, desc:"All allies: invincible + 50% damage for 4s." },
+  Dominion:   { name:"Overcharge",       cooldown:2700, duration:1,   desc:"Next railgun: instant, 3× damage, full pen. 45s cooldown." },
+  Comet:      { name:"Hyperdash",        cooldown:300,  duration:20,  desc:"Dash toward crosshair with full invulnerability." },
+};
 
 function generateInfiniteWave(waveNum) {
   const pool =
