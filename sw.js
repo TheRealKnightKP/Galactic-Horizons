@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.4.2";
+const CACHE = "galactic-horizons-v1.4.3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -76,4 +76,5 @@ Versions:
 -V1.4.0 - "The Combat Rework Pt2" Fixed ship specials and buttons on mobile, added directional armor and shields, added different cluster kinds, added new enemy archetypes, added reinforcements, added medic ally, added mobile aim assist and button fade. Basically part 2 of the V1.3.0
 -V1.4.1 - "The ghost update" Nothing cuz i messed up the numbering of Versions.
 -V1.4.2 - Fixed comma in data.js preventing waves mode.
+-V1.4.3 - Forgot to change the number displayed on index.html so i had to make a new version. 
 */
