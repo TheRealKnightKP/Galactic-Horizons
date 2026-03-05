@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.3.5";
+const CACHE = "galactic-horizons-v1.4.0";
 const ASSETS = [
   "./",
   "./index.html",
@@ -72,4 +72,5 @@ Versions:
 -V1.3.3 - Trying to fix mobile update issues
 -V1.3.4 - Fixed ally speeds and ally slots
 -V1.3.5 - Fixed ally tab on shop
+-V1.4.0 - Added ship specials, Formation bonuses, and command ping. (5/3/2026)
 */
