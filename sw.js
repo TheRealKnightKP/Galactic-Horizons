@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.3.4";
+const CACHE = "galactic-horizons-v1.3.5";
 const ASSETS = [
   "./",
   "./index.html",
@@ -71,4 +71,5 @@ Versions:
 -V1.3.2 - Swapped missile and boost buttons and added the formation button in mobile.
 -V1.3.3 - Trying to fix mobile update issues
 -V1.3.4 - Fixed ally speeds and ally slots
+-V1.3.5 - Fixed ally tab on shop
 */
