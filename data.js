@@ -70,48 +70,48 @@ const ALLY_SHIP_ORDER = ["Sprite","Raptor","Rouge","Wasp","Supernova","Medic"];
 
 // === SHIP DESCRIPTIONS ===
 const SHIP_DESCRIPTIONS = {
-  Starlight:  "Entry-level light fighter. Fast and responsive but fragile. Perfect for learning.",
-  Falcon:     "A nimble interceptor with better armament. Great speed, low survivability.",
-  Rouge:      "Versatile medium gunship with a PDC mount and solid missiles. A reliable all-rounder.",
-  Marauder:   "Rugged medium freighter turned fighter. Slower but tougher than the Rouge.",
-  Wasp:       "Heavy fighter with exceptional speed and an S4 PDC. Best early capital-killer.",
-  Supernova:  "Heavy gunship with massive missile capacity and triple PDC array. Great fire support.",
-  Bulwark:    "Pure PDC platform — no main guns, but 10 turrets that shred anything incoming.",
-  Tempest:    "Subcapital assault ship with twin S5 ballistic cannons and heavy PDC coverage.",
-  Nemesis:    "Capital warship with twin S8 ballistic cannons. Devastating against large targets.",
-  Prometheus: "Heavy capital corvette with excellent shields, torpedo loadout, and six turret banks.",
-  Leviathan:  "Super-capital carrier. Slow, but fields 8 ally slots and dual S7 weapons.",
-  Dominion:   "The ultimate warship. Its railgun penetrates entire formations in a single shot.",
-  Comet:      "A ghost ship found drifting at the edge of the system. Unnaturally agile — and lucky.",
+  Starlight:  "Entry-level light fighter. Fast and responsive but fragile. Perfect for learning. Can become faster and dodgier for a short time.",
+  Falcon:     "A nimble interceptor with better armament. Great speed, low survivability. Has a mode where it shortly phases out of dimensions, becoming invulnerable.",
+  Rouge:      "Versatile medium gunship with a PDC mount and solid missiles. A reliable all-rounder. Can overclock its guns a lot for a short time.",
+  Marauder:   "Rugged medium freighter turned fighter. Slower but tougher than the Rouge. Can become tougher for a short period of time.",
+  Wasp:       "Heavy fighter with exceptional speed and an S4 PDC. Best early capital-killer. Can call in an extra ally.",
+  Supernova:  "Heavy gunship with massive missile capacity and triple PDC array. Great fire support. Can fabricate missiles on the spot, or replace shot during a period of time.",
+  Bulwark:    "Pure PDC platform — no main guns, but 10 turrets that shred anything incoming. Can overclock its turrets.",
+  Tempest:    "Subcapital assault ship with twin S5 ballistic cannons and heavy PDC coverage. Can repair itself and allies for a short duration",
+  Nemesis:    "Capital warship with twin S8 ballistic cannons. Devastating against large targets. Can go into overdrive to increase speed and tankyness.",
+  Prometheus: "Heavy capital corvette with excellent shields, torpedo loadout, and six turret banks. It can replace missiles shot during a certain time period.",
+  Leviathan:  "Super-capital carrier. Slow, but fields 8 ally slots. Built to command an army, it can make its allies invicible for a short time.",
+  Dominion:   "The ultimate warship. Its railgun penetrates entire formations in a single shot. Nothing can stand in its way.",
+  Comet:      "A ghost ship found drifting at the edge of the system. Unnaturally agile — and lucky. Seems like an elite would use this.",
 };
 
 const SHIPS = {
   // --- LIGHT ---
-  Starlight:  { price: 0,         hp: 90,    shields: 120,  armor: 100, missiles: 2,  speed: 2.8,  weaponType: "laser_repeater",    weaponSize: 1,  bespoke: false, pdc: 0,  pdcSize: 0,                         image: "Starlight.png",        color: "#88aaff", size: 1,  missileType: 1, armorType: "light"                      },
+  Starlight:  { price: 0,         hp: 90,    shields: 120,  armor: 100, missiles: 2,  speed: 2.8,  weaponType: "laser_repeater",    weaponSize: 1,  bespoke: false, doubleShot: true, pdc: 0,  pdcSize: 0,                         image: "Starlight.png",        color: "#88aaff", size: 1,  missileType: 1, armorType: "light"                      },
   Falcon:     { price: 20000,    hp: 70,    shields: 100,  armor: 100, missiles: 3,  speed: 3.8,  weaponType: "laser_repeater",    weaponSize: 2,  bespoke: false, pdc: 0,  pdcSize: 0,                         image: "Mustang.png",       color: "#ffbb00", size: 1,  missileType: 1, armorType: "light"                      },
   // --- MEDIUM ---
   Rouge:      { price: 55000,    hp: 300,   shields: 450,  armor: 100, missiles: 12, speed: 1.7,  weaponType: "laser_repeater",    weaponSize: 3,  bespoke: false, pdc: 1,  pdcSize: 0,                         image: "Cutlass.png",       color: "#ff8844", size: 2,  missileType: 2, armorType: "medium"                     },
   Marauder:   { price: 70000,    hp: 380,   shields: 400,  armor: 100, missiles: 6,  speed: 1.5,  weaponType: "laser_repeater",    weaponSize: 3,  bespoke: false, pdc: 1,  pdcSize: 2,                         image: "Freelancer.png",    color: "#ff9966", size: 2,  missileType: 2, armorType: "medium"                     },
   // --- HEAVY ---
   Wasp:       { price: 140000,   hp: 500,   shields: 560,  armor: 100, missiles: 12, speed: 3.2,  weaponType: "laser_repeater",    weaponSize: 4,  bespoke: false, pdc: 1,  pdcSize: 4,                         image: "Hornet.png",        color: "#0099ff", size: 3,  missileType: 2, armorType: "medium"                     },
-  Supernova:  { price: 160000,   hp: 1000,  shields: 900,  armor: 100, missiles: 52, speed: 1.0,  weaponType: "laser_repeater",    weaponSize: 5,  bespoke: false, pdc: 3,  pdcSize: 3,                         image: "Constellation.png", color: "#44ff88", size: 4,  missileType: 1, armorType: "heavy",    extraAllySlots: 1 },
+  Supernova:  { price: 160000,   hp: 1000,  shields: 900,  armor: 100, missiles: 52, speed: 1.0,  weaponType: "laser_repeater",    weaponSize: 5,  bespoke: false, doubleShot: true, pdc: 3,  pdcSize: 3,                         image: "Constellation.png", color: "#44ff88", size: 4,  missileType: 1, armorType: "heavy",    extraAllySlots: 1 },
   // --- SUBCAPITAL ---
   Bulwark:    { price: 30000,   hp: 1750,  shields: 1200, armor: 100, missiles: 16, speed: 0.75, weaponType: "none",              weaponSize: 0,  bespoke: true,  pdc: 10, pdcSize: 4,                         image: "HammerHead.png",    color: "#4488ff", size: 6,  missileType: 3, armorType: "subcapital"                 },
-  Tempest:    { price: 380000,   hp: 2000,  shields: 2200, armor: 100, missiles: 32, speed: 0.70, weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  doubleShot: true, pdc: 4, pdcSizes: [5,5,4,4], image: "StarlancerTAC.png", color: "#00ffcc", size: 7, missileType: 1, armorType: "subcapital", extraAllySlots: 1 },
+  Tempest:    { price: 380000,   hp: 2000,  shields: 2200, armor: 100, missiles: 32, speed: 0.70, weaponType: "laser_repeater",  weaponSize: 5,  bespoke: false,  doubleShot: true, pdc: 4, pdcSizes: [5,5,4,4], image: "StarlancerTAC.png", color: "#00ffcc", size: 7, missileType: 1, armorType: "subcapital", extraAllySlots: 1 },
   // --- CAPITAL ---
   Nemesis:    { price: 280000,   hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Nemesis.png",       color: "#ffff44", size: 6,  missileType: 3, armorType: "capital"                    },
   Prometheus: { price: 500000,   hp: 5000,  shields: 4000, armor: 100, missiles: 20, speed: 0.6,  weaponType: "ballistic_cannon",  weaponSize: 6,  bespoke: true,  pdc: 6,  pdcSize: 4,                         image: "Polaris.png",       color: "#ff44ff", size: 7,  missileType: 3, armorType: "capital",   extraAllySlots: 2 },
   // --- SUPER CAPITAL ---
-  Leviathan:  { price: 750000,   hp: 7500,  shields: 700,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "laser_repeater",    weaponSize: 7,  bespoke: false, doubleShot: true, pdc: 8, pdcSizes: [6,6,5,5,5,5,4,4], image: "Kraken.png", color: "#88ff00", size: 8, missileType: 3, armorType: "capital", extraAllySlots: 6 },
+  Leviathan:  { price: 750000,   hp: 7500,  shields: 7000,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "none",    weaponSize: 0,  bespoke: false, pdc: 8, pdcSizes: [7,5,5,5,4,4,4,4], image: "Kraken.png", color: "#88ff00", size: 8, missileType: 3, armorType: "capital", extraAllySlots: 6 },
   Dominion:   { price: 1200000,  hp: 10000, shields: 8000, armor: 100, missiles: 32, speed: 0.45, weaponType: "ballistic_railgun", weaponSize: 10, bespoke: true,  pdc: 8,  pdcSizes: [6,6,5,5,4,4,3,3],        image: "Idris.jpg",         color: "#cc88ff", size: 10, missileType: 3, armorType: "capital",   extraAllySlots: 4 },
   // --- SECRET ---
-  Comet:      { price: null,     hp: 100,   shields: 90,   armor: 100, missiles: 4,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  pdc: 0,  pdcSize: 0,                         image: "Meteor.png",        color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
+  Comet:      { price: null,     hp: 100,   shields: 90,   armor: 100, missiles: 30,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  doubleShot: true, pdc: 0,  pdcSize: 0,                         image: "Meteor.png",        color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
 };
 
 const ENEMIES = {
   Raptor:      { hp: 120,   shields: 130,   armor: 200, speed: 3.8,  score: 100,   fireRate: 70, weaponType: "laser_repeater",    weaponSize: 2,  armorType: "light",      image: "Gladius.png",         color: "#ff4444" },
   Rouge:       { hp: 500,   shields: 520,   armor: 200, speed: 2.0,  score: 350,   fireRate: 55, weaponType: "laser_repeater",    weaponSize: 3,  armorType: "medium",     image: "Cutlass.png",         color: "#ff8844" },
-  Corsair:     { hp: 800,   shields: 750,   armor: 200, speed: 1.5,  score: 600,   fireRate: 50, weaponType: "laser_repeater",    weaponSize: 3,  armorType: "heavy",      image: "Corsair.png",         color: "#ff44ff" },
+  Corsair:     { hp: 800,   shields: 750,   armor: 200, speed: 1.5,  score: 600,   fireRate: 50, weaponType: "laser_repeater",    weaponSize: 5,  armorType: "heavy",      image: "Corsair.png",         color: "#ff44ff" },
   Bulwark:     { hp: 3700,  shields: 4500,  armor: 200, speed: 0.35, score: 3000,  fireRate: 28, weaponType: "laser_repeater",    weaponSize: 4,  armorType: "subcapital", image: "HammerHead.png",      color: "#4466ff" },
   Prometheus:  { hp: 8000,  shields: 7000,  armor: 200, speed: 0.25, score: 6000,  fireRate: 32, weaponType: "ballistic_cannon",  weaponSize: 6,  armorType: "capital",    image: "Polaris.png",         color: "#dd44ff" },
   Dominion:    { hp: 18000, shields: 14000, armor: 200, speed: 0.15, score: 10000, fireRate: 22, weaponType: "ballistic_railgun", weaponSize: 10, armorType: "capital",    image: "Idris.jpg",           color: "#ff0000" },
@@ -133,9 +133,9 @@ ENEMIES.Rouge.turrets = [
 ENEMIES.Rouge.size = 4;
 
 ENEMIES.Corsair.turrets = [
-  { rx: 34, ry: 21, weaponType: "laser_cannon",   weaponSize: 3, fireRate: 28 },
-  { rx: 20, ry: 10, weaponType: "laser_repeater",  weaponSize: 3, fireRate: 22 },
-  { rx: 20, ry: 32, weaponType: "laser_repeater",  weaponSize: 3, fireRate: 22 },
+  { rx: 34, ry: 21, weaponType: "laser_cannon",   weaponSize: 4, fireRate: 28 },
+  { rx: 20, ry: 10, weaponType: "laser_repeater",  weaponSize: 4, fireRate: 33 },
+  { rx: 20, ry: 32, weaponType: "laser_repeater",  weaponSize: 4, fireRate: 33 },
 ];
 ENEMIES.Corsair.size = 7;
 
@@ -152,6 +152,10 @@ ENEMIES.Bulwark.size = 6;
 ENEMIES.Prometheus.turrets = [
   { rx: 20,  ry: 10, weaponType: "ballistic_cannon", weaponSize: 6, fireRate: 22 },
   { rx: 20,  ry: 42, weaponType: "ballistic_cannon", weaponSize: 6, fireRate: 22 },
+  { rx: 60,  ry:  8, weaponType: "laser_cannon",     weaponSize: 4, fireRate: 16 },
+  { rx: 60,  ry: 44, weaponType: "laser_cannon",     weaponSize: 4, fireRate: 16 },
+  { rx: 100, ry: 10, weaponType: "laser_cannon",     weaponSize: 4, fireRate: 14 },
+  { rx: 100, ry: 42, weaponType: "laser_cannon",     weaponSize: 4, fireRate: 14 },
   { rx: 60,  ry:  8, weaponType: "laser_cannon",     weaponSize: 4, fireRate: 16 },
   { rx: 60,  ry: 44, weaponType: "laser_cannon",     weaponSize: 4, fireRate: 16 },
   { rx: 100, ry: 10, weaponType: "laser_cannon",     weaponSize: 4, fireRate: 14 },
@@ -174,6 +178,8 @@ ENEMIES.Dominion.turrets = (function () {
     { weaponType: "laser_repeater",   weaponSize: 3 },
     { weaponType: "laser_repeater",   weaponSize: 3 },
     { weaponType: "laser_repeater",   weaponSize: 3 },
+    { weaponType: "ballistic_railgun",   weaponSize: 3 },
+    { weaponType: "ballistic_railgun",   weaponSize: 3 },
   ];
   return positions.map((p, i) => ({
     rx: p[0], ry: p[1],
@@ -217,8 +223,8 @@ ENEMIES.Dreadnaught.turrets = (function () {
     {weaponType:"ballistic_cannon", weaponSize:7},
     {weaponType:"laser_cannon",     weaponSize:7},
     {weaponType:"laser_cannon",     weaponSize:7},
-    {weaponType:"ballistic_railgun",weaponSize:5},
-    {weaponType:"ballistic_railgun",weaponSize:5},
+    {weaponType:"ballistic_railgun",weaponSize:4},
+    {weaponType:"ballistic_railgun",weaponSize:4},
     {weaponType:"laser_repeater",   weaponSize:4},
     {weaponType:"laser_repeater",   weaponSize:4},
     {weaponType:"ballistic_gatling",weaponSize:5},
@@ -255,7 +261,7 @@ const WAVES = [
   { reinforceDelay:1200, reinforceEnemies:["Rouge","Raptor"], enemies: ["Rouge","Rouge","Rouge","Raptor","Raptor","Raptor"],                                                                   reward: 7000   },
   { reinforceDelay:1100, reinforceEnemies:["Raptor","Raptor"], enemies: ["Corsair","Rouge","Raptor","Raptor"],                                                                                 reward: 9000   },
   { reinforceDelay:1100, reinforceEnemies:["Rouge","Raptor"], enemies: ["Corsair","Corsair","Rouge","Rouge","Raptor"],                                                                        reward: 12000  },
-  { reinforceDelay:900, reinforceEnemies:["Raptor","Raptor","Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 16000 },
+  { reinforceDelay:900, reinforceEnemies:["Raptor","Raptor","Raptor","Raptor"], ["Raptor","Raptor","Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 16000 },
   { reinforceDelay:1000, reinforceEnemies:["Corsair","Raptor"], enemies: ["Bulwark","Corsair","Rouge","Raptor"],                                                                                reward: 22000  },
   { reinforceDelay:1000, reinforceEnemies:["Corsair","Corsair"], enemies: ["Bulwark","Corsair","Corsair","Rouge","Rouge"],                                                                       reward: 28000  },
   { reinforceDelay:900, reinforceEnemies:["Corsair","Rouge"], enemies: ["Bulwark","Bulwark","Corsair","Rouge","Raptor","Raptor"],                                                             reward: 35000  },
@@ -266,7 +272,7 @@ const WAVES = [
   { reinforceDelay:700, reinforceEnemies:["Corsair","Corsair","Corsair"], enemies: ["Dominion","Corsair","Corsair","Corsair","Rouge","Rouge"],                                                             reward: 100000 },
   { reinforceDelay:700, reinforceEnemies:["Bulwark","Bulwark","Corsair"], enemies: ["Dominion","Bulwark","Bulwark","Corsair","Rouge","Rouge","Rouge"],                                                     reward: 130000 },
   { reinforceDelay:650, reinforceEnemies:["Bulwark","Corsair","Corsair"], enemies: ["Prometheus","Dominion","Bulwark","Corsair","Corsair","Corsair","Corsair"],                                            reward: 160000 },
-  { reinforceDelay:600, reinforceEnemies:["Dominion","Bulwark","Corsair","Corsair"], enemies: ["Dreadnaught","Dominion","Bulwark","Corsair","Corsair","Corsair"],                                                     reward: 500000 },
+  { reinforceDelay:600, reinforceEnemies:["Dominion","Bulwark","Corsair","Corsair"], enemies: ["Dreadnaught","Bulwark", "Bulwark", "Corsair","Corsair","Corsair"],                                                     reward: 500000 },
 ];
 
 
@@ -339,3 +345,4 @@ function generateInfiniteWave(waveNum) {
   return { enemies, reward: waveNum * 1500 };
 
 }
+
