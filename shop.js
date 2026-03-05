@@ -140,11 +140,10 @@ function renderShopTab() {
   const w = document.getElementById("shopTabWeapons");
   let a = document.getElementById("shopTabAllies");
   if (!a) {
-    // Inject allies tab button dynamically
     a = document.createElement("button");
     a.id = "shopTabAllies";
     a.textContent = "Allies";
-    a.style.cssText = "background:none;border:none;color:#0af;font:bold 14px monospace;padding:8px 16px;cursor:pointer;border-bottom:none";
+    a.style.cssText = "width:auto;display:inline-block;margin:2px";
     a.onclick = () => setShopTab("allies");
     if (w && w.parentNode) w.parentNode.insertBefore(a, w.nextSibling);
   }
