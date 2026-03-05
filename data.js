@@ -261,7 +261,7 @@ const WAVES = [
   { reinforceDelay:1200, reinforceEnemies:["Rouge","Raptor"], enemies: ["Rouge","Rouge","Rouge","Raptor","Raptor","Raptor"],                                                                   reward: 7000   },
   { reinforceDelay:1100, reinforceEnemies:["Raptor","Raptor"], enemies: ["Corsair","Rouge","Raptor","Raptor"],                                                                                 reward: 9000   },
   { reinforceDelay:1100, reinforceEnemies:["Rouge","Raptor"], enemies: ["Corsair","Corsair","Rouge","Rouge","Raptor"],                                                                        reward: 12000  },
-  { reinforceDelay:900, reinforceEnemies:["Raptor","Raptor","Raptor","Raptor"], ["Raptor","Raptor","Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 16000 },
+  { reinforceDelay:900, reinforceEnemies:["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 16000 },
   { reinforceDelay:1000, reinforceEnemies:["Corsair","Raptor"], enemies: ["Bulwark","Corsair","Rouge","Raptor"],                                                                                reward: 22000  },
   { reinforceDelay:1000, reinforceEnemies:["Corsair","Corsair"], enemies: ["Bulwark","Corsair","Corsair","Rouge","Rouge"],                                                                       reward: 28000  },
   { reinforceDelay:900, reinforceEnemies:["Corsair","Rouge"], enemies: ["Bulwark","Bulwark","Corsair","Rouge","Raptor","Raptor"],                                                             reward: 35000  },
@@ -345,4 +345,5 @@ function generateInfiniteWave(waveNum) {
   return { enemies, reward: waveNum * 1500 };
 
 }
+
 
