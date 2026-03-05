@@ -47,6 +47,8 @@ if (!IS_MOBILE) {
   document.addEventListener("keydown", e => {
     keys[e.code] = true;
     if(e.code==="KeyE"&&state==="playing") cycleFormation();
+    if(e.code==="KeyQ"&&state==="playing") activateSpecial();
+    if(e.code==="KeyR"&&state==="playing") activatePing();
     e.preventDefault();
   });
   document.addEventListener("keyup",   e => { keys[e.code] = false; });
@@ -188,6 +190,21 @@ function buildMobileControls() {
   formationBtn.style.cssText = "position:absolute;bottom:28px;left:50%;transform:translateX(-50%);padding:5px 14px;background:rgba(0,170,255,0.18);border:2px solid rgba(0,170,255,0.7);border-radius:16px;color:#0af;font:bold 10px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
   formationBtn.addEventListener("touchstart", e => { e.preventDefault(); cycleFormation(); }, { passive: false });
   ui.appendChild(formationBtn);
+
+  // SPECIAL button — bottom center-left
+  const specialMobileBtn = document.createElement("div");
+  specialMobileBtn.id = "mobileSpecialBtn";
+  specialMobileBtn.textContent = "SPECIAL";
+  specialMobileBtn.style.cssText = "position:absolute;bottom:68px;left:calc(50% - 90px);padding:5px 10px;background:rgba(255,130,0,0.18);border:2px solid rgba(255,130,0,0.7);border-radius:14px;color:#f80;font:bold 10px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
+  specialMobileBtn.addEventListener("touchstart", e=>{e.preventDefault();activateSpecial();},{passive:false});
+  ui.appendChild(specialMobileBtn);
+
+  // PING button — bottom center-right
+  const pingMobileBtn = document.createElement("div");
+  pingMobileBtn.textContent = "PING";
+  pingMobileBtn.style.cssText = "position:absolute;bottom:68px;left:calc(50% + 16px);padding:5px 10px;background:rgba(255,220,0,0.18);border:2px solid rgba(255,220,0,0.7);border-radius:14px;color:#fc0;font:bold 10px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
+  pingMobileBtn.addEventListener("touchstart", e=>{e.preventDefault();activatePing();},{passive:false});
+  ui.appendChild(pingMobileBtn);
 
   ui.appendChild(leftPanel);
   ui.appendChild(rightPanel);
@@ -369,6 +386,7 @@ let allyFormation = "behind"; // "behind", "front", "surround"
 let playerTookDamageThisWave = false;
 const MAX_HIT_EFFECTS = 80;
 const MAX_DEATH_EFFECTS = 40;
+let pingTarget = null;
 
 const imgCache={};
 function getImage(fn) {
@@ -456,6 +474,9 @@ function setPlayerShip(name) {
     boosting:false, boostTimer:0, boostCooldown:0,
     boostDuration, boostCooldownMax, dodgeBase, dodgeBoosted,
     railgunCharge:0, railgunCharging:false,
+    specialCooldown:0, specialActive:false, specialTimer:0,
+    specialMissilesUsed:0, specialSalvoTimer:0, specialSalvoCount:0, specialSalvoTotal:0,
+    dominionOvercharged:false,
   };
   player.turrets=[];
   const pdcSizes=d.pdcSizes||null;
@@ -557,14 +578,22 @@ function endGame(won) {
 function applyDamage(target,bullet) {
   if(bullet.visualOnly)return;
   if(target===player){
+    // Special invulnerability
+    if(player.specialActive&&(currentShipName==="Falcon"||currentShipName==="Starlight"||currentShipName==="Comet"))return;
     const dodge=player.boosting?player.dodgeBoosted:player.dodgeBase;
     if(dodge>0&&Math.random()<dodge)return;
     playerTookDamageThisWave=true;
+    if(player.specialActive&&currentShipName==="Marauder") bullet={...bullet,damage:(bullet.damage||0)*0.5};
+    if(player.specialActive&&currentShipName==="Nemesis")  bullet={...bullet,damage:(bullet.damage||0)*0.75};
   }
   if(target.isAlly){
+    if(target.vanguardActive)return; // Leviathan Fleet Vanguard
     const allyDodge=target.dodge||0.25;
     if(Math.random()<allyDodge)return;
-    bullet={...bullet,damage:(bullet.damage||0)*0.75};
+    let dmgMult=0.75;
+    if(allyFormation==="surround"&&!pingTarget) dmgMult*=0.8; // surround: -20% ally dmg taken
+    if(pingTarget&&!pingTarget.dead) dmgMult*=0.9;            // ping buff: -10% dmg taken
+    bullet={...bullet,damage:(bullet.damage||0)*dmgMult};
   }
   if(bullet.missile){
     if(target.shields>0){target.shields-=bullet.damage;if(target.shields<0){target.hp+=target.shields;target.shields=0;}}
@@ -746,10 +775,151 @@ function drawRailgunCharge() {
   ctx.restore();
 }
 
+
+// ============================================================
+// SHIP SPECIALS + COMMAND PING
+// ============================================================
+function showSpecialToast(msg) {
+  let t=document.getElementById("specialToast");
+  if(!t){
+    t=document.createElement("div");t.id="specialToast";
+    t.style.cssText="position:fixed;top:90px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.88);color:#ff8800;font:bold 15px monospace;padding:5px 18px;border:1px solid #ff8800;border-radius:4px;z-index:9999;pointer-events:none;transition:opacity 0.4s";
+    document.body.appendChild(t);
+  }
+  t.textContent=msg;t.style.opacity="1";
+  clearTimeout(t._t);t._t=setTimeout(()=>t.style.opacity="0",1800);
+}
+
+function spawnWaspAlly() {
+  let bestShip="Sprite",bestPrice=-1;
+  for(const sn of ALLY_SHIP_ORDER){
+    const av=(typeof allyInventory!=="undefined"?allyInventory[sn]||0:0)
+            -(playerLoadout.allies.filter(a=>a&&a.ship===sn).length);
+    const pr=ALLY_SHIP_DEFS[sn]?.price||0;
+    if(av>0&&pr>=bestPrice){bestPrice=pr;bestShip=sn;}
+  }
+  const aDef=ALLY_SHIP_DEFS[bestShip]||ALLY_SHIP_DEFS.Sprite;
+  const wStats=getWeaponStats("laser_repeater",aDef.weaponSize);
+  allies.push({
+    type:bestShip, name:"[TEMP] "+bestShip,
+    x:player.x-60,y:player.y,
+    w:Math.round(aDef.w*SIZE_SCALE),h:Math.round(aDef.h*SIZE_SCALE),
+    hp:aDef.hp,maxHp:aDef.hp,shields:aDef.shields,maxShields:aDef.shields,
+    armor:100,maxArmor:100,armorType:aDef.armorType,
+    img:getImage(aDef.image),color:"#ffdd88",
+    shootTimer:10,vx:0,vy:0,rotation:0,spriteAngleOffset:Math.PI,
+    weaponType:"laser_repeater",weaponSize:aDef.weaponSize,weaponStats:wStats,
+    isAlly:true,dodge:0.25,speedMult:1.0,
+    tempAlly:true,tempTimer:600,
+  });
+}
+
+function activateSpecial() {
+  if(!player||state!=="playing")return;
+  const sp=typeof SHIP_SPECIALS!=="undefined"?SHIP_SPECIALS[currentShipName]:null;
+  if(!sp||player.specialCooldown>0||(player.specialActive&&currentShipName!=="Dominion"))return;
+  // Dominion: just set overcharge flag, cooldown starts now, no specialActive timer
+  if(currentShipName==="Dominion"){
+    if(player.dominionOvercharged)return;
+    player.dominionOvercharged=true;
+    player.specialCooldown=sp.cooldown;
+    showSpecialToast("⚡ OVERCHARGE READY");
+    return;
+  }
+  player.specialActive=true;
+  player.specialTimer=sp.duration;
+  switch(currentShipName){
+    case"Starlight":{const a=Math.random()*Math.PI*2;player.vx=Math.cos(a)*player.maxSpeed*5;player.vy=Math.sin(a)*player.maxSpeed*5;break;}
+    case"Comet":{const a=player.rotation;player.vx=Math.cos(a)*player.maxSpeed*8;player.vy=Math.sin(a)*player.maxSpeed*8;break;}
+    case"Supernova":player.specialMissilesUsed=0;break;
+    case"Prometheus":{const n=Math.max(1,Math.floor(player.missiles/4));player.specialSalvoTotal=n;player.specialSalvoCount=0;player.specialSalvoTimer=0;break;}
+    case"Wasp":spawnWaspAlly();break;
+    case"Leviathan":allies.forEach(a=>{a.vanguardActive=true;});break;
+  }
+  showSpecialToast("▶ "+sp.name);
+}
+
+function updateSpecial() {
+  if(player.specialCooldown>0)player.specialCooldown--;
+  if(!player.specialActive)return;
+  const sp=typeof SHIP_SPECIALS!=="undefined"?SHIP_SPECIALS[currentShipName]:null;
+  if(!sp)return;
+  player.specialTimer--;
+  switch(currentShipName){
+    case"Tempest":{
+      const heal=player.maxHp*0.0015;
+      player.hp=Math.min(player.maxHp,player.hp+heal);
+      allies.forEach(a=>{if(!a.tempAlly)a.hp=Math.min(a.maxHp,a.hp+a.maxHp*0.0015);});
+      break;}
+    case"Prometheus":{
+      player.specialSalvoTimer--;
+      if(player.specialSalvoTimer<=0&&player.specialSalvoCount<player.specialSalvoTotal){
+        const mt=MISSILE_TYPES[player.missileType||2];
+        playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
+          vx:Math.cos(player.rotation)*mt.speed,vy:Math.sin(player.rotation)*mt.speed,
+          w:18,h:8,damage:mt.damage,color:mt.color,missile:true,category:"missile",weaponSize:6});
+        player.specialSalvoCount++;
+        player.specialSalvoTimer=Math.ceil(sp.duration/Math.max(1,player.specialSalvoTotal));
+      }
+      break;}
+  }
+  if(player.specialTimer<=0){
+    if(currentShipName==="Supernova"&&player.specialMissilesUsed===0){
+      const mx=SHIPS[currentShipName]?.missiles||52;
+      player.missiles=Math.min(player.missiles+Math.ceil(mx*0.15),mx);
+    }
+    if(currentShipName==="Leviathan") allies.forEach(a=>{a.vanguardActive=false;});
+    player.specialActive=false;
+    player.specialCooldown=sp.cooldown;
+  }
+}
+
+function activatePing() {
+  if(!player||state!=="playing"||enemies.length===0)return;
+  const pcx=player.x+player.w/2,pcy=player.y+player.h/2;
+  let closest=null,closestD=1e9;
+  enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-pcx,e.y+e.h/2-pcy);if(d<closestD){closestD=d;closest=e;}});
+  if(closest){pingTarget=closest;showSpecialToast("🎯 PING: "+closest.type);}
+}
+
+function drawSpecialHUD() {
+  const sp=typeof SHIP_SPECIALS!=="undefined"?SHIP_SPECIALS[currentShipName]:null;
+  if(!sp)return;
+  const bx=8,by=GAME_H-82,bw=166,bh=26;
+  if(player.dominionOvercharged){
+    ctx.fillStyle="rgba(255,150,0,0.28)";ctx.fillRect(bx,by,bw,bh);
+    const pulse=0.7+0.3*Math.abs(Math.sin(Date.now()/200));
+    ctx.globalAlpha=pulse;ctx.fillStyle="#ffaa00";ctx.font="bold 12px monospace";
+    ctx.fillText("⚡ OVERCHARGE READY",bx+5,by+18);ctx.globalAlpha=1;
+  } else if(player.specialActive){
+    const frac=player.specialTimer/Math.max(1,sp.duration);
+    ctx.fillStyle="rgba(255,100,0,0.18)";ctx.fillRect(bx,by,bw,bh);
+    ctx.fillStyle="rgba(255,130,0,0.7)";ctx.fillRect(bx,by,bw*frac,bh);
+    ctx.fillStyle="#ff8800";ctx.font="bold 12px monospace";ctx.fillText(sp.name,bx+5,by+17);
+  } else if(player.specialCooldown>0){
+    const frac=1-player.specialCooldown/Math.max(1,sp.cooldown);
+    ctx.fillStyle="rgba(50,50,50,0.4)";ctx.fillRect(bx,by,bw,bh);
+    ctx.fillStyle="rgba(90,90,90,0.7)";ctx.fillRect(bx,by,bw*frac,bh);
+    ctx.fillStyle="#666";ctx.font="bold 12px monospace";
+    ctx.fillText(`${sp.name} ${(player.specialCooldown/60).toFixed(1)}s`,bx+5,by+17);
+  } else {
+    ctx.fillStyle="rgba(255,100,0,0.22)";ctx.fillRect(bx,by,bw,bh);
+    ctx.fillStyle="#ff8800";ctx.font="bold 12px monospace";
+    ctx.fillText((IS_MOBILE?"TAP":"[Q] ")+sp.name,bx+5,by+17);
+  }
+  if(pingTarget&&!pingTarget.dead){
+    ctx.fillStyle="rgba(255,200,0,0.15)";ctx.fillRect(bx,by+bh+2,bw,20);
+    ctx.fillStyle="#ffcc00";ctx.font="12px monospace";
+    ctx.fillText("🎯 "+pingTarget.type,bx+5,by+bh+16);
+  }
+}
+
 // ============================================================
 // UPDATE PLAYER
 // ============================================================
 function updatePlayer() {
+  if(player.specialCooldown>0)player.specialCooldown--;
+  const nemMult=(player.specialActive&&currentShipName==="Nemesis")?1.25:1.0;
   if(player.boosting){
     player.boostTimer--;
     if(player.boostTimer<=0){player.boosting=false;player.boostCooldown=player.boostCooldownMax;}
@@ -758,8 +928,8 @@ function updatePlayer() {
   } else if(keys["ShiftLeft"]||keys["ShiftRight"]){
     player.boosting=true;player.boostTimer=player.boostDuration;
   }
-  const curMaxSpd=player.boosting?player.maxSpeed*2:player.maxSpeed;
-  const curAccel=player.boosting?player.accel*2.5:player.accel;
+  const curMaxSpd=player.boosting?player.maxSpeed*2:player.maxSpeed*nemMult;
+  const curAccel=player.boosting?player.accel*2.5:player.accel*nemMult;
   const FRICTION=0.86;
   if(IS_MOBILE&&mobileJoy.active){player.vx+=mobileJoy.dx*curAccel;player.vy+=mobileJoy.dy*curAccel;}
   if(keys["ArrowUp"]  ||keys["KeyW"])player.vy-=curAccel;
@@ -777,7 +947,14 @@ function updatePlayer() {
   const isShooting=IS_MOBILE?mobileAim.shooting:(keys["Space"]||mouse.down);
   const isRailgun=player.weaponStats&&player.weaponStats.hitscan;
   if(isRailgun){
-    if(isShooting&&player.shootTimer<=0){
+    if(player.dominionOvercharged&&isShooting&&player.shootTimer<=0){
+      // Overcharge: instant fire, 3× damage, no charge needed
+      const oc={...player.weaponStats,damage:player.weaponStats.damage*3};
+      fireRailgun(player,oc,player.rotation,true);
+      player.dominionOvercharged=false;
+      player.railgunCharge=0;player.railgunCharging=false;
+      player.shootTimer=player.weaponStats.fireInterval;
+    } else if(isShooting&&player.shootTimer<=0){
       player.railgunCharging=true;
       player.railgunCharge=Math.min(RAILGUN_CHARGE_FRAMES,player.railgunCharge+1);
       if(player.railgunCharge>=RAILGUN_CHARGE_FRAMES){
@@ -794,12 +971,14 @@ function updatePlayer() {
     if(isShooting&&player.shootTimer<=0&&player.weaponType!=="none"&&player.weaponStats){
       if(player.doubleShot)playerBullets.push(...fireDoubleShot(player,player.weaponStats,player.rotation,true));
       else playerBullets.push(...fireBullets(player,player.weaponStats,player.rotation,true));
-      player.shootTimer=player.weaponStats.fireInterval;
+      const rougeM=(player.specialActive&&currentShipName==="Rouge")?1/3:1.0;
+      player.shootTimer=Math.round(player.weaponStats.fireInterval*rougeM);
     }
   }
   missileTimer--;
   if(keys["KeyF"]&&missileTimer<=0&&player.missiles>0){
-    player.missiles--;
+    if(player.specialActive&&currentShipName==="Supernova"){player.specialMissilesUsed++;}
+    else player.missiles--;
     const mt=MISSILE_TYPES[player.missileType||2];
     playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,vx:Math.cos(player.rotation)*mt.speed,vy:Math.sin(player.rotation)*mt.speed,w:18,h:8,damage:mt.damage,color:mt.color,missile:true,category:"missile",weaponSize:6});
     missileTimer=45;
@@ -814,7 +993,8 @@ function updatePlayer() {
         const pred=predictPos(target.x+target.w/2,target.y+target.h/2,target.vx||0,target.vy||0,tbx,tby,t.weaponStats.speed);
         playerBullets.push(...fireBullets({x:tbx-player.w/2,y:tby-player.h/2,w:player.w,h:player.h},t.weaponStats,Math.atan2(pred.y-tby,pred.x-tbx),true));
       }
-      t.shootTimer=t.fireRate;
+      const bulwM=(player.specialActive&&currentShipName==="Bulwark")?0.5:1.0;
+      t.shootTimer=Math.round(t.fireRate*bulwM);
     }
   });
 }
@@ -823,13 +1003,24 @@ function updatePlayer() {
 // UPDATE ALLIES
 // ============================================================
 function updateAllies() {
+  // Clean up dead ping target
+  if(pingTarget&&pingTarget.dead) pingTarget=null;
   const shieldDown=player.shields<=0;
   const cos=Math.cos(player.rotation),sin=Math.sin(player.rotation);
   const pcx=player.x+player.w/2, pcy=player.y+player.h/2;
   allies.forEach((a,i)=>{
+    // Temp ally timer (Wasp special)
+    if(a.tempAlly){a.tempTimer=(a.tempTimer||0)-1;if(a.tempTimer<=0){a.hp=-1;return;}}
     a.vx=a.vx||0;a.vy=a.vy||0;
     let fx,fy;
-    if(shieldDown){
+    if(pingTarget&&!pingTarget.dead){
+      // Command ping: surround the pinged enemy
+      const ptcx=pingTarget.x+pingTarget.w/2,ptcy=pingTarget.y+pingTarget.h/2;
+      const n=Math.max(1,allies.length);
+      const angle=(Math.PI*2*i/n);
+      fx=ptcx+Math.cos(angle)*(65+n*12)-a.w/2;
+      fy=ptcy+Math.sin(angle)*(65+n*12)-a.h/2;
+    } else if(shieldDown){
       const dist=70+i*45,perp=(i-(allies.length-1)/2)*60;
       fx=pcx+cos*dist-sin*perp-a.w/2;
       fy=pcy+sin*dist+cos*perp-a.h/2;
@@ -840,7 +1031,7 @@ function updateAllies() {
     } else if(allyFormation==="surround"){
       const n=Math.max(1,allies.length);
       const angle=(Math.PI*2*i/n)+player.rotation;
-      const r=90+n*18;
+      const r=52+n*12; // tighter — actually surrounding the player
       fx=pcx+Math.cos(angle)*r-a.w/2;
       fy=pcy+Math.sin(angle)*r-a.h/2;
     } else {
@@ -848,27 +1039,36 @@ function updateAllies() {
       fx=pcx-cos*dist-sin*perp-a.w/2;
       fy=pcy-sin*dist+cos*perp-a.h/2;
     }
-    const dx=fx-a.x, dy=fy-a.y, dist=Math.hypot(dx,dy)||1;
+    const dx=fx-a.x,dy=fy-a.y,dist=Math.hypot(dx,dy)||1;
     const baseMaxSpd=22*(a.speedMult||1);
-    const speedFrac=Math.max(0.05, Math.min(1.0, dist/160));
-    const targetSpd=baseMaxSpd*speedFrac;
+    const speedFrac=Math.max(0.05,Math.min(1.0,dist/160));
     a.vx+=(dx/dist)*2.0; a.vy+=(dy/dist)*2.0;
     const spd=Math.hypot(a.vx,a.vy);
+    const targetSpd=baseMaxSpd*speedFrac;
     if(spd>targetSpd){a.vx*=targetSpd/spd;a.vy*=targetSpd/spd;}
     a.vx*=0.84; a.vy*=0.84;
     a.x+=a.vx;a.y+=a.vy;
-    if(a.shields<a.maxShields)a.shields+=0.03;
+    // Shield regen: behind formation = 3×
+    const regenMult=(allyFormation==="behind"&&!pingTarget)?3.0:1.0;
+    if(a.shields<a.maxShields)a.shields+=0.03*regenMult;
+    // Target: ping target if active, otherwise closest enemy
     let closest=null,closestD=1e9;
-    enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-a.x-a.w/2,e.y+e.h/2-a.y-a.h/2);if(d<closestD){closestD=d;closest=e;}});
+    if(pingTarget&&!pingTarget.dead){closest=pingTarget;}
+    else enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-a.x-a.w/2,e.y+e.h/2-a.y-a.h/2);if(d<closestD){closestD=d;closest=e;}});
     a.rotation=closest?Math.atan2(closest.y+closest.h/2-a.y-a.h/2,closest.x+closest.w/2-a.x-a.w/2):player.rotation;
     a.shootTimer--;
     if(a.shootTimer<=0&&closest&&a.weaponStats){
       const acx=a.x+a.w/2,acy=a.y+a.h/2;
       const pred=predictPos(closest.x+closest.w/2,closest.y+closest.h/2,closest.vx||0,closest.vy||0,acx,acy,a.weaponStats.speed);
       const bullets=fireBullets(a,a.weaponStats,Math.atan2(pred.y-acy,pred.x-acx),true);
-      bullets.forEach(b=>b.color="#aaffaa");
+      // Formation + vanguard damage bonuses
+      const fmtMult=(allyFormation==="front"&&!pingTarget)?1.3:1.0;
+      const vgMult=a.vanguardActive?1.5:1.0;
+      bullets.forEach(b=>{b.color="#aaffaa";b.damage=(b.damage||0)*fmtMult*vgMult;});
       playerBullets.push(...bullets);
-      a.shootTimer=(a.weaponStats.fireInterval||28)*2;
+      // Ping: +10% fire rate
+      const pingMult=(pingTarget&&!pingTarget.dead)?0.9:1.0;
+      a.shootTimer=(a.weaponStats.fireInterval||28)*2*pingMult;
     }
   });
 }
@@ -1061,6 +1261,7 @@ function checkCollisions() {
   playerBullets=playerBullets.filter(b=>!b.dead);
   enemyBullets=enemyBullets.filter(b=>!b.dead);
   enemies=enemies.filter(e=>!e.dead);
+  if(pingTarget&&pingTarget.dead) pingTarget=null;
   allies=allies.filter(a=>!a.dead);
 }
 
@@ -1192,6 +1393,7 @@ function render() {
   drawDeathEffects();
   drawBeamWarnings();
   drawBoostHUD();
+  drawSpecialHUD();
   ctx.fillStyle="rgba(255,255,255,0.4)";ctx.font="18px monospace";
   ctx.fillText(infiniteMode?`Wave ${currentWave} (Infinite)`:`Wave ${currentWave} / ${WAVES.length}`,10,GAME_H-12);
   if(player.hp<player.maxHp*0.25){ctx.fillStyle="rgba(255,0,0,0.12)";ctx.fillRect(0,0,GAME_W,GAME_H);}
@@ -1247,7 +1449,7 @@ function checkMeteorUnlock() {
 function gameLoop() {
   frameCount++;
   if(state==="playing"){
-    updatePlayer();updateAllies();updateEnemies();updateBullets();checkCollisions();
+    updatePlayer();updateAllies();updateEnemies();updateBullets();checkCollisions();updateSpecial();
     if(enemies.length===0){
       const reward=infiniteMode?generateInfiniteWave(currentWave).reward:(WAVES[currentWave-1]?.reward||0);
       money+=reward;
