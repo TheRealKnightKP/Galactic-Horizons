@@ -79,7 +79,7 @@ function buildMobileControls() {
   leftBase.appendChild(leftKnob);
 
   leftBase.addEventListener("touchstart", e => {
-    e.preventDefault();
+    e.preventDefault(); lastTouchTime=Date.now();
     const t = e.changedTouches[0];
     const r = leftBase.getBoundingClientRect();
     mobileJoy.active  = true;
@@ -138,6 +138,7 @@ function buildMobileControls() {
     e.preventDefault();
     const t = e.changedTouches[0];
     const r = rightBase.getBoundingClientRect();
+    lastTouchTime=Date.now();
     mobileAim.active   = true;
     mobileAim.shooting = true;
     mobileAim.touchId  = t.identifier;
@@ -187,7 +188,7 @@ function buildMobileControls() {
   const formationBtn = document.createElement("div");
   formationBtn.id = "formationBtn";
   formationBtn.textContent = "◀ BEHIND";
-  formationBtn.style.cssText = "position:absolute;bottom:28px;left:50%;transform:translateX(-50%);padding:5px 14px;background:rgba(0,170,255,0.18);border:2px solid rgba(0,170,255,0.7);border-radius:16px;color:#0af;font:bold 10px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
+  formationBtn.style.cssText = "position:absolute;bottom:28px;left:50%;transform:translateX(-50%);padding:8px 20px;background:rgba(0,170,255,0.18);border:2px solid rgba(0,170,255,0.7);border-radius:16px;color:#0af;font:bold 15px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
   formationBtn.addEventListener("touchstart", e => { e.preventDefault(); cycleFormation(); }, { passive: false });
   ui.appendChild(formationBtn);
 
@@ -195,14 +196,14 @@ function buildMobileControls() {
   const specialMobileBtn = document.createElement("div");
   specialMobileBtn.id = "mobileSpecialBtn";
   specialMobileBtn.textContent = "SPECIAL";
-  specialMobileBtn.style.cssText = "position:absolute;bottom:68px;left:calc(50% - 90px);padding:5px 10px;background:rgba(255,130,0,0.18);border:2px solid rgba(255,130,0,0.7);border-radius:14px;color:#f80;font:bold 10px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
+  specialMobileBtn.style.cssText = "position:absolute;bottom:68px;left:calc(50% - 110px);padding:8px 16px;background:rgba(255,130,0,0.18);border:2px solid rgba(255,130,0,0.7);border-radius:14px;color:#f80;font:bold 15px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
   specialMobileBtn.addEventListener("touchstart", e=>{e.preventDefault();activateSpecial();},{passive:false});
   ui.appendChild(specialMobileBtn);
 
   // PING button — bottom center-right
   const pingMobileBtn = document.createElement("div");
   pingMobileBtn.textContent = "PING";
-  pingMobileBtn.style.cssText = "position:absolute;bottom:68px;left:calc(50% + 16px);padding:5px 10px;background:rgba(255,220,0,0.18);border:2px solid rgba(255,220,0,0.7);border-radius:14px;color:#fc0;font:bold 10px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
+  pingMobileBtn.style.cssText = "position:absolute;bottom:68px;left:calc(50% + 20px);padding:8px 16px;background:rgba(255,220,0,0.18);border:2px solid rgba(255,220,0,0.7);border-radius:14px;color:#fc0;font:bold 15px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
   pingMobileBtn.addEventListener("touchstart", e=>{e.preventDefault();activatePing();},{passive:false});
   ui.appendChild(pingMobileBtn);
 
@@ -387,6 +388,9 @@ let playerTookDamageThisWave = false;
 const MAX_HIT_EFFECTS = 80;
 const MAX_DEATH_EFFECTS = 40;
 let pingTarget = null;
+let waveReinforceTimer = 0;
+let waveReinforceDone = false;
+let lastTouchTime = 0; // for mobile UI fade
 
 const imgCache={};
 function getImage(fn) {
@@ -429,7 +433,7 @@ function buildAlly(i,totalSlots) {
     };
   }
   const dodge=Math.min(0.95, Math.max(0, 0.25*beh.dodgeMult));
-  return {
+  const a = {
     type:sName, name:slot.name||sName,
     x:player.x-80-i*50, y:player.y+(i-(totalSlots-1)/2)*70,
     w:Math.round(aDef.w*SIZE_SCALE), h:Math.round(aDef.h*SIZE_SCALE), hp:aDef.hp, maxHp:aDef.hp,
@@ -438,8 +442,10 @@ function buildAlly(i,totalSlots) {
     img:getImage(aDef.image), color:aDef.color,
     shootTimer:Math.floor(Math.random()*30), vx:0, vy:0, rotation:0, spriteAngleOffset:Math.PI,
     weaponType:wType, weaponSize:aDef.weaponSize, weaponStats:wStats, isAlly:true,
+    isHealer:aDef.isHealer||false,
     dodge, speedMult:beh.speedMult,
   };
+  initShieldFaces(a); return a;
 }
 
 function setPlayerShip(name) {
@@ -478,6 +484,7 @@ function setPlayerShip(name) {
     specialMissilesUsed:0, specialSalvoTimer:0, specialSalvoCount:0, specialSalvoTotal:0,
     dominionOvercharged:false,
   };
+  initShieldFaces(player);
   player.turrets=[];
   const pdcSizes=d.pdcSizes||null;
   for (let ti=0;ti<(d.pdc||0);ti++) {
@@ -504,7 +511,10 @@ function respawnDeadAllies() {
 
 function spawnWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; hitEffects=[]; deathEffects=[];
+  waveReinforceTimer=0; waveReinforceDone=false;
   const waveData=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
+  const wrd=waveData.reinforceDelay||0;
+  if(wrd>0) waveReinforceTimer=wrd;
   waveData.enemies.forEach(name=>{
     const d=ENEMIES[name];
     const sizeNum=d.size||2;
@@ -531,8 +541,18 @@ function spawnWave() {
         weaponStats:getWeaponStats(t.weaponType||"laser_repeater",t.weaponSize||2),
       }));
     }
+    initShieldFaces(e);
     if(name==="Dominion") e.beamTimer=ENEMIES.Dominion.beamCooldownFrames||600;
     if(name==="Dreadnaught"){e.beamTimer=ENEMIES.Dreadnaught.beamCooldownFrames;e.beamWarningAngle=null;}
+    // Assign archetype for small/medium ships
+    if(typeof ARCHETYPE_POOL!=="undefined"&&ARCHETYPE_POOL[name]){
+      const pool=ARCHETYPE_POOL[name];
+      e.archetype=pool[Math.floor(Math.random()*pool.length)];
+      e.archetypeTimer=0;
+    }
+    // Turn speed based on size (larger = slower turn)
+    e.turnSpeed=Math.max(0.012, 0.12-((ENEMIES[name]?.size||2)-1)*0.012);
+    initShieldFaces(e);
     enemies.push(e);
   });
 }
@@ -549,7 +569,7 @@ function nextWave() {
 function startGame(infinite) {
   infiniteMode=infinite; currentWave=0;
   document.getElementById("mainMenu").style.display="none";
-  money=1000000;
+  money=5000000;
   if(!ownedShips||ownedShips.length===0) ownedShips=["Starlight"];
   setPlayerShip(playerLoadout.ship||"Starlight");
   if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="none";}
@@ -579,12 +599,13 @@ function applyDamage(target,bullet) {
   if(bullet.visualOnly)return;
   if(target===player){
     // Special invulnerability
-    if(player.specialActive&&(currentShipName==="Falcon"||currentShipName==="Starlight"||currentShipName==="Comet"))return;
+    if(player.specialActive&&(currentShipName==="Falcon"||currentShipName==="Comet"))return;
+    if(player.specialActive&&currentShipName==="Starlight"&&Math.random()<0.5)return;
     const dodge=player.boosting?player.dodgeBoosted:player.dodgeBase;
     if(dodge>0&&Math.random()<dodge)return;
     playerTookDamageThisWave=true;
     if(player.specialActive&&currentShipName==="Marauder") bullet={...bullet,damage:(bullet.damage||0)*0.5};
-    if(player.specialActive&&currentShipName==="Nemesis")  bullet={...bullet,damage:(bullet.damage||0)*0.75};
+    if(player.specialActive&&currentShipName==="Nemesis")  bullet={...bullet,damage:(bullet.damage||0)*0.5};
   }
   if(target.isAlly){
     if(target.vanguardActive)return; // Leviathan Fleet Vanguard
@@ -602,19 +623,34 @@ function applyDamage(target,bullet) {
   }
   const cat=bullet.category||"laser", wSize=bullet.weaponSize||1, rawDmg=bullet.damage||0, pen=bullet.penetration||0;
   const armorMult=armorDamageMultiplier(wSize,target.armorType||"light");
+  // Directional armor multiplier
+  const dirMult=getDirectionalArmorMult(bullet,target);
+  // Distortion synergy: ballistics 1.5× vs stunned
+  const stunSynergy=(cat==="ballistic"&&target.stunTimer>0)?1.5:1.0;
+  // Distortion synergy: lasers 1.5× to shields if distortion-weakened
+  const laserShieldMult=(cat==="laser"&&target.distortionWeakened)?1.5:1.0;
   let shieldDmg,hullDmg;
-  if(cat==="ballistic"){shieldDmg=rawDmg*0.25;hullDmg=rawDmg*0.5;}
+  if(cat==="ballistic"){shieldDmg=rawDmg*0.25;hullDmg=rawDmg*0.5*stunSynergy*dirMult;}
   else if(cat==="distortion"){shieldDmg=rawDmg*0.15;hullDmg=rawDmg*0.1;}
-  else{shieldDmg=rawDmg;hullDmg=rawDmg;}
+  else{shieldDmg=rawDmg*laserShieldMult;hullDmg=rawDmg*dirMult;}
   const hadShields=target.shields>0;
-  target.shields=Math.max(0,target.shields-shieldDmg);
+  // Apply to shield faces
+  if(target.shieldFaces&&shieldDmg>0){
+    applyShieldFaceHit(target,shieldDmg);
+  } else {
+    target.shields=Math.max(0,target.shields-shieldDmg);
+  }
   const shieldsNowDown=hadShields&&target.shields<=0;
   if(cat==="ballistic"||!hadShields||shieldsNowDown){
     target.armor=Math.max(0,target.armor-pen*armorMult);
     const hullFactor=1-(target.armor/(target.maxArmor||100));
     target.hp-=hullDmg*hullFactor;
   }
-  if(cat==="distortion"&&target.shields<=0&&!target.stunTimer) target.stunTimer=getStunDuration(wSize);
+  if(cat==="distortion"&&target.shields<=0&&!target.stunTimer){
+    target.stunTimer=getStunDuration(wSize);
+    target.distortionWeakened=false;
+  }
+  if(cat==="distortion"&&target.shields>0) target.distortionWeakened=true;
 }
 
 function predictPos(tx,ty,tvx,tvy,sx,sy,spd) {
@@ -829,12 +865,12 @@ function activateSpecial() {
   player.specialActive=true;
   player.specialTimer=sp.duration;
   switch(currentShipName){
-    case"Starlight":{const a=Math.random()*Math.PI*2;player.vx=Math.cos(a)*player.maxSpeed*5;player.vy=Math.sin(a)*player.maxSpeed*5;break;}
-    case"Comet":{const a=player.rotation;player.vx=Math.cos(a)*player.maxSpeed*8;player.vy=Math.sin(a)*player.maxSpeed*8;break;}
+    case"Starlight":break; // speed+dodge handled in updatePlayer
+    case"Comet":break; // 3xRPM+auto-aim+dodge handled in updatePlayer
     case"Supernova":player.specialMissilesUsed=0;break;
     case"Prometheus":{const n=Math.max(1,Math.floor(player.missiles/4));player.specialSalvoTotal=n;player.specialSalvoCount=0;player.specialSalvoTimer=0;break;}
     case"Wasp":spawnWaspAlly();break;
-    case"Leviathan":allies.forEach(a=>{a.vanguardActive=true;});break;
+    case"Leviathan":allies.forEach(a=>{a.vanguardActive=true;a.vanguardRPM=true;});break;
   }
   showSpecialToast("▶ "+sp.name);
 }
@@ -868,7 +904,7 @@ function updateSpecial() {
       const mx=SHIPS[currentShipName]?.missiles||52;
       player.missiles=Math.min(player.missiles+Math.ceil(mx*0.15),mx);
     }
-    if(currentShipName==="Leviathan") allies.forEach(a=>{a.vanguardActive=false;});
+    if(currentShipName==="Leviathan") allies.forEach(a=>{a.vanguardActive=false;a.vanguardRPM=false;});
     player.specialActive=false;
     player.specialCooldown=sp.cooldown;
   }
@@ -914,12 +950,71 @@ function drawSpecialHUD() {
   }
 }
 
+
+// ── SHIELD FACES ─────────────────────────────────────────
+function initShieldFaces(obj) {
+  const q = obj.maxShields / 4;
+  obj.shieldFaces = { front: q, back: q, left: q, right: q };
+  obj.maxShieldFaces = { front: q, back: q, left: q, right: q };
+}
+
+function getHitFace(bullet, target) {
+  // Angle from bullet travel direction to target center
+  const bAngle = Math.atan2(bullet.vy||0, bullet.vx||0);
+  // Relative angle to target facing
+  let rel = bAngle - (target.rotation||0);
+  while(rel > Math.PI) rel -= Math.PI*2;
+  while(rel < -Math.PI) rel += Math.PI*2;
+  // rel≈0 means bullet coming from front; ≈±π from back; ≈±π/2 from sides
+  if(Math.abs(rel) < Math.PI*0.25) return "front";
+  if(Math.abs(rel) > Math.PI*0.75) return "back";
+  return rel > 0 ? "right" : "left";
+}
+
+function getDirectionalArmorMult(bullet, target) {
+  if(!target.rotation && target.rotation!==0) return 1.0;
+  const face = getHitFace(bullet, target);
+  if(face==="front"||face==="back") return 0.7;  // -30%
+  return 1.1; // sides +10%
+}
+
+function applyShieldFaceHit(target, shieldDmg) {
+  if(!target.shieldFaces) return shieldDmg; // fallback
+  const face = "front"; // simplified: hits absorbed by face hit, rest spills
+  // distribute damage across all faces proportionally based on remaining
+  let remaining = shieldDmg;
+  const total = Object.values(target.shieldFaces).reduce((s,v)=>s+v,0);
+  if(total<=0) return shieldDmg; // no shields, all to hull
+  // Subtract from all faces equally
+  const ratio = Math.min(1, shieldDmg/total);
+  for(const f of ["front","back","left","right"]) {
+    const taken = target.shieldFaces[f]*ratio;
+    target.shieldFaces[f] = Math.max(0, target.shieldFaces[f]-taken);
+  }
+  // Sync shields value
+  target.shields = Object.values(target.shieldFaces).reduce((s,v)=>s+v,0);
+  return 0; // all absorbed
+}
+
+function regenShieldFaces(obj, regenRate) {
+  if(!obj.shieldFaces) { if(obj.shields<obj.maxShields) obj.shields+=regenRate; return; }
+  let changed=false;
+  for(const f of ["front","back","left","right"]) {
+    if(obj.shieldFaces[f]<obj.maxShieldFaces[f]){
+      obj.shieldFaces[f]=Math.min(obj.maxShieldFaces[f], obj.shieldFaces[f]+regenRate/4);
+      changed=true;
+    }
+  }
+  if(changed) obj.shields=Object.values(obj.shieldFaces).reduce((s,v)=>s+v,0);
+}
+
 // ============================================================
 // UPDATE PLAYER
 // ============================================================
 function updatePlayer() {
   if(player.specialCooldown>0)player.specialCooldown--;
-  const nemMult=(player.specialActive&&currentShipName==="Nemesis")?1.25:1.0;
+  const nemMult=(player.specialActive&&currentShipName==="Nemesis")?2.0
+             :(player.specialActive&&currentShipName==="Starlight")?1.5:1.0;
   if(player.boosting){
     player.boostTimer--;
     if(player.boostTimer<=0){player.boosting=false;player.boostCooldown=player.boostCooldownMax;}
@@ -941,7 +1036,32 @@ function updatePlayer() {
   if(spd>curMaxSpd){player.vx*=curMaxSpd/spd;player.vy*=curMaxSpd/spd;}
   player.x=Math.max(0,Math.min(GAME_W-player.w,player.x+player.vx));
   player.y=Math.max(0,Math.min(GAME_H-player.h,player.y+player.vy));
-  player.rotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
+  if(IS_MOBILE&&mobileAim.active&&enemies.length>0){
+    // Aim assist: cast virtual bullet ray, find nearest enemy to path
+    const pcx2=player.x+player.w/2,pcy2=player.y+player.h/2;
+    const rawAngle=Math.atan2(mouse.y-pcy2,mouse.x-pcx2);
+    const cos2=Math.cos(rawAngle),sin2=Math.sin(rawAngle);
+    let bestE=null,bestDist=140;
+    enemies.forEach(e=>{
+      const ex=e.x+e.w/2,ey=e.y+e.h/2;
+      const t=(ex-pcx2)*cos2+(ey-pcy2)*sin2;
+      if(t<0)return;
+      const perp=Math.abs((ey-pcy2)*cos2-(ex-pcx2)*sin2);
+      if(perp<bestDist){bestDist=perp;bestE=e;}
+    });
+    if(bestE){
+      // Lead aim at the enemy
+      const pred2=predictPos(bestE.x+bestE.w/2,bestE.y+bestE.h/2,bestE.vx||0,bestE.vy||0,pcx2,pcy2,player.weaponStats?.speed||10);
+      player.rotation=Math.atan2(pred2.y-pcy2,pred2.x-pcx2);
+      // Smoothly nudge mouse toward predicted pos
+      mouse.x=pcx2+Math.cos(player.rotation)*800;
+      mouse.y=pcy2+Math.sin(player.rotation)*800;
+    } else {
+      player.rotation=rawAngle;
+    }
+  } else {
+    player.rotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
+  }
   const shieldRegen=SHIELD_TIERS[playerLoadout.shieldTier||1].regenRate;
   if(player.shields<player.maxShields)player.shields+=shieldRegen;
   const isShooting=IS_MOBILE?mobileAim.shooting:(keys["Space"]||mouse.down);
@@ -969,19 +1089,72 @@ function updatePlayer() {
   } else {
     player.shootTimer--;
     if(isShooting&&player.shootTimer<=0&&player.weaponType!=="none"&&player.weaponStats){
+      // Comet special: auto-aim at nearest enemy
+      if(player.specialActive&&currentShipName==="Comet"){
+        let cne=null,cnd=1e9;
+        enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-player.x-player.w/2,e.y+e.h/2-player.y-player.h/2);if(d<cnd){cnd=d;cne=e;}});
+        if(cne)player.rotation=Math.atan2(cne.y+cne.h/2-player.y-player.h/2,cne.x+cne.w/2-player.x-player.w/2);
+      }
       if(player.doubleShot)playerBullets.push(...fireDoubleShot(player,player.weaponStats,player.rotation,true));
       else playerBullets.push(...fireBullets(player,player.weaponStats,player.rotation,true));
       const rougeM=(player.specialActive&&currentShipName==="Rouge")?1/3:1.0;
-      player.shootTimer=Math.round(player.weaponStats.fireInterval*rougeM);
+      const cometM=(player.specialActive&&currentShipName==="Comet")?1/3:1.0;
+      player.shootTimer=Math.round(player.weaponStats.fireInterval*rougeM*cometM);
     }
   }
   missileTimer--;
   if(keys["KeyF"]&&missileTimer<=0&&player.missiles>0){
-    if(player.specialActive&&currentShipName==="Supernova"){player.specialMissilesUsed++;}
-    else player.missiles--;
-    const mt=MISSILE_TYPES[player.missileType||2];
-    playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,vx:Math.cos(player.rotation)*mt.speed,vy:Math.sin(player.rotation)*mt.speed,w:18,h:8,damage:mt.damage,color:mt.color,missile:true,category:"missile",weaponSize:6});
-    missileTimer=45;
+    const mKind=(typeof playerLoadout!=="undefined"?playerLoadout.missileKind||"standard":"standard");
+    const mkDef=(typeof MISSILE_KINDS!=="undefined"&&MISSILE_KINDS[mKind])||{slots:1,aoe:0,lockOn:true,friendly:false,corrosion:false};
+    const slotCost=mkDef.slots;
+    // Micro: 0.5 slot, stored as 0.5 increments; others: integer slots
+    if(mKind==="nuke"&&player.missiles<slotCost){} // not enough
+    else {
+      const freeAmmo=player.specialActive&&currentShipName==="Supernova";
+      if(!freeAmmo) player.missiles=Math.max(0,player.missiles-Math.ceil(slotCost));
+      else player.specialMissilesUsed++;
+      const mt=MISSILE_TYPES[player.missileType||2];
+      const baseDmg=mt.damage*(typeof MISSILE_TYPE_MULT!=="undefined"?1:1);
+      // Lock-on target for mobile
+      let lockTarget=null;
+      if(IS_MOBILE&&mkDef.lockOn&&enemies.length>0){
+        const pcx=player.x+player.w/2,pcy=player.y+player.h/2;
+        // aim along current aim direction, find closest enemy to ray
+        const cos=Math.cos(player.rotation),sin=Math.sin(player.rotation);
+        let bestScore=1e9;
+        enemies.forEach(e=>{
+          const ex=e.x+e.w/2,ey=e.y+e.h/2;
+          const t=(ex-pcx)*cos+(ey-pcy)*sin;
+          if(t<0)return;
+          const perp=Math.abs((ey-pcy)*cos-(ex-pcx)*sin);
+          if(perp<bestScore){bestScore=perp;lockTarget=e;}
+        });
+      }
+      const aim=lockTarget?Math.atan2(lockTarget.y+lockTarget.h/2-player.y-player.h/2,lockTarget.x+lockTarget.w/2-player.x-player.w/2):player.rotation;
+      if(mKind==="cluster"){
+        // 4 mini-missiles in spread
+        for(let ci=0;ci<4;ci++){
+          const a=aim+(ci-1.5)*0.18;
+          playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
+            vx:Math.cos(a)*mt.speed*1.2,vy:Math.sin(a)*mt.speed*1.2,
+            w:10,h:5,damage:baseDmg*0.3,color:"#ffaa00",
+            missile:true,category:"missile",weaponSize:4,
+            lockTarget:lockTarget||null});
+        }
+      } else {
+        const aoe=mkDef.aoe;
+        const mColor=mKind==="emp"?"#44ffcc":mKind==="nuke"?"#ff2200":mKind==="micro"?"#ffcc44":mt.color;
+        playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
+          vx:Math.cos(aim)*mt.speed,vy:Math.sin(aim)*mt.speed,
+          w:mKind==="nuke"?24:mKind==="micro"?10:18,
+          h:mKind==="nuke"?14:mKind==="micro"?5:8,
+          damage:mKind==="micro"?baseDmg*0.5:baseDmg,
+          color:mColor,missile:true,category:"missile",weaponSize:6,
+          missileKind:mKind,aoeRadius:aoe,corrosion:mkDef.corrosion,
+          friendlyFire:mkDef.friendly,lockTarget:lockTarget||null});
+      }
+      missileTimer=mKind==="micro"?25:45;
+    }
   }
   player.turrets&&player.turrets.forEach(t=>{
     t.shootTimer--;
@@ -1013,6 +1186,20 @@ function updateAllies() {
     if(a.tempAlly){a.tempTimer=(a.tempTimer||0)-1;if(a.tempTimer<=0){a.hp=-1;return;}}
     a.vx=a.vx||0;a.vy=a.vy||0;
     let fx,fy;
+    // Healer: always behind player regardless of formation
+    if(a.isHealer){
+      const dist=60+i*40,perp=(i-(allies.length-1)/2)*50;
+      const fx2=pcx-cos*dist-sin*perp-a.w/2;
+      const fy2=pcy-sin*dist+cos*perp-a.h/2;
+      const dx2=fx2-a.x,dy2=fy2-a.y,dist2=Math.hypot(dx2,dy2)||1;
+      const spd2=Math.min(22,dist2*0.4);
+      a.vx+=(dx2/dist2)*2;a.vy+=(dy2/dist2)*2;
+      const as=Math.hypot(a.vx,a.vy);if(as>spd2){a.vx*=spd2/as;a.vy*=spd2/as;}
+      a.vx*=0.84;a.vy*=0.84;a.x+=a.vx;a.y+=a.vy;
+      a.rotation=player.rotation;
+      a.shootTimer=999;// no shooting
+      return; // skip rest of ally logic
+    }
     if(pingTarget&&!pingTarget.dead){
       // Command ping: surround the pinged enemy
       const ptcx=pingTarget.x+pingTarget.w/2,ptcy=pingTarget.y+pingTarget.h/2;
@@ -1050,7 +1237,17 @@ function updateAllies() {
     a.x+=a.vx;a.y+=a.vy;
     // Shield regen: behind formation = 3×
     const regenMult=(allyFormation==="behind"&&!pingTarget)?3.0:1.0;
-    if(a.shields<a.maxShields)a.shields+=0.03*regenMult;
+    regenShieldFaces(a, 0.03*regenMult);
+    // Medic ally: heals others passively
+    if(a.isHealer){
+      const healAmt=0.08;
+      player.hp=Math.min(player.maxHp, player.hp+healAmt);
+      allies.forEach(other=>{
+        if(other===a||other.isHealer)return;
+        other.hp=Math.min(other.maxHp, other.hp+healAmt);
+        regenShieldFaces(other, 0.06);
+      });
+    }
     // Target: ping target if active, otherwise closest enemy
     let closest=null,closestD=1e9;
     if(pingTarget&&!pingTarget.dead){closest=pingTarget;}
@@ -1086,8 +1283,15 @@ function updateEnemies() {
       if(e.y<=0){e.y=0;e.vy=Math.abs(e.vy);}
       if(e.y+e.h>=GAME_H){e.y=GAME_H-e.h;e.vy=-Math.abs(e.vy);}
       if(Math.abs(e.vy)<e.speed*0.8)e.vy=e.speed*(e.vy>=0?1:-1);
-      e.rotation=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2);
+      // Gradual turn toward player based on turnSpeed
+    const targetRot=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2);
+    let rotDiff=targetRot-(e.rotation||0);
+    while(rotDiff>Math.PI)rotDiff-=Math.PI*2;
+    while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
+    e.rotation=(e.rotation||0)+Math.sign(rotDiff)*Math.min(Math.abs(rotDiff),e.turnSpeed||0.08);
       if(e.shields<e.maxShields)e.shields+=0.015;
+    if(e.shieldFaces) e.shields=Object.values(e.shieldFaces).reduce((s,v)=>s+v,0);
+    if(e.corrosionTimer>0){e.corrosionTimer--;e.hp-=e.maxHp*0.0001;} // 1%/s = 0.01%/frame at 100fps
       e.turrets&&e.turrets.forEach(t=>{
         t.shootTimer--;
         if(t.shootTimer<=0&&t.weaponStats){
@@ -1128,15 +1332,55 @@ function updateEnemies() {
       const ndx=dx/dist,ndy=dy/dist;
       const accel=getEnemyAccel(e),friction=0.92;
       if(isSmallEnemy(e.type)){
-        const ORBIT_RADIUS=260,MIN_RANGE=130;
+        e.archetypeTimer=(e.archetypeTimer||0)-1;
+        // Adaptive: switch mode periodically
+        if(e.archetype==="adaptive"&&e.archetypeTimer<=0){
+          e.archetypeMode=e.archetypeMode==="bruiser"?"skirmisher":"bruiser";
+          e.archetypeTimer=120+Math.floor(Math.random()*180);
+        }
+        const mode=e.archetypeMode||e.archetype||"skirmisher";
+        const orbitR = mode==="skirmisher"||mode==="suppressor"
+          ? (mode==="suppressor"?600:360)
+          : mode==="bruiser"||mode==="interceptor" ? 120 : 260;
+        // Interceptor: target allies instead of player
+        let tx=pcx,ty=pcy;
+        if(mode==="interceptor"&&allies.length>0){
+          let closestA=allies[0],cad=1e9;
+          allies.forEach(a=>{const d=Math.hypot(a.x+a.w/2-ecx,a.y+a.h/2-ecy);if(d<cad){cad=d;closestA=a;}});
+          tx=closestA.x+closestA.w/2; ty=closestA.y+closestA.h/2;
+        }
         const myIdx=smallList.indexOf(e);
-        e.surroundAngle+=0.018;
-        const orbitAngle=e.surroundAngle+(Math.PI*2*myIdx/Math.max(totalSmall,1));
-        const targetX=pcx+Math.cos(orbitAngle)*ORBIT_RADIUS-e.w/2;
-        const targetY=pcy+Math.sin(orbitAngle)*ORBIT_RADIUS-e.h/2;
-        const tdx=targetX-e.x,tdy=targetY-e.y,tDist=Math.hypot(tdx,tdy)||1;
-        e.vx+=(tdx/tDist)*accel*2.2;e.vy+=(tdy/tDist)*accel*2.2;
-        if(dist<MIN_RANGE){e.vx-=ndx*accel*5;e.vy-=ndy*accel*5;}
+        e.surroundAngle+=mode==="flanker"?0.03:0.018;
+        // Flanker: periodically dash to side
+        if(mode==="flanker"){
+          if(e.archetypeTimer<=0){e.flankerPhase=e.flankerPhase==="flank"?"normal":"flank";e.archetypeTimer=90+Math.floor(Math.random()*120);}
+          if(e.flankerPhase==="flank"){
+            const sideAngle=Math.atan2(ty-ecy,tx-ecx)+(Math.random()>0.5?Math.PI/2:-Math.PI/2);
+            const sideX=ecx+Math.cos(sideAngle)*180-e.w/2;
+            const sideY=ecy+Math.sin(sideAngle)*180-e.h/2;
+            const sd=Math.hypot(sideX-e.x,sideY-e.y)||1;
+            e.vx+=(sideX-e.x)/sd*accel*3;e.vy+=(sideY-e.y)/sd*accel*3;
+          }
+        }
+        // Pack hunter: chain to 2 nearest same-type
+        if(mode==="packhunter"){
+          const packmates=smallList.filter(o=>o!==e&&o.archetype==="packhunter").slice(0,2);
+          if(packmates.length>0){
+            const lineAngle=Math.atan2(ty-ecy,tx-ecx);
+            const offset=(smallList.indexOf(e)%3)*80;
+            const lineX=tx-Math.cos(lineAngle)*(200+offset)-e.w/2;
+            const lineY=ty-Math.sin(lineAngle)*(200+offset)-e.h/2;
+            const ld=Math.hypot(lineX-e.x,lineY-e.y)||1;
+            e.vx+=(lineX-e.x)/ld*accel*2.5;e.vy+=(lineY-e.y)/ld*accel*2.5;
+          }
+        } else {
+          const orbitAngle=e.surroundAngle+(Math.PI*2*myIdx/Math.max(totalSmall,1));
+          const targetX=tx+Math.cos(orbitAngle)*orbitR-e.w/2;
+          const targetY=ty+Math.sin(orbitAngle)*orbitR-e.h/2;
+          const tdx=targetX-e.x,tdy=targetY-e.y,tDist=Math.hypot(tdx,tdy)||1;
+          e.vx+=(tdx/tDist)*accel*2.2;e.vy+=(tdy/tDist)*accel*2.2;
+        }
+        if(dist<80){e.vx-=ndx*accel*5;e.vy-=ndy*accel*5;}
         smallList.forEach(other=>{
           if(other===e)return;
           const odx=e.x-other.x,ody=e.y-other.y,od=Math.hypot(odx,ody)||1;
@@ -1228,6 +1472,38 @@ function checkCollisions() {
     if(b.visualOnly||b.dead)return;
     enemies.forEach(e=>{
       if(e.dead||!overlaps(b,e))return;
+      // AOE missile handling
+      if(b.missile&&b.aoeRadius>0){
+        b.dead=true;
+        const bx=b.x+b.w/2,by=b.y+b.h/2;
+        enemies.forEach(target=>{
+          if(target.dead)return;
+          const dist=Math.hypot(target.x+target.w/2-bx,target.y+target.h/2-by);
+          if(dist>b.aoeRadius)return;
+          const falloff=1-(dist/b.aoeRadius)*0.5;
+          if(b.missileKind==="emp"){
+            // EMP: strip shields, stun
+            if(target.shieldFaces) for(const f of Object.keys(target.shieldFaces)) target.shieldFaces[f]=0;
+            target.shields=0;
+            target.stunTimer=Math.max(target.stunTimer||0,180);
+          } else {
+            applyDamage(target,{...b,damage:(b.damage||0)*falloff,aoeRadius:0});
+            if(b.corrosion) target.corrosionTimer=600;
+          }
+          if(target.hp<=0){spawnDeathEffect(target);playExplosion(ENEMIES[target.type]?.size||2);target.dead=true;money+=target.score;}
+        });
+        // Friendly fire for nukes
+        if(b.friendlyFire){
+          const playerDist=Math.hypot(player.x+player.w/2-bx,player.y+player.h/2-by);
+          if(playerDist<b.aoeRadius) applyDamage(player,{...b,damage:(b.damage||0)*(1-playerDist/b.aoeRadius)*0.5,aoeRadius:0});
+          allies.forEach(a=>{
+            const d=Math.hypot(a.x+a.w/2-bx,a.y+a.h/2-by);
+            if(d<b.aoeRadius) applyDamage(a,{...b,damage:(b.damage||0)*(1-d/b.aoeRadius)*0.5,aoeRadius:0});
+          });
+        }
+        spawnDeathEffect({x:bx-30,y:by-30,w:60,h:60,type:"Raptor"});
+        return;
+      }
       if(b.piercing){
         if(!b.hitSet)b.hitSet=new Set();
         if(b.hitSet.has(e))return;
@@ -1294,10 +1570,32 @@ function drawEntity(obj) {
 
   if(obj.stunTimer>0){ctx.fillStyle="rgba(160,80,255,0.25)";ctx.fillRect(obj.x,obj.y,obj.w,obj.h);}
   const bx=obj.x,bw=obj.w;
-  if(obj.maxShields>0){ctx.fillStyle="#222";ctx.fillRect(bx,obj.y-17,bw,4);ctx.fillStyle="#0af";ctx.fillRect(bx,obj.y-17,bw*Math.max(0,obj.shields/obj.maxShields),4);}
+  if(obj.maxShields>0){
+    ctx.fillStyle="#222";ctx.fillRect(bx,obj.y-17,bw,4);
+    // Draw 4 shield faces in slightly different shades
+    if(obj.shieldFaces){
+      const faces=["front","right","back","left"];const fc=["#0af","#06f","#0cf","#08f"];
+      let ox=bx;
+      faces.forEach((f,fi)=>{
+        const w=bw*(obj.shieldFaces[f]/Math.max(1,obj.maxShields));
+        ctx.fillStyle=fc[fi];ctx.fillRect(ox,obj.y-17,Math.max(0,w),4);
+        ox+=bw/4;
+      });
+    } else {
+      ctx.fillStyle="#0af";ctx.fillRect(bx,obj.y-17,bw*Math.max(0,obj.shields/obj.maxShields),4);
+    }
+  }
   if(obj.maxArmor>0){ctx.fillStyle="#333";ctx.fillRect(bx,obj.y-12,bw,4);ctx.fillStyle="#ccc";ctx.fillRect(bx,obj.y-12,bw*Math.max(0,obj.armor/obj.maxArmor),4);}
   ctx.fillStyle="#222";ctx.fillRect(bx,obj.y-7,bw,4);
-  ctx.fillStyle="#0f0";ctx.fillRect(bx,obj.y-7,bw*Math.max(0,obj.hp/obj.maxHp),4);
+  ctx.fillStyle=obj.isHealer?"#44ffee":obj.corrosionTimer>0?"#ff8800":"#0f0";
+  ctx.fillRect(bx,obj.y-7,bw*Math.max(0,obj.hp/obj.maxHp),4);
+  // Archetype label
+  if(obj.archetype&&typeof ARCHETYPE_LABEL!=="undefined"){
+    const lbl=ARCHETYPE_LABEL[obj.archetype]||"";
+    const col=(typeof ARCHETYPE_COLOR!=="undefined"&&ARCHETYPE_COLOR[obj.archetype])||"#fff";
+    ctx.save();ctx.font="bold 8px monospace";ctx.fillStyle=col;
+    ctx.fillText(lbl,bx+2,obj.y-19);ctx.restore();
+  }
 }
 
 function drawBullets() {
@@ -1414,6 +1712,10 @@ function updateHUD() {
   document.getElementById("missiles").textContent = player.missiles||0;
 }
 
+function setPlayerMissileKind(k) {
+  if(player) player.missileKind=k;
+}
+
 function cycleFormation() {
   const modes=["behind","front","surround"];
   const idx=modes.indexOf(allyFormation);
@@ -1450,6 +1752,29 @@ function gameLoop() {
   frameCount++;
   if(state==="playing"){
     updatePlayer();updateAllies();updateEnemies();updateBullets();checkCollisions();updateSpecial();
+    // Reinforcement waves
+    if(waveReinforceTimer>0){waveReinforceTimer--;if(waveReinforceTimer<=0&&!waveReinforceDone){
+      waveReinforceDone=true;
+      const wd=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
+      if(wd&&wd.reinforceEnemies){
+        wd.reinforceEnemies.forEach(name=>{
+          const d=ENEMIES[name];if(!d)return;
+          const sn=d.size||2,ew=Math.round((32+sn*18)*SIZE_SCALE),eh=Math.round((20+sn*10)*SIZE_SCALE);
+          const re={type:name,x:GAME_W,y:80+Math.random()*(GAME_H-160),w:ew,h:eh,
+            hp:d.hp,maxHp:d.hp,shields:d.shields,maxShields:d.shields,
+            armor:d.armor||200,maxArmor:d.armor||200,armorType:d.armorType||"light",
+            speed:d.speed,fireRate:d.fireRate,shootTimer:Math.floor(Math.random()*d.fireRate),
+            img:getImage(d.image),color:d.color,score:d.score,
+            spriteAngleOffset:Math.PI,stunTimer:0,vx:0,vy:0,surroundAngle:Math.random()*Math.PI*2,
+            turnSpeed:Math.max(0.012,0.12-((d.size||2)-1)*0.012)};
+          re.turrets=[];if(d.turrets){const sf=1+((d.size||1)-1)*0.35;d.turrets.forEach(t=>re.turrets.push({rx:t.rx||0,ry:t.ry||0,fireRate:Math.max(6,Math.floor((t.fireRate||d.fireRate||60)*sf)),shootTimer:Math.floor(Math.random()*60),weaponStats:getWeaponStats(t.weaponType||"laser_repeater",t.weaponSize||2)}));}
+          if(typeof ARCHETYPE_POOL!=="undefined"&&ARCHETYPE_POOL[name]){const p=ARCHETYPE_POOL[name];re.archetype=p[Math.floor(Math.random()*p.length)];re.archetypeTimer=0;}
+          initShieldFaces(re);
+          enemies.push(re);
+        });
+        showSpecialToast("⚠ REINFORCEMENTS!");
+      }
+    }}
     if(enemies.length===0){
       const reward=infiniteMode?generateInfiniteWave(currentWave).reward:(WAVES[currentWave-1]?.reward||0);
       money+=reward;
@@ -1468,6 +1793,15 @@ function gameLoop() {
     updateHUD();
   }
   render();
+  // Mobile UI idle fade
+  if(IS_MOBILE){
+    const ui=document.getElementById("mobileUI");
+    if(ui){
+      const idle=Date.now()-lastTouchTime>4000;
+      ui.style.opacity=idle?"0.3":"1.0";
+      ui.style.transition="opacity 0.6s";
+    }
+  }
   requestAnimationFrame(gameLoop);
 }
 
