@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.4.0";
+const CACHE = "galactic-horizons-v1.4.1";
 const ASSETS = [
   "./",
   "./index.html",
@@ -65,12 +65,13 @@ Versions:
 -V1.0.8 - Still trying to fix version changing + Audio errors
 -V1.0.9 - Fixing install issues
 -V1.0.10 - Final fixings for a lot of stuff hopefully 
--V1.2.0 - Rework of hitboxes and frames for identification
--V1.3.0 - Formation system, per ship upgrades, and others... (4/3/2026)
--V1.3.1 - Fixing shop issues and ai movement wobble.
--V1.3.2 - Swapped missile and boost buttons and added the formation button in mobile.
--V1.3.3 - Trying to fix mobile update issues
--V1.3.4 - Fixed ally speeds and ally slots
--V1.3.5 - Fixed ally tab on shop
--V1.4.0 - Added ship specials, Formation bonuses, and command ping. (5/3/2026)
+-V1.1.0 - "The framing Rework" Rework of hitboxes and frames for identification
+-V1.2.0 - "The ally update" Formation system, per ship upgrades, and others... (4/3/2026)
+-V1.2.1 - Fixing shop issues and ai movement wobble.
+-V1.2.2 - Swapped missile and boost buttons and added the formation button in mobile.
+-V1.2.3 - Trying to fix mobile update issues
+-V1.2.4 - Fixed ally speeds and ally slots
+-V1.2.5 - Fixed ally tab on shop
+-V1.3.0 - "The Combat Rework Pt1" Added ship specials, Formation bonuses, and command ping. (5/3/2026)
+-V1.3.1 - "The Combat Rework Pt2" Fixed ship specials and buttons on mobile, added directional armor and shields, added different cluster kinds, added new enemy archetypes, added reinforcements, added medic ally, added mobile aim assist and button fade. Basically part 2 of the V1.3.0
 */
