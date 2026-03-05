@@ -64,8 +64,9 @@ const ALLY_SHIP_DEFS = {
   Rouge:     { price: 15000,  weaponSize: 3, hp: 300, shields: 320,  armorType: "medium",  image: "Cutlass.png",       color: "#aaffaa", w: 72, h: 44 },
   Wasp:      { price: 40000,  weaponSize: 4, hp: 500, shields: 560,  armorType: "medium",  image: "Hornet.png",        color: "#aaffaa", w: 80, h: 48 },
   Supernova: { price: 60000,  weaponSize: 5, hp: 600, shields: 680,  armorType: "heavy",   image: "Constellation.png", color: "#44ffcc", w: 92, h: 56 },
+  Medic:     { price: 50000,  weaponSize: 0, hp: 450, shields: 500,  armorType: "medium",  image: "Hornet.png",        color: "#44ffee", w: 80, h: 48, isHealer:true },
 };
-const ALLY_SHIP_ORDER = ["Sprite","Raptor","Rouge","Wasp","Supernova"];
+const ALLY_SHIP_ORDER = ["Sprite","Raptor","Rouge","Wasp","Supernova","Medic"];
 
 // === SHIP DESCRIPTIONS ===
 const SHIP_DESCRIPTIONS = {
@@ -99,7 +100,7 @@ const SHIPS = {
   Tempest:    { price: 380000,   hp: 2000,  shields: 2200, armor: 100, missiles: 32, speed: 0.70, weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  doubleShot: true, pdc: 4, pdcSizes: [5,5,4,4], image: "StarlancerTAC.png", color: "#00ffcc", size: 7, missileType: 1, armorType: "subcapital", extraAllySlots: 1 },
   // --- CAPITAL ---
   Nemesis:    { price: 280000,   hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Nemesis.png",       color: "#ffff44", size: 6,  missileType: 3, armorType: "capital"                    },
-  Prometheus: { price: 500000,   hp: 5000,  shields: 4000, armor: 100, missiles: 30, speed: 0.6,  weaponType: "ballistic_cannon",  weaponSize: 6,  bespoke: true,  pdc: 6,  pdcSize: 4,                         image: "Polaris.png",       color: "#ff44ff", size: 7,  missileType: 3, armorType: "capital",   extraAllySlots: 2 },
+  Prometheus: { price: 500000,   hp: 5000,  shields: 4000, armor: 100, missiles: 20, speed: 0.6,  weaponType: "ballistic_cannon",  weaponSize: 6,  bespoke: true,  pdc: 6,  pdcSize: 4,                         image: "Polaris.png",       color: "#ff44ff", size: 7,  missileType: 3, armorType: "capital",   extraAllySlots: 2 },
   // --- SUPER CAPITAL ---
   Leviathan:  { price: 750000,   hp: 7500,  shields: 700,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "laser_repeater",    weaponSize: 7,  bespoke: false, doubleShot: true, pdc: 8, pdcSizes: [6,6,5,5,5,5,4,4], image: "Kraken.png", color: "#88ff00", size: 8, missileType: 3, armorType: "capital", extraAllySlots: 6 },
   Dominion:   { price: 1200000,  hp: 10000, shields: 8000, armor: 100, missiles: 32, speed: 0.45, weaponType: "ballistic_railgun", weaponSize: 10, bespoke: true,  pdc: 8,  pdcSizes: [6,6,5,5,4,4,3,3],        image: "Idris.jpg",         color: "#cc88ff", size: 10, missileType: 3, armorType: "capital",   extraAllySlots: 4 },
@@ -246,31 +247,31 @@ const MISSILE_TYPES = {
 };
 
 const WAVES = [
-  { enemies: ["Raptor","Raptor","Raptor"],                                                                                          reward: 1000   },
-  { enemies: ["Raptor","Raptor","Raptor","Raptor"],                                                                                 reward: 1500   },
-  { enemies: ["Raptor","Raptor","Raptor","Rouge"],                                                                                  reward: 2500   },
-  { enemies: ["Rouge","Rouge","Raptor","Raptor"],                                                                                   reward: 3500   },
-  { enemies: ["Rouge","Rouge","Rouge","Raptor"],                                                                                    reward: 5000   },
-  { enemies: ["Rouge","Rouge","Rouge","Raptor","Raptor","Raptor"],                                                                   reward: 7000   },
-  { enemies: ["Corsair","Rouge","Raptor","Raptor"],                                                                                 reward: 9000   },
-  { enemies: ["Corsair","Corsair","Rouge","Rouge","Raptor"],                                                                        reward: 12000  },
-  { enemies: ["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 16000 },
-  { enemies: ["Bulwark","Corsair","Rouge","Raptor"],                                                                                reward: 22000  },
-  { enemies: ["Bulwark","Corsair","Corsair","Rouge","Rouge"],                                                                       reward: 28000  },
-  { enemies: ["Bulwark","Bulwark","Corsair","Rouge","Raptor","Raptor"],                                                             reward: 35000  },
-  { enemies: ["Bulwark","Bulwark","Corsair","Corsair","Corsair","Rouge","Rouge"],                                                    reward: 44000  },
-  { enemies: ["Bulwark","Bulwark","Bulwark","Corsair","Corsair","Rouge","Rouge","Raptor"],                                           reward: 55000  },
-  { enemies: ["Prometheus","Corsair","Corsair","Rouge","Rouge","Raptor","Raptor"],                                                   reward: 70000  },
-  { enemies: ["Prometheus","Bulwark","Corsair","Corsair","Rouge","Raptor","Raptor"],                                                 reward: 85000  },
-  { enemies: ["Dominion","Corsair","Corsair","Corsair","Rouge","Rouge"],                                                             reward: 100000 },
-  { enemies: ["Dominion","Bulwark","Bulwark","Corsair","Rouge","Rouge","Rouge"],                                                     reward: 130000 },
-  { enemies: ["Prometheus","Dominion","Bulwark","Corsair","Corsair","Corsair","Corsair"],                                            reward: 160000 },
-  { enemies: ["Dreadnaught","Dominion","Bulwark","Corsair","Corsair","Corsair"],                                                     reward: 500000 },
+  { reinforceDelay:1500, reinforceEnemies:["Raptor"], enemies: ["Raptor","Raptor","Raptor"],                                                                                          reward: 1000   },
+  { reinforceDelay:1400, reinforceEnemies:["Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor"],                                                                                 reward: 1500   },
+  { reinforceDelay:1300, reinforceEnemies:["Raptor"], enemies: ["Raptor","Raptor","Raptor","Rouge"],                                                                                  reward: 2500   },
+  { reinforceDelay:1300, reinforceEnemies:["Raptor","Raptor"], enemies: ["Rouge","Rouge","Raptor","Raptor"],                                                                                   reward: 3500   },
+  { reinforceDelay:1200, reinforceEnemies:["Rouge"], enemies: ["Rouge","Rouge","Rouge","Raptor"],                                                                                    reward: 5000   },
+  { reinforceDelay:1200, reinforceEnemies:["Rouge","Raptor"], enemies: ["Rouge","Rouge","Rouge","Raptor","Raptor","Raptor"],                                                                   reward: 7000   },
+  { reinforceDelay:1100, reinforceEnemies:["Raptor","Raptor"], enemies: ["Corsair","Rouge","Raptor","Raptor"],                                                                                 reward: 9000   },
+  { reinforceDelay:1100, reinforceEnemies:["Rouge","Raptor"], enemies: ["Corsair","Corsair","Rouge","Rouge","Raptor"],                                                                        reward: 12000  },
+  { reinforceDelay:900, reinforceEnemies:["Raptor","Raptor","Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 16000 },
+  { reinforceDelay:1000, reinforceEnemies:["Corsair","Raptor"], enemies: ["Bulwark","Corsair","Rouge","Raptor"],                                                                                reward: 22000  },
+  { reinforceDelay:1000, reinforceEnemies:["Corsair","Corsair"], enemies: ["Bulwark","Corsair","Corsair","Rouge","Rouge"],                                                                       reward: 28000  },
+  { reinforceDelay:900, reinforceEnemies:["Corsair","Rouge"], enemies: ["Bulwark","Bulwark","Corsair","Rouge","Raptor","Raptor"],                                                             reward: 35000  },
+  { reinforceDelay:900, reinforceEnemies:["Bulwark","Corsair"], enemies: ["Bulwark","Bulwark","Corsair","Corsair","Corsair","Rouge","Rouge"],                                                    reward: 44000  },
+  { reinforceDelay:800, reinforceEnemies:["Bulwark","Corsair","Corsair"], enemies: ["Bulwark","Bulwark","Bulwark","Corsair","Corsair","Rouge","Rouge","Raptor"],                                           reward: 55000  },
+  { reinforceDelay:800, reinforceEnemies:["Corsair","Corsair","Raptor"], enemies: ["Prometheus","Corsair","Corsair","Rouge","Rouge","Raptor","Raptor"],                                                   reward: 70000  },
+  { reinforceDelay:750, reinforceEnemies:["Bulwark","Corsair","Rouge"], enemies: ["Prometheus","Bulwark","Corsair","Corsair","Rouge","Raptor","Raptor"],                                                 reward: 85000  },
+  { reinforceDelay:700, reinforceEnemies:["Corsair","Corsair","Corsair"], enemies: ["Dominion","Corsair","Corsair","Corsair","Rouge","Rouge"],                                                             reward: 100000 },
+  { reinforceDelay:700, reinforceEnemies:["Bulwark","Bulwark","Corsair"], enemies: ["Dominion","Bulwark","Bulwark","Corsair","Rouge","Rouge","Rouge"],                                                     reward: 130000 },
+  { reinforceDelay:650, reinforceEnemies:["Bulwark","Corsair","Corsair"], enemies: ["Prometheus","Dominion","Bulwark","Corsair","Corsair","Corsair","Corsair"],                                            reward: 160000 },
+  { reinforceDelay:600, reinforceEnemies:["Dominion","Bulwark","Corsair","Corsair"], enemies: ["Dreadnaught","Dominion","Bulwark","Corsair","Corsair","Corsair"],                                                     reward: 500000 },
 ];
 
 
 const SHIP_SPECIALS = {
-  Starlight:  { name:"Evasive Maneuver", cooldown:600,  duration:60,  desc:"Random-direction speed burst + brief invulnerability." },
+  Starlight:  { name:"Evasive Maneuver", cooldown:600,  duration:300, desc:"+50% dodge and speed boost for 5s." },
   Falcon:     { name:"Ghost Protocol",   cooldown:480,  duration:120, desc:"2 seconds of full invulnerability." },
   Rouge:      { name:"Suppression Burst",cooldown:600,  duration:180, desc:"All weapons fire at 3× RPM for 3s." },
   Marauder:   { name:"Damage Control",   cooldown:720,  duration:240, desc:"50% damage reduction for 4s." },
@@ -278,11 +279,47 @@ const SHIP_SPECIALS = {
   Supernova:  { name:"Resupply Mode",    cooldown:600,  duration:360, desc:"Fire missiles free for 6s — or hold fire to restock some." },
   Bulwark:    { name:"Overshoot",        cooldown:720,  duration:300, desc:"All PDC turrets fire at double RPM for 5s." },
   Tempest:    { name:"Combat Medic",     cooldown:900,  duration:300, desc:"Repair pulse — heals you and all allies over 5s." },
-  Nemesis:    { name:"Overclock",        cooldown:720,  duration:300, desc:"−25% damage taken and +25% speed for 5s." },
+  Nemesis:    { name:"Overclock",        cooldown:720,  duration:300, desc:"2× speed and −50% damage taken for 5s." },
   Prometheus: { name:"Torpedo Salvo",    cooldown:1800, duration:300, desc:"Fires 1/4 of missiles in sequence over 5s. No ammo cost." },
-  Leviathan:  { name:"Fleet Vanguard",   cooldown:1800, duration:240, desc:"All allies: invincible + 50% damage for 4s." },
+  Leviathan:  { name:"Fleet Vanguard",   cooldown:1800, duration:240, desc:"All allies: invincible + 2× RPM + 50% damage for 4s." },
   Dominion:   { name:"Overcharge",       cooldown:2700, duration:1,   desc:"Next railgun: instant, 3× damage, full pen. 45s cooldown." },
-  Comet:      { name:"Hyperdash",        cooldown:300,  duration:20,  desc:"Dash toward crosshair with full invulnerability." },
+  Comet:      { name:"Ghost Mode",       cooldown:480,  duration:300, desc:"3× RPM, guns auto-aim, 100% dodge for 5s." },
+};
+
+// ── MISSILE KINDS ────────────────────────────────────────────
+const MISSILE_KINDS = {
+  standard: { name:"Standard",  slots:1,   aoe:0,    lockOn:true,  friendly:false, corrosion:false,
+    desc:"Reliable homing missile." },
+  emp:      { name:"EMP",       slots:1,   aoe:110,  lockOn:false, friendly:false, corrosion:false,
+    desc:"Small AOE, strips shields and stuns. No lock-on." },
+  cluster:  { name:"Cluster",   slots:1,   aoe:0,    lockOn:true,  friendly:false, corrosion:false,
+    desc:"Splits into 4 mini-missiles on impact area." },
+  nuke:     { name:"Nuke",      slots:5,   aoe:320,  lockOn:false, friendly:true,  corrosion:true,
+    desc:"Massive AOE. Damages allies if in blast. Leaves 10s corrosion." },
+  micro:    { name:"Micro",     slots:0.5, aoe:0,    lockOn:true,  friendly:false, corrosion:false,
+    desc:"Half slot cost, half damage. Two fit per slot." },
+};
+
+// Damage multiplier per missile type tier
+const MISSILE_TYPE_MULT = { 1:0.7, 2:1.0, 3:1.5 };
+
+// ── MEDIC ALLY ────────────────────────────────────────────────
+// Add to ALLY_SHIP_DEFS after defining it (patched inline below)
+
+// ── ARCHETYPE WEIGHTS per enemy type ────────────────────────
+const ARCHETYPE_POOL = {
+  Raptor:  ["skirmisher","bruiser","adaptive","flanker","interceptor","packhunter","suppressor"],
+  Rouge:   ["skirmisher","bruiser","adaptive","interceptor","suppressor"],
+  Corsair: ["bruiser","adaptive","flanker","interceptor","packhunter"],
+  Sprite:  ["skirmisher","adaptive"],
+};
+const ARCHETYPE_LABEL = {
+  skirmisher:"SK", bruiser:"BR", adaptive:"AD",
+  interceptor:"IC", flanker:"FL", packhunter:"PH", suppressor:"SU",
+};
+const ARCHETYPE_COLOR = {
+  skirmisher:"#88ccff", bruiser:"#ff6644", adaptive:"#cc88ff",
+  interceptor:"#ff4488", flanker:"#ffcc44", packhunter:"#ff8800", suppressor:"#44ffcc",
 };
 
 function generateInfiniteWave(waveNum) {
@@ -302,4 +339,3 @@ function generateInfiniteWave(waveNum) {
   return { enemies, reward: waveNum * 1500 };
 
 }
-
