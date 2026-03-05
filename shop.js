@@ -16,7 +16,7 @@ function wEquipped(wk) {
   let n = 0;
   if (playerLoadout.mainWeapon === wk) n++;
   (playerLoadout.pdcWeapons || []).forEach(w => { if (w === wk) n++; });
-  playerLoadout.allies.forEach(a => { if (a.weapon === wk) n++; });
+  playerLoadout.allies.forEach(a => { if (a && a.weapon === wk) n++; });
   return n;
 }
 function wCanEquip(wk, currentWk) {
