@@ -62,6 +62,7 @@ let playerLoadout = {
   ownedEngineTiers: [1],
   allies: [null, null],
   unlockedAllyShips: [],
+  missileKind: "standard",
 };
 
 // Per-ship upgrade storage
@@ -459,7 +460,19 @@ function renderShipLoadoutPanel(container) {
     html += `</div>`;
   }
 
-  html += `<p><b>Shields:</b> ${buildShieldSelect(playerLoadout.ownedShieldTiers, playerLoadout.shieldTier, "setPlayerShieldTier(parseInt(this.value))", "buyPlayerShield", sd.shields)}</p>`;
+  // Missile kind selector
+  const mkDefs = typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS : {};
+  const shipMaxMissiles = sd.missiles || 0;
+  if (shipMaxMissiles > 0) {
+    html += `<p><b>Missile Type:</b> <select onchange="setMissileKind(this.value)">`;
+    for (const [k,mk] of Object.entries(mkDefs)) {
+      const count = k==="nuke" ? Math.floor(shipMaxMissiles/mk.slots) : Math.floor(shipMaxMissiles/mk.slots);
+      const sel = (playerLoadout.missileKind||"standard")===k ? "selected" : "";
+      html += `<option value="${k}" ${sel}>${mk.name} (×${count} max) — ${mk.desc}</option>`;
+    }
+    html += `</select></p>`;
+  }
+    html += `<p><b>Shields:</b> ${buildShieldSelect(playerLoadout.ownedShieldTiers, playerLoadout.shieldTier, "setPlayerShieldTier(parseInt(this.value))", "buyPlayerShield", sd.shields)}</p>`;
   html += `<p><b>Hull Armor:</b> ${buildArmorSelect(playerLoadout.ownedArmorTiers, playerLoadout.armorTier, "setPlayerArmorTier(parseInt(this.value))", "buyPlayerArmor", sd.armor)}</p>`;
   html += `<p><b>Engines:</b> ${buildEngineSelect(playerLoadout.ownedEngineTiers, playerLoadout.engineTier, "setPlayerEngineTier(parseInt(this.value))", "buyPlayerEngine")}</p>`;
 
@@ -520,6 +533,7 @@ function renderAllyLoadoutPanel(container) {
 }
 
 // === SETTERS ===
+function setMissileKind(k) { playerLoadout.missileKind=k; if(typeof setPlayerMissileKind==="function")setPlayerMissileKind(k); renderLoadout(); }
 function setMainWeapon(wk)           { playerLoadout.mainWeapon = wk; renderLoadout(); }
 function setPDCWeapon(idx, wk)       { if (!playerLoadout.pdcWeapons) playerLoadout.pdcWeapons = []; playerLoadout.pdcWeapons[idx] = wk; renderLoadout(); }
 function setPlayerShieldTier(tier)   { if ((playerLoadout.ownedShieldTiers||[1]).includes(tier)) { playerLoadout.shieldTier = tier; renderLoadout(); } }
