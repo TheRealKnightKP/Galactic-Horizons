@@ -1404,22 +1404,7 @@ function updatePlayer() {
   player.y=Math.max(0,Math.min(GAME_H-player.h,player.y+player.vy));
 
   let aimAngle = player.rotation;
-if(IS_MOBILE && enemies.length > 0){
-  const pcx = player.x+player.w/2, pcy = player.y+player.h/2;
-  const cos = Math.cos(aimAngle), sin = Math.sin(aimAngle);
-  let bestE = null, bestDist = 80;
-  enemies.forEach(e=>{
-    const ex=e.x+e.w/2, ey=e.y+e.h/2;
-    const t=(ex-pcx)*cos+(ey-pcy)*sin;
-    if(t<0) return;
-    const perp=Math.abs((ey-pcy)*cos-(ex-pcx)*sin);
-    if(perp<bestDist){bestDist=perp;bestE=e;}
-  });
-  if(bestE){
-    const pred=predictPos(bestE.x+bestE.w/2,bestE.y+bestE.h/2,bestE.vx||0,bestE.vy||0,pcx,pcy,player.weaponStats?.speed||10);
-    aimAngle=Math.atan2(pred.y-pcy,pred.x-pcx);
-  }
-}
+
 let finalBullets;
 if(player.doubleShot) finalBullets=fireDoubleShot(player,player.weaponStats,aimAngle,true);
 else finalBullets=fireBullets(player,player.weaponStats,aimAngle,true);
@@ -2204,4 +2189,5 @@ function confirmLeaveGame() {
 }
 
 gameLoop();
+
 
