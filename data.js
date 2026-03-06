@@ -88,7 +88,7 @@ const SHIP_DESCRIPTIONS = {
 };
 
 // Ships that DO NOT get shield faces or directional armor (too small / no point)
-const NO_SHIELD_FACES = new Set(["Starlight","Falcon","Comet","Vengeance"]);
+const NO_SHIELD_FACES = new Set(["Starlight","Falcon","Comet","Vengeance","Raptor","Rouge","Sprite","ShadowComet"]);
 
 const SHIPS = {
   // --- LIGHT ---
@@ -373,3 +373,4 @@ function getShadowCometStats(killCount) {
     damage: scaleMult, // multiplier applied to weapon damage in game.js
   };
 }
+
