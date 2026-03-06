@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.4.6";
+const CACHE = "galactic-horizons-v1.4.7";
 const ASSETS = [
   "./",
   "./index.html",
@@ -80,4 +80,5 @@ Versions:
 -V1.4.4 - Added Shadow Comet boss wave 12, fixed shield faces, added Vengeance secret ship.
 -V1.4.5 - Fixed shields and other stuff 
 -V1.4.6 - Changed aim assist on mobile
+-V1.4.7 - Removed aim assist because it was attrociously bugged
 */
