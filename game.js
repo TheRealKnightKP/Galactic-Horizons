@@ -1403,29 +1403,7 @@ function updatePlayer() {
   player.x=Math.max(0,Math.min(GAME_W-player.w,player.x+player.vx));
   player.y=Math.max(0,Math.min(GAME_H-player.h,player.y+player.vy));
 
-  if(IS_MOBILE&&mobileAim.active&&enemies.length>0){
-    const pcx2=player.x+player.w/2,pcy2=player.y+player.h/2;
-    const rawAngle=Math.atan2(mouse.y-pcy2,mouse.x-pcx2);
-    const cos2=Math.cos(rawAngle),sin2=Math.sin(rawAngle);
-    let bestE=null,bestDist=140;
-    enemies.forEach(e=>{
-      const ex=e.x+e.w/2,ey=e.y+e.h/2;
-      const t=(ex-pcx2)*cos2+(ey-pcy2)*sin2;
-      if(t<0)return;
-      const perp=Math.abs((ey-pcy2)*cos2-(ex-pcx2)*sin2);
-      if(perp<bestDist){bestDist=perp;bestE=e;}
-    });
-    if(bestE){
-      const pred2=predictPos(bestE.x+bestE.w/2,bestE.y+bestE.h/2,bestE.vx||0,bestE.vy||0,pcx2,pcy2,player.weaponStats?.speed||10);
-      player.rotation=Math.atan2(pred2.y-pcy2,pred2.x-pcx2);
-      mouse.x=pcx2+Math.cos(player.rotation)*800;
-      mouse.y=pcy2+Math.sin(player.rotation)*800;
-    } else {
-      player.rotation=rawAngle;
-    }
-  } else {
-    player.rotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
-  }
+  player.rotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
 
   const shieldRegen=SHIELD_TIERS[playerLoadout.shieldTier||1].regenRate;
   regenShieldFaces(player, shieldRegen);
@@ -2205,3 +2183,4 @@ function confirmLeaveGame() {
 }
 
 gameLoop();
+
