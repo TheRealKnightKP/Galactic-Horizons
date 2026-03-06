@@ -6,6 +6,7 @@ const WEAPON_BASE_PRICES = {
   laser_repeater: 800, laser_cannon: 2500, ballistic_gatling: 1800,
   ballistic_cannon: 3500, ballistic_railgun: 7000,
   scattergun_ballistic: 2200, scattergun_laser: 2200, distortion: 2000,
+  vengeance_cannon: 0, // not purchasable, bespoke only
 };
 function wKey(type, size)   { return `${type}_s${size}`; }
 function wPrice(type, size) { return Math.round((WEAPON_BASE_PRICES[type] || 2000) * Math.pow(1.9, size - 1)); }
@@ -28,20 +29,29 @@ function wCanEquip(wk, currentWk) {
 const KONAMI = ["ArrowUp","ArrowUp","ArrowDown","ArrowDown","ArrowLeft","ArrowRight","ArrowLeft","ArrowRight","KeyB","KeyA"];
 let konamiProgress = 0;
 let cometUnlocked = false;
+let vengeanaceUnlocked = false;
 document.addEventListener("keydown", e => {
   if (e.code === KONAMI[konamiProgress]) {
     konamiProgress++;
     if (konamiProgress === KONAMI.length) {
       konamiProgress = 0;
+      let msg = "";
       if (!cometUnlocked) {
         cometUnlocked = true;
         if (!ownedShips.includes("Comet")) ownedShips.push("Comet");
-        // Flash message
-        const msg = document.createElement("div");
-        msg.textContent = "🌠 SECRET SHIP UNLOCKED: COMET";
-        msg.style.cssText = "position:fixed;top:40%;left:50%;transform:translateX(-50%);background:#111;color:#ff4400;font:bold 28px monospace;padding:18px 36px;border:2px solid #ff4400;z-index:9999;border-radius:8px;pointer-events:none";
-        document.body.appendChild(msg);
-        setTimeout(() => msg.remove(), 3000);
+        msg += "🌠 COMET";
+      }
+      if (!vengeanaceUnlocked) {
+        vengeanaceUnlocked = true;
+        if (!ownedShips.includes("Vengeance")) ownedShips.push("Vengeance");
+        msg += (msg ? " + " : "") + "⚔ VENGEANCE";
+      }
+      if (msg) {
+        const el = document.createElement("div");
+        el.textContent = "🔓 SECRET SHIPS UNLOCKED: " + msg;
+        el.style.cssText = "position:fixed;top:40%;left:50%;transform:translateX(-50%);background:#111;color:#ff4400;font:bold 24px monospace;padding:18px 36px;border:2px solid #ff4400;z-index:9999;border-radius:8px;pointer-events:none;text-align:center";
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 3000);
       }
     }
   } else {
@@ -99,9 +109,9 @@ function loadShipUpgrades(name) {
   playerLoadout.ownedEngineTiers = [...u.ownedEngineTiers];
 }
 
-// Ally inventory - how many of each ship you own
+// Ally inventory
 let allyInventory = {};
-let allyPurchaseCount = {}; // tracks total bought per ship type for naming
+let allyPurchaseCount = {};
 function allyOwned(name)     { return allyInventory[name] || 0; }
 function allyEquipped(name)  { return playerLoadout.allies.filter(a=>a&&a.ship===name).length; }
 function allyAvailable(name, excludeIdx=-1) {
@@ -109,7 +119,6 @@ function allyAvailable(name, excludeIdx=-1) {
   return allyOwned(name) - equipped;
 }
 
-// Ally behavior presets
 const ALLY_BEHAVIORS = {
   0: { name: "Balanced",   speedMult:1.00, dmgMult:1.00, dodgeMult:1.00, shieldMult:1.00, rpmMult:1.00, desc:"No specialization." },
   1: { name: "Interceptor",speedMult:1.15, dmgMult:1.00, dodgeMult:1.00, shieldMult:1.00, rpmMult:1.00, desc:"+15% speed, -10% accuracy.", accuracyPenalty:0.10 },
@@ -123,6 +132,106 @@ let _shopTab    = "ships";
 let _loadoutTab = "ship";
 
 // ============================
+// MOBILE KONAMI UI
+// ============================
+function buildMobileKonamiUI() {
+  if (document.getElementById("mobileKonamiUI")) return;
+  const overlay = document.createElement("div");
+  overlay.id = "mobileKonamiUI";
+  overlay.style.cssText = "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:9999;align-items:center;justify-content:center;flex-direction:column;font-family:monospace";
+  overlay.style.display = "none";
+
+  const box = document.createElement("div");
+  box.style.cssText = "background:#0a0a14;border:2px solid #ff4400;border-radius:12px;padding:28px 32px;text-align:center;min-width:320px;max-width:90vw";
+
+  const title = document.createElement("div");
+  title.textContent = "🔓 Secret Code";
+  title.style.cssText = "color:#ff4400;font:bold 20px monospace;margin-bottom:6px";
+
+  const hint = document.createElement("div");
+  hint.textContent = "↑ ↑ ↓ ↓ ← → ← → B A";
+  hint.style.cssText = "color:#555;font:12px monospace;margin-bottom:18px";
+
+  const progress = document.createElement("div");
+  progress.id = "mobileKonamiProgress";
+  progress.style.cssText = "color:#0af;font:13px monospace;margin-bottom:16px;min-height:18px";
+
+  // Build direction + button grid
+  const btnGrid = document.createElement("div");
+  btnGrid.style.cssText = "display:grid;grid-template-columns:repeat(4,64px);gap:8px;justify-content:center;margin-bottom:16px";
+
+  const seqLabels = ["↑","↑","↓","↓","←","→","←","→","B","A"];
+  let mobileKonamiStep = 0;
+
+  function updateProgress() {
+    progress.textContent = seqLabels.slice(0,mobileKonamiStep).join(" ") + (mobileKonamiStep>0?" ✓":"");
+  }
+
+  // Arrow buttons
+  const directions = [
+    {label:"↑",  code:"ArrowUp"},
+    {label:"↓",  code:"ArrowDown"},
+    {label:"←",  code:"ArrowLeft"},
+    {label:"→",  code:"ArrowRight"},
+    {label:"B",  code:"KeyB"},
+    {label:"A",  code:"KeyA"},
+  ];
+
+  directions.forEach(d => {
+    const btn = document.createElement("button");
+    btn.textContent = d.label;
+    btn.style.cssText = "width:64px;height:64px;font:bold 22px monospace;background:#001122;border:1px solid #0af;color:#0af;border-radius:8px;cursor:pointer";
+    btn.addEventListener("touchstart", e => {
+      e.preventDefault();
+      if (d.code === KONAMI[mobileKonamiStep]) {
+        mobileKonamiStep++;
+        updateProgress();
+        if (mobileKonamiStep === KONAMI.length) {
+          mobileKonamiStep = 0;
+          let msg = "";
+          if (!cometUnlocked) {
+            cometUnlocked = true;
+            if (!ownedShips.includes("Comet")) ownedShips.push("Comet");
+            msg += "COMET ";
+          }
+          if (!vengeanaceUnlocked) {
+            vengeanaceUnlocked = true;
+            if (!ownedShips.includes("Vengeance")) ownedShips.push("Vengeance");
+            msg += "VENGEANCE";
+          }
+          progress.textContent = msg ? ("✅ UNLOCKED: " + msg) : "✅ Already unlocked!";
+          progress.style.color = "#0f0";
+          setTimeout(() => { progress.textContent = ""; progress.style.color = "#0af"; }, 3000);
+        }
+      } else {
+        mobileKonamiStep = d.code === KONAMI[0] ? 1 : 0;
+        updateProgress();
+      }
+    }, { passive: false });
+    btnGrid.appendChild(btn);
+  });
+
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "✕ Close";
+  closeBtn.style.cssText = "width:100%;margin-top:8px;padding:10px;font:bold 14px monospace;background:rgba(80,0,0,0.4);border:1px solid #f44;color:#f44;border-radius:6px;cursor:pointer";
+  closeBtn.addEventListener("touchstart", e => { e.preventDefault(); overlay.style.display = "none"; }, { passive: false });
+
+  box.appendChild(title);
+  box.appendChild(hint);
+  box.appendChild(progress);
+  box.appendChild(btnGrid);
+  box.appendChild(closeBtn);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function showMobileKonamiUI() {
+  buildMobileKonamiUI();
+  const el = document.getElementById("mobileKonamiUI");
+  if (el) { el.style.display = "flex"; }
+}
+
+// ============================
 // SHIP SHOP
 // ============================
 function showShop() {
@@ -131,6 +240,17 @@ function showShop() {
   document.getElementById("shopMoney").textContent = "Credits: " + money;
   const backBtn = document.getElementById("shopBackBtn");
   if(backBtn) backBtn.style.display = shopOpenedFromMenu ? "block" : "none";
+  // Inject mobile secret button if on mobile
+  if (typeof IS_MOBILE !== "undefined" && IS_MOBILE) {
+    if (!document.getElementById("mobileSecretBtn")) {
+      const sb = document.createElement("button");
+      sb.id = "mobileSecretBtn";
+      sb.textContent = "🔒";
+      sb.style.cssText = "position:fixed;bottom:12px;right:12px;width:44px;height:44px;font-size:20px;background:rgba(0,0,0,0.6);border:1px solid #333;color:#444;border-radius:50%;z-index:9998;padding:0";
+      sb.addEventListener("touchstart", e => { e.preventDefault(); showMobileKonamiUI(); }, { passive: false });
+      document.body.appendChild(sb);
+    }
+  }
   renderShopTab();
 }
 
@@ -161,8 +281,8 @@ function renderShopTab() {
 function renderShopShips(container) {
   let html = `<div style="display:flex;flex-wrap:wrap;gap:12px;padding:8px">`;
   for (const [name, ship] of Object.entries(SHIPS)) {
-    // Hide secret ships unless unlocked
-    if (ship.secret && !cometUnlocked) continue;
+    if (ship.secret && !cometUnlocked && name === "Comet") continue;
+    if (ship.secret && !vengeanaceUnlocked && name === "Vengeance") continue;
     const isSpecial = ship.secret;
     const canAfford = ship.price !== null && money >= ship.price;
     const owned = ownedShips && ownedShips.includes(name);
@@ -171,18 +291,14 @@ function renderShopShips(container) {
     const tierColor = {light:"#88ccff",medium:"#88ff88",heavy:"#ffcc44",subcapital:"#ff8844",capital:"#ff44ff"}[tier] || "#fff";
     html += `
     <div style="background:#0a0e1a;border:1px solid #223;border-radius:8px;width:200px;padding:0;overflow:hidden;position:relative">
-      <!-- Ship image square -->
       <div style="position:relative;width:200px;height:120px;background:#050810;display:flex;align-items:center;justify-content:center;overflow:hidden">
         <img src="assets/${ship.image}" style="max-width:180px;max-height:110px;object-fit:contain;image-rendering:pixelated"
              onerror="this.style.display='none'">
-        <!-- Info icon top-right -->
         <div style="position:absolute;top:6px;right:6px;cursor:pointer;z-index:2"
              onclick="toggleShipInfo('${name}')">
           <div style="width:22px;height:22px;border-radius:50%;background:#0af;color:#000;font:bold 13px monospace;display:flex;align-items:center;justify-content:center">i</div>
         </div>
-        <!-- Secret badge -->
         ${ship.secret ? `<div style="position:absolute;top:6px;left:6px;background:#ff4400;color:#fff;font:bold 10px monospace;padding:2px 6px;border-radius:4px">SECRET</div>` : ""}
-        <!-- Info overlay (hidden by default) -->
         <div id="shipinfo_${name}" style="display:none;position:absolute;inset:0;background:rgba(0,5,15,0.95);padding:8px;font:11px monospace;color:#ccc;overflow-y:auto;z-index:3">
           <div style="color:#0af;font-weight:bold;margin-bottom:4px">${name}</div>
           <div style="color:#aaa;margin-bottom:6px;line-height:1.4">${desc}</div>
@@ -196,7 +312,6 @@ function renderShopShips(container) {
           <div style="margin-top:4px;color:#555;cursor:pointer" onclick="toggleShipInfo('${name}')">[close]</div>
         </div>
       </div>
-      <!-- Ship name + price -->
       <div style="padding:8px">
         <div style="color:#eee;font:bold 14px monospace">${name}${isSpecial?` <span style="background:#ff4400;color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;vertical-align:middle">SPECIAL</span>`:""}</div>
         <div style="color:${tierColor};font:11px monospace;margin:2px 0">${ARMOR_TYPES[tier]?.name || ""} class</div>
@@ -223,7 +338,7 @@ function toggleShipInfo(name) {
 function renderShopAllies(container) {
   let html = `<div style="padding:10px;color:#aaa;font:12px monospace">
     <p style="color:#0af;font:bold 14px monospace;margin-bottom:8px">Ally Ships</p>
-    <p style="margin-bottom:12px">Buy individual ally units. Each purchased ally can be assigned to a slot in your <b>Loadout → Allies</b> panel. Allies are named on purchase and can be renamed anytime.</p>
+    <p style="margin-bottom:12px">Buy individual ally units. Each purchased ally can be assigned to a slot in your <b>Loadout → Allies</b> panel.</p>
     <div style="display:flex;flex-wrap:wrap;gap:12px">`;
   for (const sn of ALLY_SHIP_ORDER) {
     const aDef = ALLY_SHIP_DEFS[sn];
@@ -251,12 +366,13 @@ function renderShopAllies(container) {
 
 function renderShopWeapons(container) {
   const maxSize = 8;
-  let html = `<p style="color:#aaa;font-size:12px;margin:4px 0">Each purchase is one weapon unit.</p>
+  let html = `<p style="color:#aaa;font-size:12px;margin:4px 0">Each purchase is one weapon unit. (Vengeance Cannon is bespoke — not purchasable.)</p>
   <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
     <tr style="color:#0af"><th style="text-align:left;padding:4px 6px">Weapon</th>`;
   for (let s = 1; s <= maxSize; s++) html += `<th style="padding:4px">S${s}</th>`;
   html += `</tr>`;
   for (const [type, def] of Object.entries(WEAPON_DEFS)) {
+    if (type === "vengeance_cannon") continue; // skip bespoke
     html += `<tr style="border-top:1px solid #223"><td style="padding:4px 6px;white-space:nowrap">
       <b style="color:#eee">${def.name}</b><br><span style="color:#888;font-size:11px">${def.category}</span>
     </td>`;
@@ -365,6 +481,7 @@ function buildWeaponSelect(slotSize, currentWk, onchangeFn) {
   let html = `<select onchange="${onchangeFn}">`;
   html += `<option value="builtin" ${!currentWk||currentWk==="builtin"?"selected":""}>Built-in</option>`;
   for (const [type, def] of Object.entries(WEAPON_DEFS)) {
+    if (type === "vengeance_cannon") continue;
     const k = wKey(type, slotSize);
     const owned = wOwned(k);
     if (owned > 0 && wCanEquip(k, currentWk))
@@ -430,7 +547,6 @@ function buildEngineSelect(ownedTiers, currentTier, onchangeFn, buyFn) {
       html += ` <button style="width:auto;display:inline-block;font-size:11px;${canBuy?"":"opacity:0.4"}" onclick="${buyFn}(${t})" ${canBuy?"":"disabled"}>Buy ${tier.name} (${price.toLocaleString()} cr)</button>`;
     }
   }
-  // Show stats of current tier
   const ct = ENGINE_UPGRADE_TIERS[currentTier];
   html += `<div style="color:#888;font-size:11px;margin-top:3px">Speed ×${ct.speedMult} | Boost dur ×${ct.boostDurMult} | CD ×${ct.boostCDMult} | +${Math.round(ct.dodgeBonus*100)}% dodge</div>`;
   return html;
@@ -460,19 +576,18 @@ function renderShipLoadoutPanel(container) {
     html += `</div>`;
   }
 
-  // Missile kind selector
   const mkDefs = typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS : {};
   const shipMaxMissiles = sd.missiles || 0;
   if (shipMaxMissiles > 0) {
     html += `<p><b>Missile Type:</b> <select onchange="setMissileKind(this.value)">`;
     for (const [k,mk] of Object.entries(mkDefs)) {
-      const count = k==="nuke" ? Math.floor(shipMaxMissiles/mk.slots) : Math.floor(shipMaxMissiles/mk.slots);
+      const count = Math.floor(shipMaxMissiles/mk.slots);
       const sel = (playerLoadout.missileKind||"standard")===k ? "selected" : "";
       html += `<option value="${k}" ${sel}>${mk.name} (×${count} max) — ${mk.desc}</option>`;
     }
     html += `</select></p>`;
   }
-    html += `<p><b>Shields:</b> ${buildShieldSelect(playerLoadout.ownedShieldTiers, playerLoadout.shieldTier, "setPlayerShieldTier(parseInt(this.value))", "buyPlayerShield", sd.shields)}</p>`;
+  html += `<p><b>Shields:</b> ${buildShieldSelect(playerLoadout.ownedShieldTiers, playerLoadout.shieldTier, "setPlayerShieldTier(parseInt(this.value))", "buyPlayerShield", sd.shields)}</p>`;
   html += `<p><b>Hull Armor:</b> ${buildArmorSelect(playerLoadout.ownedArmorTiers, playerLoadout.armorTier, "setPlayerArmorTier(parseInt(this.value))", "buyPlayerArmor", sd.armor)}</p>`;
   html += `<p><b>Engines:</b> ${buildEngineSelect(playerLoadout.ownedEngineTiers, playerLoadout.engineTier, "setPlayerEngineTier(parseInt(this.value))", "buyPlayerEngine")}</p>`;
 
@@ -487,11 +602,9 @@ function renderAllyLoadoutPanel(container) {
   for (let i = 0; i < totalSlots; i++) {
     const slot = playerLoadout.allies[i];
     if (!slot) {
-      // Empty slot
       html += `<div class="ally-slot" style="background:#0a0a14;border:1px dashed #334;border-radius:6px;padding:8px;margin-bottom:8px;color:#555;font:12px monospace">
         <b style="color:#444">Slot ${i+1} — Empty</b><br>
         <div style="margin-top:6px">`;
-      // Show available allies to assign
       const available = ALLY_SHIP_ORDER.filter(sn => allyAvailable(sn, i) > 0);
       if (available.length > 0) {
         html += `Assign: `;
@@ -510,20 +623,15 @@ function renderAllyLoadoutPanel(container) {
       html += `<b style="color:#0af">Slot ${i+1}: <span id="allyNameDisplay_${i}">${slot.name||slot.ship}</span></b>`;
       html += `<button style="width:auto;font-size:10px;padding:2px 7px;background:rgba(255,50,50,0.15);border-color:#f44;color:#f44" onclick="removeAllyFromSlot(${i})">Remove</button>`;
       html += `</div>`;
-      // Name field
       html += `<div style="margin:4px 0">Name: <input id="allyNameInput_${i}" value="${slot.name||slot.ship}" style="background:#111;border:1px solid #445;color:#eee;font:11px monospace;padding:2px 5px;width:130px" onchange="setAllyName(${i},this.value)"></div>`;
-      // Ship info
       html += `<div style="color:#666;font:10px monospace;margin-bottom:4px">${slot.ship} | S${aDef.weaponSize} weapon | ${aDef.armorType} armor</div>`;
-      // Behavior
       html += `<div style="margin:4px 0">Behavior: <select onchange="setAllyBehavior(${i},parseInt(this.value))">`;
       for (let b = 0; b <= 5; b++) {
         const bDef = ALLY_BEHAVIORS[b];
         html += `<option value="${b}" ${(slot.behavior||0)===b?"selected":""}>${bDef.name}</option>`;
       }
       html += `</select> <span style="color:#666;font-size:10px">${beh.desc}</span></div>`;
-      // Weapon
       html += `<div style="margin:4px 0">Weapon (S${aDef.weaponSize}): ${buildWeaponSelect(aDef.weaponSize, slot.weapon, `setAllyWeapon(${i},this.value)`)}</div>`;
-      // Shield
       html += `<div style="margin:4px 0">Shield: ${buildShieldSelect(slot.ownedShieldTiers||[1], slot.shieldTier||1, `setAllyShieldTier(${i},parseInt(this.value))`, `buyAllyShield_${i}`, aDef.shields)}</div>`;
       html += `</div>`;
     }
@@ -539,7 +647,6 @@ function setPDCWeapon(idx, wk)       { if (!playerLoadout.pdcWeapons) playerLoad
 function setPlayerShieldTier(tier)   { if ((playerLoadout.ownedShieldTiers||[1]).includes(tier)) { playerLoadout.shieldTier = tier; renderLoadout(); } }
 function setPlayerArmorTier(tier)    { if ((playerLoadout.ownedArmorTiers||[1]).includes(tier))  { playerLoadout.armorTier  = tier; renderLoadout(); } }
 function setPlayerEngineTier(tier)   { if ((playerLoadout.ownedEngineTiers||[1]).includes(tier)) { playerLoadout.engineTier = tier; setPlayerShip(currentShipName); renderLoadout(); } }
-function setAllyShip(idx, name)      { if (!playerLoadout.unlockedAllyShips.includes(name)) return; if (allyAvailable(name, idx) <= 0) return; playerLoadout.allies[idx].ship = name; playerLoadout.allies[idx].weapon = "builtin"; renderLoadout(); }
 function setAllyName(idx, name)      { if (!playerLoadout.allies[idx]) return; playerLoadout.allies[idx].name = name.trim()||playerLoadout.allies[idx].ship; renderLoadout(); }
 function setAllyBehavior(idx, beh)   { if (!playerLoadout.allies[idx]) return; playerLoadout.allies[idx].behavior = beh; renderLoadout(); }
 function assignAllyToSlot(idx, sn)   { if (allyAvailable(sn, idx) <= 0) return; playerLoadout.allies[idx] = { ship:sn, name:`${sn}#${allyPurchaseCount[sn]||1}`, weapon:"builtin", shieldTier:1, ownedShieldTiers:[1], behavior:0 }; renderLoadout(); }
@@ -608,17 +715,14 @@ function _purchaseAlly(shipName) {
   };
 }
 
-// Called from ally shop tab — just adds to inventory, no slot assignment
 function buyAllyShipFromShop(shipName) {
   const slot = _purchaseAlly(shipName);
   if (!slot) return;
-  // Auto-assign to first empty slot if any
   const emptyIdx = playerLoadout.allies.indexOf(null);
   if (emptyIdx !== -1) playerLoadout.allies[emptyIdx] = slot;
   renderShopTab(); updateHUD();
 }
 
-// Called from loadout panel — buys and assigns to specific slot
 function buyAllyShip(shipName, slotIdx) {
   const slot = _purchaseAlly(shipName);
   if (!slot) return;
