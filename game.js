@@ -387,12 +387,12 @@ let waveReinforceDone = false;
 let lastTouchTime = 0;
 
 // Shadow Comet tracking
-let shadowCometKills = 0;        // how many times beaten
-let shadowCometNoHitWave = false; // whether player took no hits in current shadow comet wave
-let shadowCometActive = false;    // is the current wave a shadow comet fight
-let shadowCometCutsceneState = "none"; // "none","intercepted","dialogue","fighting"
+let shadowCometKills = 0;
+let shadowCometNoHitWave = false;
+let shadowCometActive = false;
+let shadowCometCutsceneState = "none";
 let shadowCometCutsceneTimer = 0;
-let pdcDisabledThisWave = false;  // PDCs disabled flag for shadow comet wave
+let pdcDisabledThisWave = false;
 
 const imgCache={};
 function getImage(fn) {
@@ -416,13 +416,11 @@ function getEnemyInaccuracySpread() {
 }
 
 // ── SHIELD FACES ──────────────────────────────────────────────
-// Ships that get full directional shield arcs + directional armor
 function shipHasShieldFaces(name) {
   return typeof NO_SHIELD_FACES !== "undefined" ? !NO_SHIELD_FACES.has(name) : true;
 }
 
 function initShieldFaces(obj) {
-  // Determine if this object gets shield faces
   const name = obj.type || obj.shipName || (obj === player ? currentShipName : null);
   const useFaces = name ? shipHasShieldFaces(name) : true;
   if (!useFaces) {
@@ -436,17 +434,22 @@ function initShieldFaces(obj) {
 }
 
 function getHitFace(bullet, target) {
+  // bullet traveling in SAME direction as ship facing = hitting BACK
+  // bullet traveling OPPOSITE to ship facing = hitting FRONT
   const bAngle = Math.atan2(bullet.vy||0, bullet.vx||0);
   let rel = bAngle - (target.rotation||0);
-  while(rel > Math.PI) rel -= Math.PI*2;
+  while(rel >  Math.PI) rel -= Math.PI*2;
   while(rel < -Math.PI) rel += Math.PI*2;
-  if(Math.abs(rel) < Math.PI*0.25) return "front";
-  if(Math.abs(rel) > Math.PI*0.75) return "back";
+  // rel ≈ 0   → bullet same dir as ship → BACK
+  // rel ≈ ±π  → bullet opposite to ship → FRONT
+  // rel ≈ +π/2 → RIGHT side
+  // rel ≈ -π/2 → LEFT side
+  if(Math.abs(rel) < Math.PI*0.25) return "back";
+  if(Math.abs(rel) > Math.PI*0.75) return "front";
   return rel > 0 ? "right" : "left";
 }
 
 function getDirectionalArmorMult(bullet, target) {
-  // Only apply directional armor to ships that have shield faces
   const name = target.type || target.shipName || (target === player ? currentShipName : null);
   if (name && !shipHasShieldFaces(name)) return 1.0;
   if(!target.rotation && target.rotation!==0) return 1.0;
@@ -457,25 +460,18 @@ function getDirectionalArmorMult(bullet, target) {
 
 function applyShieldFaceHit(target, bullet, shieldDmg) {
   if(!target.shieldFaces) {
-    // No faces — just drain shields normally
     target.shields = Math.max(0, target.shields - shieldDmg);
     return;
   }
-  // Determine which face was hit
   const face = getHitFace(bullet, target);
   const faceHp = target.shieldFaces[face];
-  if (faceHp <= 0) {
-    // That face is already gone — damage goes to hull directly (handled in applyDamage)
-    return;
-  }
+  if (faceHp <= 0) return;
   const absorbed = Math.min(faceHp, shieldDmg);
   target.shieldFaces[face] = Math.max(0, faceHp - absorbed);
-  // Sync shields total
   target.shields = Object.values(target.shieldFaces).reduce((s,v)=>s+v,0);
 }
 
 function isFaceDown(target, bullet) {
-  // Returns true if the face hit by this bullet is at 0 (hull exposed)
   if (!target.shieldFaces) return target.shields <= 0;
   const face = getHitFace(bullet, target);
   return target.shieldFaces[face] <= 0;
@@ -494,25 +490,20 @@ function regenShieldFaces(obj, regenRate) {
   obj.shields = Object.values(obj.shieldFaces).reduce((s,v)=>s+v,0);
 }
 
-// Draw the shield arc faces around an entity
 function drawShieldFaces(obj) {
   if (!obj.shieldFaces) return;
   const cx = obj.x + obj.w/2;
   const cy = obj.y + obj.h/2;
-  // Radius hugs the ship — use the larger half-dimension + 4px
   const r = Math.max(obj.w, obj.h) * 0.55 + 4;
   const rotation = obj.rotation || 0;
 
-  // 4 faces: front=0, right=PI/2, back=PI, left=-PI/2 (relative to ship rotation)
   const faceAngles = {
     front: rotation,
     right: rotation + Math.PI/2,
     back:  rotation + Math.PI,
     left:  rotation - Math.PI/2,
   };
-  // Each arc spans ~70 degrees (leaving gaps between faces)
-  const arcHalf = Math.PI * 0.3; // ~54 deg each side of center = 108 deg arc
-  const gap = Math.PI * 0.2;     // gap between faces
+  const arcHalf = Math.PI * 0.3;
 
   ctx.save();
   ctx.lineWidth = 3;
@@ -524,18 +515,16 @@ function drawShieldFaces(obj) {
     if (maxHp <= 0 || hp <= 0) continue;
 
     const frac = hp / maxHp;
-    // Arc shrinks as hp depletes: full arc at full hp, tiny arc at low hp
-    const arcSpan = arcHalf * 2 * frac; // full arc = arcHalf*2, shrinks to 0
+    const arcSpan = arcHalf * 2 * frac;
     if (arcSpan < 0.01) continue;
 
     const startAngle = centerAngle - arcSpan / 2;
     const endAngle   = centerAngle + arcSpan / 2;
 
-    // Color: bright blue at full, dimmer as depleted
     const alpha = 0.4 + 0.6 * frac;
     const glowR = Math.round(0   + (1-frac)*80);
     const glowG = Math.round(160 + (1-frac)*95);
-    const glowB = Math.round(255);
+    const glowB = 255;
     ctx.strokeStyle = `rgba(${glowR},${glowG},${glowB},${alpha})`;
     ctx.shadowColor  = `rgba(0,180,255,${alpha * 0.8})`;
     ctx.shadowBlur   = 8 + 6 * frac;
@@ -617,7 +606,6 @@ function setPlayerShip(name) {
     specialCooldown:0, specialActive:false, specialTimer:0,
     specialMissilesUsed:0, specialSalvoTimer:0, specialSalvoCount:0, specialSalvoTotal:0,
     dominionOvercharged:false,
-    // Vengeance special toggle
     revengeActive:false, revengeCooldown:0,
     shipName: name,
   };
@@ -648,14 +636,13 @@ function respawnDeadAllies() {
 // ── SHADOW COMET WAVE ─────────────────────────────────────────
 function spawnShadowCometWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; hitEffects=[]; deathEffects=[];
-  allies=[]; // intercepted — no allies this wave
+  allies=[];
   pdcDisabledThisWave = true;
   shadowCometActive = true;
   shadowCometNoHitWave = true;
   shadowCometCutsceneState = "intercepted";
-  shadowCometCutsceneTimer = 180; // 3 seconds showing intercepted message
+  shadowCometCutsceneTimer = 180;
 
-  // Get scaled stats
   const scaled = getShadowCometStats(shadowCometKills);
   const d = ENEMIES.ShadowComet;
   const sizeNum = d.size || 1;
@@ -677,19 +664,16 @@ function spawnShadowCometWave() {
     stunTimer: 0, vx: 0, vy: 0,
     isShadowComet: true,
     damageMult: scaled.damage || 1,
-    // AI state
     dodgeTimer: 0,
     repositionTimer: 0,
     repositionTarget: null,
-    rotation: Math.PI, // facing left (toward player)
-    turnSpeed: 0.15,
+    rotation: Math.PI,
+    turnSpeed: 0.12,
     turrets: [],
   };
   initShieldFaces(sc);
-  // Don't push yet — push after cutscene
   window._pendingShadowComet = sc;
 
-  // Freeze player in cutscene position
   player.x = GAME_W * 0.25;
   player.y = GAME_H / 2 - player.h / 2;
   player.vx = 0; player.vy = 0;
@@ -699,7 +683,7 @@ function updateShadowCometCutscene() {
   shadowCometCutsceneTimer--;
   if (shadowCometCutsceneState === "intercepted" && shadowCometCutsceneTimer <= 0) {
     shadowCometCutsceneState = "dialogue";
-    shadowCometCutsceneTimer = 150; // 2.5 seconds for dialogue
+    shadowCometCutsceneTimer = 150;
   } else if (shadowCometCutsceneState === "dialogue" && shadowCometCutsceneTimer <= 0) {
     shadowCometCutsceneState = "fighting";
     if (window._pendingShadowComet) {
@@ -711,21 +695,16 @@ function updateShadowCometCutscene() {
 }
 
 function drawShadowCometCutscene() {
-  // Draw background
   ctx.fillStyle = "#000011"; ctx.fillRect(0,0,GAME_W,GAME_H);
   for(let i=0;i<150;i++) ctx.fillRect((i*137)%GAME_W,(i*97)%GAME_H,1,1);
 
-  // Draw player
   drawEntity(player);
-  // Draw shadow comet (frozen on right)
   if (window._pendingShadowComet) drawEntity(window._pendingShadowComet);
 
   ctx.textAlign = "center";
 
   if (shadowCometCutsceneState === "intercepted") {
-    // Toast-style message at top
     showSpecialToast("⚠ Allies were intercepted. Turrets disabled.");
-    // Nametag for shadow comet
     if (window._pendingShadowComet) {
       const sc = window._pendingShadowComet;
       ctx.save();
@@ -738,7 +717,6 @@ function drawShadowCometCutscene() {
     }
   } else if (shadowCometCutsceneState === "dialogue") {
     showSpecialToast("⚠ Allies were intercepted. Turrets disabled.");
-    // Dialogue box
     ctx.save();
     ctx.fillStyle = "rgba(0,0,0,0.82)";
     ctx.fillRect(GAME_W/2 - 260, GAME_H/2 + 60, 520, 64);
@@ -749,7 +727,6 @@ function drawShadowCometCutscene() {
     ctx.fillStyle = "#eee"; ctx.font = "15px monospace";
     ctx.fillText("\"It's just you and me!\"", GAME_W/2, GAME_H/2 + 100);
     ctx.restore();
-    // Nametag
     if (window._pendingShadowComet) {
       const sc = window._pendingShadowComet;
       ctx.save();
@@ -767,18 +744,15 @@ function updateShadowCometAI(e) {
   const pcx = player.x + player.w/2, pcy = player.y + player.h/2;
   const ecx = e.x + e.w/2, ecy = e.y + e.h/2;
 
-  // Turn toward player
   const targetRot = Math.atan2(pcy - ecy, pcx - ecx);
   let rotDiff = targetRot - (e.rotation||0);
   while(rotDiff > Math.PI) rotDiff -= Math.PI*2;
   while(rotDiff < -Math.PI) rotDiff += Math.PI*2;
-  e.rotation = (e.rotation||0) + Math.sign(rotDiff) * Math.min(Math.abs(rotDiff), e.turnSpeed||0.15);
+  e.rotation = (e.rotation||0) + Math.sign(rotDiff) * Math.min(Math.abs(rotDiff), e.turnSpeed||0.12);
 
-  // Repositioning: picks a new random spot frequently
   e.repositionTimer = (e.repositionTimer||0) - 1;
   if (e.repositionTimer <= 0) {
-    e.repositionTimer = 40 + Math.floor(Math.random() * 60); // reposition every 40-100 frames
-    // Pick a point on the right side of the screen, varying y heavily
+    e.repositionTimer = 40 + Math.floor(Math.random() * 60);
     e.repositionTarget = {
       x: GAME_W * (0.55 + Math.random() * 0.35),
       y: 60 + Math.random() * (GAME_H - 120),
@@ -789,12 +763,10 @@ function updateShadowCometAI(e) {
     const tdx = e.repositionTarget.x - e.x;
     const tdy = e.repositionTarget.y - e.y;
     const dist = Math.hypot(tdx, tdy) || 1;
-    const spd = Math.min(e.speed * 1.5, dist * 0.18);
     e.vx += (tdx/dist) * e.speed * 0.35;
     e.vy += (tdy/dist) * e.speed * 0.35;
   }
 
-  // High-speed dodge — randomly juke perpendicular
   e.dodgeTimer = (e.dodgeTimer||0) - 1;
   if (e.dodgeTimer <= 0) {
     e.dodgeTimer = 18 + Math.floor(Math.random() * 30);
@@ -807,16 +779,13 @@ function updateShadowCometAI(e) {
   const spd = Math.hypot(e.vx, e.vy);
   if (spd > e.speed * 2) { e.vx *= (e.speed*2)/spd; e.vy *= (e.speed*2)/spd; }
   e.x += e.vx; e.y += e.vy;
-  // Keep on screen
   e.x = Math.max(10, Math.min(GAME_W - e.w - 10, e.x));
   e.y = Math.max(10, Math.min(GAME_H - e.h - 10, e.y));
 
-  // Shooting — slow bullets, aimed at player
   e.shootTimer--;
   if (e.shootTimer <= 0) {
     const wStats = getWeaponStats("ballistic_cannon", 5);
     if (wStats) {
-      // Slow bullet speed
       const slowStats = { ...wStats, speed: 3.5, damage: Math.round(wStats.damage * (e.damageMult||1)) };
       const pred = predictPos(pcx, pcy, player.vx||0, player.vy||0, ecx, ecy, slowStats.speed);
       const angle = Math.atan2(pred.y - ecy, pred.x - ecx);
@@ -830,7 +799,6 @@ function updateShadowCometAI(e) {
 }
 
 function checkShadowCometDefeat() {
-  // Called when shadow comet HP hits 0
   const reward = infiniteMode ? generateInfiniteWave(currentWave).reward : (WAVES[currentWave-1]?.reward || 35000);
   money += reward;
   shadowCometKills++;
@@ -859,7 +827,6 @@ function checkShadowCometDefeat() {
     setTimeout(() => el.remove(), 4000);
   }
 
-  // Transition to next wave
   waveTransitionText = `Wave ${currentWave} Cleared!  +${reward} credits`;
   waveTransitionTimer = 300; state = "waveTransition"; updateHUD();
 }
@@ -876,7 +843,6 @@ function fullUpgradeComet() {
   ups.armorTier  = 3; ups.ownedArmorTiers  = [1,2,3];
   ups.engineTier = 3; ups.ownedEngineTiers = [1,2,3];
   shipUpgrades["Comet"] = ups;
-  // If currently playing as Comet, reload
   if (currentShipName === "Comet") {
     loadShipUpgrades("Comet");
     setPlayerShip("Comet");
@@ -891,7 +857,6 @@ function spawnWave() {
 
   const waveData=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
 
-  // Shadow Comet wave
   if (waveData && waveData.shadowCometWave) {
     spawnShadowCometWave();
     state = "shadowCometCutscene";
@@ -937,7 +902,11 @@ function spawnWave() {
       e.archetype=pool[Math.floor(Math.random()*pool.length)];
       e.archetypeTimer=0;
     }
-    e.turnSpeed=Math.max(0.012, 0.12-((ENEMIES[name]?.size||2)-1)*0.012);
+    const sizeFactor = ENEMIES[name]?.size || 2;
+    e.turnSpeed = sizeFactor <= 2 ? 0.08
+                : sizeFactor <= 4 ? 0.05
+                : sizeFactor <= 6 ? 0.03
+                : 0.015;
     initShieldFaces(e);
     enemies.push(e);
   });
@@ -946,7 +915,6 @@ function spawnWave() {
 function nextWave() {
   currentWave++;
   if(!infiniteMode&&currentWave>WAVES.length){endGame(true);return;}
-  // Restore allies and PDCs after shadow comet wave
   pdcDisabledThisWave = false;
   shadowCometActive = false;
   respawnDeadAllies();
@@ -991,13 +959,11 @@ function endGame(won) {
 function applyDamage(target,bullet) {
   if(bullet.visualOnly)return;
 
-  // Track if player took a hit from shadow comet bullets
   if (target===player && bullet.shadowCometBullet) shadowCometNoHitWave = false;
 
   if(target===player){
     if(player.specialActive&&(currentShipName==="Falcon"||currentShipName==="Comet"))return;
     if(player.specialActive&&currentShipName==="Starlight"&&Math.random()<0.5)return;
-    // Vengeance Revenge mode: 90% dodge
     if(currentShipName==="Vengeance"&&player.revengeActive&&Math.random()<0.90)return;
     const dodge=player.boosting?player.dodgeBoosted:player.dodgeBase;
     if(dodge>0&&Math.random()<dodge)return;
@@ -1015,7 +981,6 @@ function applyDamage(target,bullet) {
     bullet={...bullet,damage:(bullet.damage||0)*dmgMult};
   }
 
-  // Shadow Comet enemy: high dodge
   if(target.isShadowComet && Math.random() < (target.dodgeChance||0.55)) return;
 
   if(bullet.missile){
@@ -1035,17 +1000,14 @@ function applyDamage(target,bullet) {
   else if(cat==="distortion"){shieldDmg=rawDmg*0.15;hullDmg=rawDmg*0.1;}
   else{shieldDmg=rawDmg*laserShieldMult;hullDmg=rawDmg*dirMult;}
 
-  // Vengeance: 2x damage while revenge active
   if (target!==player && currentShipName==="Vengeance" && player.revengeActive) {
     shieldDmg*=2; hullDmg*=2;
   }
 
-  // Apply shield damage directionally
   const faceWasDown = isFaceDown(target, bullet);
   applyShieldFaceHit(target, bullet, shieldDmg);
   const faceIsDownNow = isFaceDown(target, bullet);
 
-  // Hull damage: if face was already down, or ballistic (always pierces some), or distortion
   const hullExposed = faceWasDown || faceIsDownNow || cat==="ballistic" || cat==="distortion";
   if(hullExposed){
     target.armor=Math.max(0,target.armor-pen*armorMult);
@@ -1261,13 +1223,11 @@ function activateSpecial() {
   const sp=typeof SHIP_SPECIALS!=="undefined"?SHIP_SPECIALS[currentShipName]:null;
   if(!sp)return;
 
-  // Vengeance: toggle Revenge
   if (currentShipName === "Vengeance") {
     if (player.revengeActive) {
-      // Deactivate
       player.revengeActive = false;
       player.specialActive = false;
-      player.revengeCooldown = 300; // 5s cooldown
+      player.revengeCooldown = 300;
       showSpecialToast("⏸ Revenge Deactivated");
     } else {
       if (player.revengeCooldown > 0) return;
@@ -1300,14 +1260,11 @@ function activateSpecial() {
 }
 
 function updateSpecial() {
-  // Vengeance cooldown tick
   if (currentShipName === "Vengeance") {
     if (player.revengeCooldown > 0) player.revengeCooldown--;
     if (player.revengeActive) {
-      // Drain 5hp per second = 5/60 per frame
       player.hp -= 5/60;
       if (player.hp <= 1) {
-        // Auto-deactivate if about to die
         player.revengeActive = false;
         player.specialActive = false;
         player.revengeCooldown = 300;
@@ -1360,7 +1317,6 @@ function activatePing() {
 }
 
 function drawSpecialHUD() {
-  // Vengeance special HUD
   if (currentShipName === "Vengeance") {
     const bx=8,by=GAME_H-82,bw=166,bh=26;
     if (player.revengeActive) {
@@ -1419,7 +1375,6 @@ function drawSpecialHUD() {
 function updatePlayer() {
   if(player.specialCooldown>0)player.specialCooldown--;
 
-  // Freeze player during cutscene
   if(state==="shadowCometCutscene") return;
 
   const nemMult=(player.specialActive&&currentShipName==="Nemesis")?2.0
@@ -1504,19 +1459,15 @@ function updatePlayer() {
         enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-player.x-player.w/2,e.y+e.h/2-player.y-player.h/2);if(d<cnd){cnd=d;cne=e;}});
         if(cne)player.rotation=Math.atan2(cne.y+cne.h/2-player.y-player.h/2,cne.x+cne.w/2-player.x-player.w/2);
       }
-      // Vengeance: draw bullet with red glow, no model (bullet is invisible but glow shows)
       let finalBullets;
       if(player.doubleShot) finalBullets=fireDoubleShot(player,player.weaponStats,player.rotation,true);
       else finalBullets=fireBullets(player,player.weaponStats,player.rotation,true);
-
       if(currentShipName==="Vengeance"){
         finalBullets.forEach(b=>{ b.vengeanceShot=true; });
       }
       playerBullets.push(...finalBullets);
-
       const rougeM=(player.specialActive&&currentShipName==="Rouge")?1/3:1.0;
       const cometM=(player.specialActive&&currentShipName==="Comet")?1/3:1.0;
-      // Vengeance: 2x RPM while Revenge active is already handled by 2x damage in applyDamage
       player.shootTimer=Math.round(player.weaponStats.fireInterval*rougeM*cometM);
     }
   }
@@ -1571,7 +1522,6 @@ function updatePlayer() {
     }
   }
 
-  // PDC turrets — disabled during shadow comet wave
   if (!pdcDisabledThisWave) {
     player.turrets&&player.turrets.forEach(t=>{
       t.shootTimer--;
@@ -1687,7 +1637,6 @@ function updateEnemies() {
   const smallList=enemies.filter(e=>isSmallEnemy(e.type)&&!e.dead);
   const totalSmall=smallList.length;
   enemies.forEach(e=>{
-    // Shadow Comet has its own update
     if(e.isShadowComet){
       updateShadowCometAI(e);
       regenShieldFaces(e, 0.01);
@@ -1702,7 +1651,7 @@ function updateEnemies() {
       let rotDiff=targetRot-(e.rotation||0);
       while(rotDiff>Math.PI)rotDiff-=Math.PI*2;
       while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
-      e.rotation=(e.rotation||0)+Math.sign(rotDiff)*Math.min(Math.abs(rotDiff),e.turnSpeed||0.08);
+      e.rotation=(e.rotation||0)+Math.sign(rotDiff)*Math.min(Math.abs(rotDiff),e.turnSpeed||0.015);
       regenShieldFaces(e, 0.015);
       if(e.corrosionTimer>0){e.corrosionTimer--;e.hp-=e.maxHp*0.0001;}
       e.turrets&&e.turrets.forEach(t=>{
@@ -1825,7 +1774,12 @@ function updateEnemies() {
       e.x=Math.max(0,Math.min(GAME_W-e.w,e.x));e.y=Math.max(0,Math.min(GAME_H-e.h,e.y));
     }
     regenShieldFaces(e, 0.015);
-    e.rotation=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2);
+    // Gradual turn toward player
+    const targetRot=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2);
+    let rotDiff=targetRot-(e.rotation||0);
+    while(rotDiff>Math.PI)rotDiff-=Math.PI*2;
+    while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
+    e.rotation=(e.rotation||0)+Math.sign(rotDiff)*Math.min(Math.abs(rotDiff),e.turnSpeed||0.04);
     const frMult=e.stunTimer>0?2:1;
     e.turrets&&e.turrets.forEach(t=>{
       t.shootTimer--;
@@ -1929,7 +1883,6 @@ function checkCollisions() {
         playExplosion(ENEMIES[e.type]?.size||2);
         e.dead=true;
         money+=e.score;
-        // Check shadow comet defeat
         if(e.isShadowComet) checkShadowCometDefeat();
       }
     });
@@ -1941,7 +1894,6 @@ function checkCollisions() {
       if(!a.dead&&overlaps(b,a)){applyDamage(a,b);if(a.hp<=0){spawnDeathEffect(a);a.dead=true;}}
     });
   });
-  // PDC intercept — disabled during shadow comet wave
   if(player.pdcCount>0&&!pdcDisabledThisWave){
     enemyBullets.forEach(b=>{
       if(!b.dead&&Math.abs(b.x-player.x)<180&&Math.random()<player.pdcCount*0.03)b.dead=true;
@@ -1978,7 +1930,6 @@ function drawEntity(obj) {
 
   if(obj.stunTimer>0){ctx.fillStyle="rgba(160,80,255,0.25)";ctx.fillRect(obj.x,obj.y,obj.w,obj.h);}
 
-  // Vengeance Revenge glow
   if(obj===player&&currentShipName==="Vengeance"&&player.revengeActive){
     ctx.save();
     ctx.globalAlpha=0.18+0.10*Math.abs(Math.sin(Date.now()/120));
@@ -1989,12 +1940,10 @@ function drawEntity(obj) {
 
   const bx=obj.x,bw=obj.w;
 
-  // Draw shield faces as arcs (for ships that have them)
-  // Only draw arc faces — NO bar
+  // Shield faces as arcs for eligible ships, simple bar for small ships
   if(obj.shieldFaces){
     drawShieldFaces(obj);
-  } else if(!obj.shieldFaces&&obj.maxShields>0){
-    // Small ships without faces: draw simple shield bar
+  } else if(obj.maxShields>0){
     ctx.fillStyle="#222";ctx.fillRect(bx,obj.y-17,bw,4);
     ctx.fillStyle="#0af";ctx.fillRect(bx,obj.y-17,bw*Math.max(0,obj.shields/obj.maxShields),4);
   }
@@ -2014,7 +1963,6 @@ function drawEntity(obj) {
 
 function drawBullets() {
   [...playerBullets,...enemyBullets].forEach(b=>{
-    // Vengeance shots: no body, just red glow
     if(b.vengeanceShot){
       ctx.save();
       ctx.globalAlpha=0.85;
@@ -2087,7 +2035,6 @@ function render() {
   ctx.fillStyle="#ffffff";
   for(let i=0;i<150;i++)ctx.fillRect((i*137)%GAME_W,(i*97)%GAME_H,1,1);
 
-  // Shadow comet cutscene state
   if(state==="shadowCometCutscene"){
     drawShadowCometCutscene();
     return;
@@ -2112,12 +2059,10 @@ function render() {
     ctx.restore();
   }
 
-  // Vengeance Revenge red screen tint
   if(currentShipName==="Vengeance"&&player.revengeActive){
     ctx.save();ctx.globalAlpha=0.07;ctx.fillStyle="#ff0000";ctx.fillRect(0,0,GAME_W,GAME_H);ctx.restore();
   }
 
-  // PDC disabled banner
   if(pdcDisabledThisWave){
     ctx.save();ctx.globalAlpha=0.7;ctx.fillStyle="#ff2200";ctx.font="bold 13px monospace";
     ctx.fillText("⚠ TURRETS DISABLED",10,GAME_H-30);ctx.restore();
@@ -2179,10 +2124,7 @@ function cycleFormation() {
   toast._t=setTimeout(()=>toast.style.opacity="0",1500);
 }
 
-function checkMeteorUnlock() {
-  // This function now only fires for non-shadow-comet waves
-  // Shadow comet unlock is handled in checkShadowCometDefeat
-}
+function checkMeteorUnlock() {}
 
 function gameLoop() {
   frameCount++;
@@ -2209,7 +2151,7 @@ function gameLoop() {
             speed:d.speed,fireRate:d.fireRate,shootTimer:Math.floor(Math.random()*d.fireRate),
             img:getImage(d.image),color:d.color,score:d.score,
             spriteAngleOffset:Math.PI,stunTimer:0,vx:0,vy:0,surroundAngle:Math.random()*Math.PI*2,
-            turnSpeed:Math.max(0.012,0.12-((d.size||2)-1)*0.012)};
+            turnSpeed:(()=>{const sz=d.size||2;return sz<=2?0.08:sz<=4?0.05:sz<=6?0.03:0.015;})()};
           re.turrets=[];if(d.turrets){const sf=1+((d.size||1)-1)*0.35;d.turrets.forEach(t=>re.turrets.push({rx:t.rx||0,ry:t.ry||0,fireRate:Math.max(6,Math.floor((t.fireRate||d.fireRate||60)*sf)),shootTimer:Math.floor(Math.random()*60),weaponStats:getWeaponStats(t.weaponType||"laser_repeater",t.weaponSize||2)}));}
           if(typeof ARCHETYPE_POOL!=="undefined"&&ARCHETYPE_POOL[name]){const p=ARCHETYPE_POOL[name];re.archetype=p[Math.floor(Math.random()*p.length)];re.archetypeTimer=0;}
           initShieldFaces(re);
@@ -2218,8 +2160,7 @@ function gameLoop() {
         showSpecialToast("⚠ REINFORCEMENTS!");
       }
     }}
-
-  if(enemies.length===0&&!shadowCometActive){
+    if(enemies.length===0&&!shadowCometActive){
       const reward=infiniteMode?generateInfiniteWave(currentWave).reward:(WAVES[currentWave-1]?.reward||0);
       money+=reward;
       player.shields=player.maxShields;player.armor=player.maxArmor;
