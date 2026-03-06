@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.4.8";
+const CACHE = "galactic-horizons-v1.4.9";
 const ASSETS = [
   "./",
   "./index.html",
@@ -82,4 +82,5 @@ Versions:
 -V1.4.6 - Changed aim assist on mobile
 -V1.4.7 - Removed aim assist because it was attrociously bugged
 -V1.4.8 - Atrocious bug persisted so tried removing again.
+-V1.4.9 - Trying to fix "Favicon" error, whatever the hell that is
 */
