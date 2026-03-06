@@ -57,12 +57,10 @@ if (!IS_MOBILE) {
 }
 
 function buildMobileControls() {
-  // Fixed to BODY at real screen edges — outside game letterbox entirely
   const ui = document.createElement("div");
   ui.id = "mobileUI";
   ui.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:999;touch-action:none;display:none";
 
-  // ── LEFT SIDE ──────────────────────────────────────────────
   const leftPanel = document.createElement("div");
   leftPanel.style.cssText = "position:absolute;left:0;bottom:0;width:220px;height:280px;pointer-events:none";
 
@@ -118,7 +116,6 @@ function buildMobileControls() {
   leftPanel.appendChild(missileBtn);
   leftPanel.appendChild(leftBase);
 
-  // ── RIGHT SIDE ─────────────────────────────────────────────
   const rightPanel = document.createElement("div");
   rightPanel.style.cssText = "position:absolute;right:0;bottom:0;width:220px;height:280px;pointer-events:none";
 
@@ -184,7 +181,6 @@ function buildMobileControls() {
   rightPanel.appendChild(boostBtn);
   rightPanel.appendChild(rightBase);
 
-  // Formation button - bottom center, small
   const formationBtn = document.createElement("div");
   formationBtn.id = "formationBtn";
   formationBtn.textContent = "◀ BEHIND";
@@ -192,7 +188,6 @@ function buildMobileControls() {
   formationBtn.addEventListener("touchstart", e => { e.preventDefault(); cycleFormation(); }, { passive: false });
   ui.appendChild(formationBtn);
 
-  // SPECIAL button — bottom center-left
   const specialMobileBtn = document.createElement("div");
   specialMobileBtn.id = "mobileSpecialBtn";
   specialMobileBtn.textContent = "SPECIAL";
@@ -200,7 +195,6 @@ function buildMobileControls() {
   specialMobileBtn.addEventListener("touchstart", e=>{e.preventDefault();activateSpecial();},{passive:false});
   ui.appendChild(specialMobileBtn);
 
-  // PING button — bottom center-right
   const pingMobileBtn = document.createElement("div");
   pingMobileBtn.textContent = "PING";
   pingMobileBtn.style.cssText = "position:absolute;bottom:68px;left:calc(50% + 20px);padding:8px 16px;background:rgba(255,220,0,0.18);border:2px solid rgba(255,220,0,0.7);border-radius:14px;color:#fc0;font:bold 15px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
@@ -383,14 +377,22 @@ let player={}, allies=[], enemies=[], playerBullets=[], enemyBullets=[];
 let missileTimer=0, ownedShips=[], shopOpenedFromMenu=false;
 let waveTransitionTimer=0, waveTransitionText="", beamFlashes=[];
 let frameCount = 0;
-let allyFormation = "behind"; // "behind", "front", "surround"
+let allyFormation = "behind";
 let playerTookDamageThisWave = false;
 const MAX_HIT_EFFECTS = 80;
 const MAX_DEATH_EFFECTS = 40;
 let pingTarget = null;
 let waveReinforceTimer = 0;
 let waveReinforceDone = false;
-let lastTouchTime = 0; // for mobile UI fade
+let lastTouchTime = 0;
+
+// Shadow Comet tracking
+let shadowCometKills = 0;        // how many times beaten
+let shadowCometNoHitWave = false; // whether player took no hits in current shadow comet wave
+let shadowCometActive = false;    // is the current wave a shadow comet fight
+let shadowCometCutsceneState = "none"; // "none","intercepted","dialogue","fighting"
+let shadowCometCutsceneTimer = 0;
+let pdcDisabledThisWave = false;  // PDCs disabled flag for shadow comet wave
 
 const imgCache={};
 function getImage(fn) {
@@ -413,14 +415,145 @@ function getEnemyInaccuracySpread() {
   return 1.2*(1-acc/0.75);
 }
 
+// ── SHIELD FACES ──────────────────────────────────────────────
+// Ships that get full directional shield arcs + directional armor
+function shipHasShieldFaces(name) {
+  return typeof NO_SHIELD_FACES !== "undefined" ? !NO_SHIELD_FACES.has(name) : true;
+}
+
+function initShieldFaces(obj) {
+  // Determine if this object gets shield faces
+  const name = obj.type || obj.shipName || (obj === player ? currentShipName : null);
+  const useFaces = name ? shipHasShieldFaces(name) : true;
+  if (!useFaces) {
+    obj.shieldFaces = null;
+    obj.maxShieldFaces = null;
+    return;
+  }
+  const q = obj.maxShields / 4;
+  obj.shieldFaces = { front: q, back: q, left: q, right: q };
+  obj.maxShieldFaces = { front: q, back: q, left: q, right: q };
+}
+
+function getHitFace(bullet, target) {
+  const bAngle = Math.atan2(bullet.vy||0, bullet.vx||0);
+  let rel = bAngle - (target.rotation||0);
+  while(rel > Math.PI) rel -= Math.PI*2;
+  while(rel < -Math.PI) rel += Math.PI*2;
+  if(Math.abs(rel) < Math.PI*0.25) return "front";
+  if(Math.abs(rel) > Math.PI*0.75) return "back";
+  return rel > 0 ? "right" : "left";
+}
+
+function getDirectionalArmorMult(bullet, target) {
+  // Only apply directional armor to ships that have shield faces
+  const name = target.type || target.shipName || (target === player ? currentShipName : null);
+  if (name && !shipHasShieldFaces(name)) return 1.0;
+  if(!target.rotation && target.rotation!==0) return 1.0;
+  const face = getHitFace(bullet, target);
+  if(face==="front"||face==="back") return 0.7;
+  return 1.1;
+}
+
+function applyShieldFaceHit(target, bullet, shieldDmg) {
+  if(!target.shieldFaces) {
+    // No faces — just drain shields normally
+    target.shields = Math.max(0, target.shields - shieldDmg);
+    return;
+  }
+  // Determine which face was hit
+  const face = getHitFace(bullet, target);
+  const faceHp = target.shieldFaces[face];
+  if (faceHp <= 0) {
+    // That face is already gone — damage goes to hull directly (handled in applyDamage)
+    return;
+  }
+  const absorbed = Math.min(faceHp, shieldDmg);
+  target.shieldFaces[face] = Math.max(0, faceHp - absorbed);
+  // Sync shields total
+  target.shields = Object.values(target.shieldFaces).reduce((s,v)=>s+v,0);
+}
+
+function isFaceDown(target, bullet) {
+  // Returns true if the face hit by this bullet is at 0 (hull exposed)
+  if (!target.shieldFaces) return target.shields <= 0;
+  const face = getHitFace(bullet, target);
+  return target.shieldFaces[face] <= 0;
+}
+
+function regenShieldFaces(obj, regenRate) {
+  if(!obj.shieldFaces) {
+    if(obj.shields<obj.maxShields) obj.shields = Math.min(obj.maxShields, obj.shields+regenRate);
+    return;
+  }
+  for(const f of ["front","back","left","right"]) {
+    if(obj.shieldFaces[f] < obj.maxShieldFaces[f]) {
+      obj.shieldFaces[f] = Math.min(obj.maxShieldFaces[f], obj.shieldFaces[f] + regenRate/4);
+    }
+  }
+  obj.shields = Object.values(obj.shieldFaces).reduce((s,v)=>s+v,0);
+}
+
+// Draw the shield arc faces around an entity
+function drawShieldFaces(obj) {
+  if (!obj.shieldFaces) return;
+  const cx = obj.x + obj.w/2;
+  const cy = obj.y + obj.h/2;
+  // Radius hugs the ship — use the larger half-dimension + 4px
+  const r = Math.max(obj.w, obj.h) * 0.55 + 4;
+  const rotation = obj.rotation || 0;
+
+  // 4 faces: front=0, right=PI/2, back=PI, left=-PI/2 (relative to ship rotation)
+  const faceAngles = {
+    front: rotation,
+    right: rotation + Math.PI/2,
+    back:  rotation + Math.PI,
+    left:  rotation - Math.PI/2,
+  };
+  // Each arc spans ~70 degrees (leaving gaps between faces)
+  const arcHalf = Math.PI * 0.3; // ~54 deg each side of center = 108 deg arc
+  const gap = Math.PI * 0.2;     // gap between faces
+
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+
+  for (const [face, centerAngle] of Object.entries(faceAngles)) {
+    const hp = obj.shieldFaces[face];
+    const maxHp = obj.maxShieldFaces[face];
+    if (maxHp <= 0 || hp <= 0) continue;
+
+    const frac = hp / maxHp;
+    // Arc shrinks as hp depletes: full arc at full hp, tiny arc at low hp
+    const arcSpan = arcHalf * 2 * frac; // full arc = arcHalf*2, shrinks to 0
+    if (arcSpan < 0.01) continue;
+
+    const startAngle = centerAngle - arcSpan / 2;
+    const endAngle   = centerAngle + arcSpan / 2;
+
+    // Color: bright blue at full, dimmer as depleted
+    const alpha = 0.4 + 0.6 * frac;
+    const glowR = Math.round(0   + (1-frac)*80);
+    const glowG = Math.round(160 + (1-frac)*95);
+    const glowB = Math.round(255);
+    ctx.strokeStyle = `rgba(${glowR},${glowG},${glowB},${alpha})`;
+    ctx.shadowColor  = `rgba(0,180,255,${alpha * 0.8})`;
+    ctx.shadowBlur   = 8 + 6 * frac;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAngle, endAngle);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function buildAlly(i,totalSlots) {
   const slot=playerLoadout.allies[i];
-  if(!slot||!slot.ship) return null; // empty slot
+  if(!slot||!slot.ship) return null;
   const sName=slot.ship;
   const aDef=ALLY_SHIP_DEFS[sName]||ALLY_SHIP_DEFS.Sprite;
   const shieldMult=SHIELD_TIERS[slot.shieldTier||1].mult;
   const wType=resolveWType(slot.weapon,"laser_repeater");
-  // Apply behavior modifiers
   const _AB=typeof ALLY_BEHAVIORS!=="undefined"?ALLY_BEHAVIORS:{0:{name:"Balanced",speedMult:1,dmgMult:1,dodgeMult:1,shieldMult:1,rpmMult:1}};
   const beh=_AB[slot.behavior||0]||_AB[0];
   const shieldsFinal=Math.round(aDef.shields*shieldMult*beh.shieldMult);
@@ -434,7 +567,7 @@ function buildAlly(i,totalSlots) {
   }
   const dodge=Math.min(0.95, Math.max(0, 0.25*beh.dodgeMult));
   const a = {
-    type:sName, name:slot.name||sName,
+    type:sName, shipName:sName, name:slot.name||sName,
     x:player.x-80-i*50, y:player.y+(i-(totalSlots-1)/2)*70,
     w:Math.round(aDef.w*SIZE_SCALE), h:Math.round(aDef.h*SIZE_SCALE), hp:aDef.hp, maxHp:aDef.hp,
     shields:shieldsFinal, maxShields:shieldsFinal,
@@ -445,7 +578,8 @@ function buildAlly(i,totalSlots) {
     isHealer:aDef.isHealer||false,
     dodge, speedMult:beh.speedMult,
   };
-  initShieldFaces(a); return a;
+  initShieldFaces(a);
+  return a;
 }
 
 function setPlayerShip(name) {
@@ -463,7 +597,7 @@ function setPlayerShip(name) {
   const engTier=ENGINE_UPGRADE_TIERS[playerLoadout.engineTier||1];
   const spriteOffset=(name==="Dominion")?0:Math.PI;
   const baseSpeed=d.speed*engTier.speedMult;
-  const isComet=name==="Comet";
+  const isComet=name==="Comet"||name==="Vengeance";
   const boostDuration=Math.round((isComet?120:60)*engTier.boostDurMult);
   const boostCooldownMax=Math.round((isComet?120:180)*engTier.boostCDMult);
   const dodgeBase=Math.min(0.90,(isComet?0.35:0.0)+engTier.dodgeBonus);
@@ -483,6 +617,9 @@ function setPlayerShip(name) {
     specialCooldown:0, specialActive:false, specialTimer:0,
     specialMissilesUsed:0, specialSalvoTimer:0, specialSalvoCount:0, specialSalvoTotal:0,
     dominionOvercharged:false,
+    // Vengeance special toggle
+    revengeActive:false, revengeCooldown:0,
+    shipName: name,
   };
   initShieldFaces(player);
   player.turrets=[];
@@ -496,7 +633,6 @@ function setPlayerShip(name) {
     player.turrets.push({rx:0,ry,fireRate:pdcStats?pdcStats.fireInterval*2:40,shootTimer:Math.floor(Math.random()*40),weaponStats:pdcStats});
   }
   const totalSlots=2+(d.extraAllySlots||0);
-  // Ensure enough null slots exist for this ship's total slots
   while(playerLoadout.allies.length<totalSlots) playerLoadout.allies.push(null);
   allies=[];
   for(let i=0;i<totalSlots;i++){const a=buildAlly(i,totalSlots);if(a)allies.push(a);}
@@ -509,10 +645,262 @@ function respawnDeadAllies() {
   for(let i=0;i<totalSlots;i++){const a=buildAlly(i,totalSlots);if(a)allies.push(a);}
 }
 
+// ── SHADOW COMET WAVE ─────────────────────────────────────────
+function spawnShadowCometWave() {
+  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; hitEffects=[]; deathEffects=[];
+  allies=[]; // intercepted — no allies this wave
+  pdcDisabledThisWave = true;
+  shadowCometActive = true;
+  shadowCometNoHitWave = true;
+  shadowCometCutsceneState = "intercepted";
+  shadowCometCutsceneTimer = 180; // 3 seconds showing intercepted message
+
+  // Get scaled stats
+  const scaled = getShadowCometStats(shadowCometKills);
+  const d = ENEMIES.ShadowComet;
+  const sizeNum = d.size || 1;
+  const ew = Math.round((40 + sizeNum * 16) * SIZE_SCALE);
+  const eh = Math.round((24 + sizeNum * 8)  * SIZE_SCALE);
+
+  const sc = {
+    type: "ShadowComet",
+    x: GAME_W * 0.7,
+    y: GAME_H / 2 - eh / 2,
+    w: ew, h: eh,
+    hp: scaled.hp, maxHp: scaled.hp,
+    shields: scaled.shields, maxShields: scaled.shields,
+    armor: d.armor, maxArmor: d.armor, armorType: d.armorType,
+    speed: scaled.speed,
+    fireRate: d.fireRate, shootTimer: 30,
+    img: getImage(d.image), color: d.color, score: 0,
+    spriteAngleOffset: Math.PI,
+    stunTimer: 0, vx: 0, vy: 0,
+    isShadowComet: true,
+    damageMult: scaled.damage || 1,
+    // AI state
+    dodgeTimer: 0,
+    repositionTimer: 0,
+    repositionTarget: null,
+    rotation: Math.PI, // facing left (toward player)
+    turnSpeed: 0.15,
+    turrets: [],
+  };
+  initShieldFaces(sc);
+  // Don't push yet — push after cutscene
+  window._pendingShadowComet = sc;
+
+  // Freeze player in cutscene position
+  player.x = GAME_W * 0.25;
+  player.y = GAME_H / 2 - player.h / 2;
+  player.vx = 0; player.vy = 0;
+}
+
+function updateShadowCometCutscene() {
+  shadowCometCutsceneTimer--;
+  if (shadowCometCutsceneState === "intercepted" && shadowCometCutsceneTimer <= 0) {
+    shadowCometCutsceneState = "dialogue";
+    shadowCometCutsceneTimer = 150; // 2.5 seconds for dialogue
+  } else if (shadowCometCutsceneState === "dialogue" && shadowCometCutsceneTimer <= 0) {
+    shadowCometCutsceneState = "fighting";
+    if (window._pendingShadowComet) {
+      enemies.push(window._pendingShadowComet);
+      window._pendingShadowComet = null;
+    }
+    state = "playing";
+  }
+}
+
+function drawShadowCometCutscene() {
+  // Draw background
+  ctx.fillStyle = "#000011"; ctx.fillRect(0,0,GAME_W,GAME_H);
+  for(let i=0;i<150;i++) ctx.fillRect((i*137)%GAME_W,(i*97)%GAME_H,1,1);
+
+  // Draw player
+  drawEntity(player);
+  // Draw shadow comet (frozen on right)
+  if (window._pendingShadowComet) drawEntity(window._pendingShadowComet);
+
+  ctx.textAlign = "center";
+
+  if (shadowCometCutsceneState === "intercepted") {
+    // Toast-style message at top
+    showSpecialToast("⚠ Allies were intercepted. Turrets disabled.");
+    // Nametag for shadow comet
+    if (window._pendingShadowComet) {
+      const sc = window._pendingShadowComet;
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(sc.x + sc.w/2 - 80, sc.y - 34, 160, 22);
+      ctx.fillStyle = "#ff4444";
+      ctx.font = "bold 13px monospace";
+      ctx.fillText("Shadow Comet", sc.x + sc.w/2, sc.y - 18);
+      ctx.restore();
+    }
+  } else if (shadowCometCutsceneState === "dialogue") {
+    showSpecialToast("⚠ Allies were intercepted. Turrets disabled.");
+    // Dialogue box
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.82)";
+    ctx.fillRect(GAME_W/2 - 260, GAME_H/2 + 60, 520, 64);
+    ctx.strokeStyle = "#ff4444"; ctx.lineWidth = 1.5;
+    ctx.strokeRect(GAME_W/2 - 260, GAME_H/2 + 60, 520, 64);
+    ctx.fillStyle = "#ff4444"; ctx.font = "bold 12px monospace";
+    ctx.fillText("Shadow Comet", GAME_W/2, GAME_H/2 + 76);
+    ctx.fillStyle = "#eee"; ctx.font = "15px monospace";
+    ctx.fillText("\"It's just you and me!\"", GAME_W/2, GAME_H/2 + 100);
+    ctx.restore();
+    // Nametag
+    if (window._pendingShadowComet) {
+      const sc = window._pendingShadowComet;
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(sc.x + sc.w/2 - 80, sc.y - 34, 160, 22);
+      ctx.fillStyle = "#ff4444"; ctx.font = "bold 13px monospace";
+      ctx.fillText("Shadow Comet", sc.x + sc.w/2, sc.y - 18);
+      ctx.restore();
+    }
+  }
+  ctx.textAlign = "left";
+}
+
+function updateShadowCometAI(e) {
+  const pcx = player.x + player.w/2, pcy = player.y + player.h/2;
+  const ecx = e.x + e.w/2, ecy = e.y + e.h/2;
+
+  // Turn toward player
+  const targetRot = Math.atan2(pcy - ecy, pcx - ecx);
+  let rotDiff = targetRot - (e.rotation||0);
+  while(rotDiff > Math.PI) rotDiff -= Math.PI*2;
+  while(rotDiff < -Math.PI) rotDiff += Math.PI*2;
+  e.rotation = (e.rotation||0) + Math.sign(rotDiff) * Math.min(Math.abs(rotDiff), e.turnSpeed||0.15);
+
+  // Repositioning: picks a new random spot frequently
+  e.repositionTimer = (e.repositionTimer||0) - 1;
+  if (e.repositionTimer <= 0) {
+    e.repositionTimer = 40 + Math.floor(Math.random() * 60); // reposition every 40-100 frames
+    // Pick a point on the right side of the screen, varying y heavily
+    e.repositionTarget = {
+      x: GAME_W * (0.55 + Math.random() * 0.35),
+      y: 60 + Math.random() * (GAME_H - 120),
+    };
+  }
+
+  if (e.repositionTarget) {
+    const tdx = e.repositionTarget.x - e.x;
+    const tdy = e.repositionTarget.y - e.y;
+    const dist = Math.hypot(tdx, tdy) || 1;
+    const spd = Math.min(e.speed * 1.5, dist * 0.18);
+    e.vx += (tdx/dist) * e.speed * 0.35;
+    e.vy += (tdy/dist) * e.speed * 0.35;
+  }
+
+  // High-speed dodge — randomly juke perpendicular
+  e.dodgeTimer = (e.dodgeTimer||0) - 1;
+  if (e.dodgeTimer <= 0) {
+    e.dodgeTimer = 18 + Math.floor(Math.random() * 30);
+    const perpAngle = e.rotation + (Math.random() > 0.5 ? Math.PI/2 : -Math.PI/2);
+    e.vx += Math.cos(perpAngle) * e.speed * 1.2;
+    e.vy += Math.sin(perpAngle) * e.speed * 1.2;
+  }
+
+  e.vx *= 0.88; e.vy *= 0.88;
+  const spd = Math.hypot(e.vx, e.vy);
+  if (spd > e.speed * 2) { e.vx *= (e.speed*2)/spd; e.vy *= (e.speed*2)/spd; }
+  e.x += e.vx; e.y += e.vy;
+  // Keep on screen
+  e.x = Math.max(10, Math.min(GAME_W - e.w - 10, e.x));
+  e.y = Math.max(10, Math.min(GAME_H - e.h - 10, e.y));
+
+  // Shooting — slow bullets, aimed at player
+  e.shootTimer--;
+  if (e.shootTimer <= 0) {
+    const wStats = getWeaponStats("ballistic_cannon", 5);
+    if (wStats) {
+      // Slow bullet speed
+      const slowStats = { ...wStats, speed: 3.5, damage: Math.round(wStats.damage * (e.damageMult||1)) };
+      const pred = predictPos(pcx, pcy, player.vx||0, player.vy||0, ecx, ecy, slowStats.speed);
+      const angle = Math.atan2(pred.y - ecy, pred.x - ecx);
+      const inaccuracy = (Math.random() - 0.5) * 0.15;
+      const bullets = fireBullets({x:ecx-e.w/2, y:ecy-e.h/2, w:e.w, h:e.h}, slowStats, angle+inaccuracy, false);
+      bullets.forEach(b => { b.color = "#ff2200"; b.shadowCometBullet = true; });
+      enemyBullets.push(...bullets);
+    }
+    e.shootTimer = e.fireRate;
+  }
+}
+
+function checkShadowCometDefeat() {
+  // Called when shadow comet HP hits 0
+  const reward = infiniteMode ? generateInfiniteWave(currentWave).reward : (WAVES[currentWave-1]?.reward || 35000);
+  money += reward;
+  shadowCometKills++;
+  shadowCometActive = false;
+  pdcDisabledThisWave = false;
+
+  let unlockMsg = "";
+  if (!ownedShips.includes("Comet")) {
+    ownedShips.push("Comet");
+    cometUnlocked = true;
+    unlockMsg = "🌠 COMET UNLOCKED";
+  } else if (!isCometFullyUpgraded()) {
+    fullUpgradeComet();
+    unlockMsg = "⚡ COMET FULLY UPGRADED";
+  } else if (shadowCometNoHitWave && !ownedShips.includes("Vengeance")) {
+    ownedShips.push("Vengeance");
+    vengeanaceUnlocked = true;
+    unlockMsg = "⚔ VENGEANCE UNLOCKED — Perfect run!";
+  }
+
+  if (unlockMsg) {
+    const el = document.createElement("div");
+    el.textContent = unlockMsg;
+    el.style.cssText = "position:fixed;top:28%;left:50%;transform:translateX(-50%);background:#0a0a0a;color:#ff4400;font:bold 24px monospace;padding:20px 36px;border:2px solid #ff4400;z-index:9999;border-radius:8px;pointer-events:none;text-align:center";
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+
+  // Transition to next wave
+  waveTransitionText = `Wave ${currentWave} Cleared!  +${reward} credits`;
+  waveTransitionTimer = 300; state = "waveTransition"; updateHUD();
+}
+
+function isCometFullyUpgraded() {
+  const ups = shipUpgrades["Comet"];
+  if (!ups) return false;
+  return ups.shieldTier >= 3 && ups.armorTier >= 3 && ups.engineTier >= 3;
+}
+
+function fullUpgradeComet() {
+  const ups = shipUpgrades["Comet"] || {};
+  ups.shieldTier = 3; ups.ownedShieldTiers = [1,2,3];
+  ups.armorTier  = 3; ups.ownedArmorTiers  = [1,2,3];
+  ups.engineTier = 3; ups.ownedEngineTiers = [1,2,3];
+  shipUpgrades["Comet"] = ups;
+  // If currently playing as Comet, reload
+  if (currentShipName === "Comet") {
+    loadShipUpgrades("Comet");
+    setPlayerShip("Comet");
+  }
+}
+
 function spawnWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; hitEffects=[]; deathEffects=[];
   waveReinforceTimer=0; waveReinforceDone=false;
+  shadowCometActive = false;
+  pdcDisabledThisWave = false;
+
   const waveData=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
+
+  // Shadow Comet wave
+  if (waveData && waveData.shadowCometWave) {
+    spawnShadowCometWave();
+    state = "shadowCometCutscene";
+    document.getElementById("hud").style.display = "block";
+    document.getElementById("inGameBack").style.display = "block";
+    if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="block";}
+    return;
+  }
+
   const wrd=waveData.reinforceDelay||0;
   if(wrd>0) waveReinforceTimer=wrd;
   waveData.enemies.forEach(name=>{
@@ -528,7 +916,7 @@ function spawnWave() {
       speed:d.speed, fireRate:d.fireRate, shootTimer:Math.floor(Math.random()*d.fireRate),
       img:getImage(d.image), color:d.color, score:d.score,
       spriteAngleOffset:(name==="Dominion"||name==="Dreadnaught")?0:Math.PI,
-      stunTimer:0, vx:0, vy:name==="Dreadnaught"?d.speed:0,
+      stunTimer:0, vx:0, vy:0,
       surroundAngle:Math.random()*Math.PI*2,
     };
     e.turrets=[];
@@ -544,13 +932,11 @@ function spawnWave() {
     initShieldFaces(e);
     if(name==="Dominion") e.beamTimer=ENEMIES.Dominion.beamCooldownFrames||600;
     if(name==="Dreadnaught"){e.beamTimer=ENEMIES.Dreadnaught.beamCooldownFrames;e.beamWarningAngle=null;}
-    // Assign archetype for small/medium ships
     if(typeof ARCHETYPE_POOL!=="undefined"&&ARCHETYPE_POOL[name]){
       const pool=ARCHETYPE_POOL[name];
       e.archetype=pool[Math.floor(Math.random()*pool.length)];
       e.archetypeTimer=0;
     }
-    // Turn speed based on size (larger = slower turn)
     e.turnSpeed=Math.max(0.012, 0.12-((ENEMIES[name]?.size||2)-1)*0.012);
     initShieldFaces(e);
     enemies.push(e);
@@ -560,10 +946,17 @@ function spawnWave() {
 function nextWave() {
   currentWave++;
   if(!infiniteMode&&currentWave>WAVES.length){endGame(true);return;}
-  respawnDeadAllies(); spawnWave(); state="playing";
-  document.getElementById("hud").style.display="block";
-  document.getElementById("inGameBack").style.display="block";
-  if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="block";}
+  // Restore allies and PDCs after shadow comet wave
+  pdcDisabledThisWave = false;
+  shadowCometActive = false;
+  respawnDeadAllies();
+  spawnWave();
+  if (state !== "shadowCometCutscene") {
+    state="playing";
+    document.getElementById("hud").style.display="block";
+    document.getElementById("inGameBack").style.display="block";
+    if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="block";}
+  }
 }
 
 function startGame(infinite) {
@@ -597,10 +990,15 @@ function endGame(won) {
 // ============================================================
 function applyDamage(target,bullet) {
   if(bullet.visualOnly)return;
+
+  // Track if player took a hit from shadow comet bullets
+  if (target===player && bullet.shadowCometBullet) shadowCometNoHitWave = false;
+
   if(target===player){
-    // Special invulnerability
     if(player.specialActive&&(currentShipName==="Falcon"||currentShipName==="Comet"))return;
     if(player.specialActive&&currentShipName==="Starlight"&&Math.random()<0.5)return;
+    // Vengeance Revenge mode: 90% dodge
+    if(currentShipName==="Vengeance"&&player.revengeActive&&Math.random()<0.90)return;
     const dodge=player.boosting?player.dodgeBoosted:player.dodgeBase;
     if(dodge>0&&Math.random()<dodge)return;
     playerTookDamageThisWave=true;
@@ -608,44 +1006,53 @@ function applyDamage(target,bullet) {
     if(player.specialActive&&currentShipName==="Nemesis")  bullet={...bullet,damage:(bullet.damage||0)*0.5};
   }
   if(target.isAlly){
-    if(target.vanguardActive)return; // Leviathan Fleet Vanguard
+    if(target.vanguardActive)return;
     const allyDodge=target.dodge||0.25;
     if(Math.random()<allyDodge)return;
     let dmgMult=0.75;
-    if(allyFormation==="surround"&&!pingTarget) dmgMult*=0.8; // surround: -20% ally dmg taken
-    if(pingTarget&&!pingTarget.dead) dmgMult*=0.9;            // ping buff: -10% dmg taken
+    if(allyFormation==="surround"&&!pingTarget) dmgMult*=0.8;
+    if(pingTarget&&!pingTarget.dead) dmgMult*=0.9;
     bullet={...bullet,damage:(bullet.damage||0)*dmgMult};
   }
+
+  // Shadow Comet enemy: high dodge
+  if(target.isShadowComet && Math.random() < (target.dodgeChance||0.55)) return;
+
   if(bullet.missile){
     if(target.shields>0){target.shields-=bullet.damage;if(target.shields<0){target.hp+=target.shields;target.shields=0;}}
     else target.hp-=bullet.damage;
     return;
   }
+
   const cat=bullet.category||"laser", wSize=bullet.weaponSize||1, rawDmg=bullet.damage||0, pen=bullet.penetration||0;
   const armorMult=armorDamageMultiplier(wSize,target.armorType||"light");
-  // Directional armor multiplier
   const dirMult=getDirectionalArmorMult(bullet,target);
-  // Distortion synergy: ballistics 1.5× vs stunned
   const stunSynergy=(cat==="ballistic"&&target.stunTimer>0)?1.5:1.0;
-  // Distortion synergy: lasers 1.5× to shields if distortion-weakened
   const laserShieldMult=(cat==="laser"&&target.distortionWeakened)?1.5:1.0;
+
   let shieldDmg,hullDmg;
   if(cat==="ballistic"){shieldDmg=rawDmg*0.25;hullDmg=rawDmg*0.5*stunSynergy*dirMult;}
   else if(cat==="distortion"){shieldDmg=rawDmg*0.15;hullDmg=rawDmg*0.1;}
   else{shieldDmg=rawDmg*laserShieldMult;hullDmg=rawDmg*dirMult;}
-  const hadShields=target.shields>0;
-  // Apply to shield faces
-  if(target.shieldFaces&&shieldDmg>0){
-    applyShieldFaceHit(target,shieldDmg);
-  } else {
-    target.shields=Math.max(0,target.shields-shieldDmg);
+
+  // Vengeance: 2x damage while revenge active
+  if (target!==player && currentShipName==="Vengeance" && player.revengeActive) {
+    shieldDmg*=2; hullDmg*=2;
   }
-  const shieldsNowDown=hadShields&&target.shields<=0;
-  if(cat==="ballistic"||!hadShields||shieldsNowDown){
+
+  // Apply shield damage directionally
+  const faceWasDown = isFaceDown(target, bullet);
+  applyShieldFaceHit(target, bullet, shieldDmg);
+  const faceIsDownNow = isFaceDown(target, bullet);
+
+  // Hull damage: if face was already down, or ballistic (always pierces some), or distortion
+  const hullExposed = faceWasDown || faceIsDownNow || cat==="ballistic" || cat==="distortion";
+  if(hullExposed){
     target.armor=Math.max(0,target.armor-pen*armorMult);
     const hullFactor=1-(target.armor/(target.maxArmor||100));
     target.hp-=hullDmg*hullFactor;
   }
+
   if(cat==="distortion"&&target.shields<=0&&!target.stunTimer){
     target.stunTimer=getStunDuration(wSize);
     target.distortionWeakened=false;
@@ -811,7 +1218,6 @@ function drawRailgunCharge() {
   ctx.restore();
 }
 
-
 // ============================================================
 // SHIP SPECIALS + COMMAND PING
 // ============================================================
@@ -853,8 +1259,26 @@ function spawnWaspAlly() {
 function activateSpecial() {
   if(!player||state!=="playing")return;
   const sp=typeof SHIP_SPECIALS!=="undefined"?SHIP_SPECIALS[currentShipName]:null;
-  if(!sp||player.specialCooldown>0||(player.specialActive&&currentShipName!=="Dominion"))return;
-  // Dominion: just set overcharge flag, cooldown starts now, no specialActive timer
+  if(!sp)return;
+
+  // Vengeance: toggle Revenge
+  if (currentShipName === "Vengeance") {
+    if (player.revengeActive) {
+      // Deactivate
+      player.revengeActive = false;
+      player.specialActive = false;
+      player.revengeCooldown = 300; // 5s cooldown
+      showSpecialToast("⏸ Revenge Deactivated");
+    } else {
+      if (player.revengeCooldown > 0) return;
+      player.revengeActive = true;
+      player.specialActive = true;
+      showSpecialToast("⚡ REVENGE MODE");
+    }
+    return;
+  }
+
+  if(player.specialCooldown>0||(player.specialActive&&currentShipName!=="Dominion"))return;
   if(currentShipName==="Dominion"){
     if(player.dominionOvercharged)return;
     player.dominionOvercharged=true;
@@ -865,8 +1289,8 @@ function activateSpecial() {
   player.specialActive=true;
   player.specialTimer=sp.duration;
   switch(currentShipName){
-    case"Starlight":break; // speed+dodge handled in updatePlayer
-    case"Comet":break; // 3xRPM+auto-aim+dodge handled in updatePlayer
+    case"Starlight":break;
+    case"Comet":break;
     case"Supernova":player.specialMissilesUsed=0;break;
     case"Prometheus":{const n=Math.max(1,Math.floor(player.missiles/4));player.specialSalvoTotal=n;player.specialSalvoCount=0;player.specialSalvoTimer=0;break;}
     case"Wasp":spawnWaspAlly();break;
@@ -876,6 +1300,23 @@ function activateSpecial() {
 }
 
 function updateSpecial() {
+  // Vengeance cooldown tick
+  if (currentShipName === "Vengeance") {
+    if (player.revengeCooldown > 0) player.revengeCooldown--;
+    if (player.revengeActive) {
+      // Drain 5hp per second = 5/60 per frame
+      player.hp -= 5/60;
+      if (player.hp <= 1) {
+        // Auto-deactivate if about to die
+        player.revengeActive = false;
+        player.specialActive = false;
+        player.revengeCooldown = 300;
+        showSpecialToast("⚠ Revenge auto-deactivated!");
+      }
+    }
+    return;
+  }
+
   if(player.specialCooldown>0)player.specialCooldown--;
   if(!player.specialActive)return;
   const sp=typeof SHIP_SPECIALS!=="undefined"?SHIP_SPECIALS[currentShipName]:null;
@@ -919,6 +1360,28 @@ function activatePing() {
 }
 
 function drawSpecialHUD() {
+  // Vengeance special HUD
+  if (currentShipName === "Vengeance") {
+    const bx=8,by=GAME_H-82,bw=166,bh=26;
+    if (player.revengeActive) {
+      const pulse=0.7+0.3*Math.abs(Math.sin(Date.now()/150));
+      ctx.fillStyle=`rgba(200,0,50,${0.25*pulse})`;ctx.fillRect(bx,by,bw,bh);
+      ctx.globalAlpha=pulse;ctx.fillStyle="#ff2244";ctx.font="bold 12px monospace";
+      ctx.fillText("⚡ REVENGE — TAP TO END",bx+5,by+17);ctx.globalAlpha=1;
+    } else if (player.revengeCooldown > 0) {
+      const frac = 1 - player.revengeCooldown/300;
+      ctx.fillStyle="rgba(50,50,50,0.4)";ctx.fillRect(bx,by,bw,bh);
+      ctx.fillStyle="rgba(90,90,90,0.7)";ctx.fillRect(bx,by,bw*frac,bh);
+      ctx.fillStyle="#666";ctx.font="bold 12px monospace";
+      ctx.fillText(`Revenge CD ${(player.revengeCooldown/60).toFixed(1)}s`,bx+5,by+17);
+    } else {
+      ctx.fillStyle="rgba(200,0,50,0.22)";ctx.fillRect(bx,by,bw,bh);
+      ctx.fillStyle="#ff2244";ctx.font="bold 12px monospace";
+      ctx.fillText((IS_MOBILE?"TAP":"[Q] ")+"REVENGE",bx+5,by+17);
+    }
+    return;
+  }
+
   const sp=typeof SHIP_SPECIALS!=="undefined"?SHIP_SPECIALS[currentShipName]:null;
   if(!sp)return;
   const bx=8,by=GAME_H-82,bw=166,bh=26;
@@ -950,71 +1413,19 @@ function drawSpecialHUD() {
   }
 }
 
-
-// ── SHIELD FACES ─────────────────────────────────────────
-function initShieldFaces(obj) {
-  const q = obj.maxShields / 4;
-  obj.shieldFaces = { front: q, back: q, left: q, right: q };
-  obj.maxShieldFaces = { front: q, back: q, left: q, right: q };
-}
-
-function getHitFace(bullet, target) {
-  // Angle from bullet travel direction to target center
-  const bAngle = Math.atan2(bullet.vy||0, bullet.vx||0);
-  // Relative angle to target facing
-  let rel = bAngle - (target.rotation||0);
-  while(rel > Math.PI) rel -= Math.PI*2;
-  while(rel < -Math.PI) rel += Math.PI*2;
-  // rel≈0 means bullet coming from front; ≈±π from back; ≈±π/2 from sides
-  if(Math.abs(rel) < Math.PI*0.25) return "front";
-  if(Math.abs(rel) > Math.PI*0.75) return "back";
-  return rel > 0 ? "right" : "left";
-}
-
-function getDirectionalArmorMult(bullet, target) {
-  if(!target.rotation && target.rotation!==0) return 1.0;
-  const face = getHitFace(bullet, target);
-  if(face==="front"||face==="back") return 0.7;  // -30%
-  return 1.1; // sides +10%
-}
-
-function applyShieldFaceHit(target, shieldDmg) {
-  if(!target.shieldFaces) return shieldDmg; // fallback
-  const face = "front"; // simplified: hits absorbed by face hit, rest spills
-  // distribute damage across all faces proportionally based on remaining
-  let remaining = shieldDmg;
-  const total = Object.values(target.shieldFaces).reduce((s,v)=>s+v,0);
-  if(total<=0) return shieldDmg; // no shields, all to hull
-  // Subtract from all faces equally
-  const ratio = Math.min(1, shieldDmg/total);
-  for(const f of ["front","back","left","right"]) {
-    const taken = target.shieldFaces[f]*ratio;
-    target.shieldFaces[f] = Math.max(0, target.shieldFaces[f]-taken);
-  }
-  // Sync shields value
-  target.shields = Object.values(target.shieldFaces).reduce((s,v)=>s+v,0);
-  return 0; // all absorbed
-}
-
-function regenShieldFaces(obj, regenRate) {
-  if(!obj.shieldFaces) { if(obj.shields<obj.maxShields) obj.shields+=regenRate; return; }
-  let changed=false;
-  for(const f of ["front","back","left","right"]) {
-    if(obj.shieldFaces[f]<obj.maxShieldFaces[f]){
-      obj.shieldFaces[f]=Math.min(obj.maxShieldFaces[f], obj.shieldFaces[f]+regenRate/4);
-      changed=true;
-    }
-  }
-  if(changed) obj.shields=Object.values(obj.shieldFaces).reduce((s,v)=>s+v,0);
-}
-
 // ============================================================
 // UPDATE PLAYER
 // ============================================================
 function updatePlayer() {
   if(player.specialCooldown>0)player.specialCooldown--;
+
+  // Freeze player during cutscene
+  if(state==="shadowCometCutscene") return;
+
   const nemMult=(player.specialActive&&currentShipName==="Nemesis")?2.0
-             :(player.specialActive&&currentShipName==="Starlight")?1.5:1.0;
+             :(player.specialActive&&currentShipName==="Starlight")?1.5
+             :(currentShipName==="Vengeance"&&player.revengeActive)?2.0:1.0;
+
   if(player.boosting){
     player.boostTimer--;
     if(player.boostTimer<=0){player.boosting=false;player.boostCooldown=player.boostCooldownMax;}
@@ -1036,8 +1447,8 @@ function updatePlayer() {
   if(spd>curMaxSpd){player.vx*=curMaxSpd/spd;player.vy*=curMaxSpd/spd;}
   player.x=Math.max(0,Math.min(GAME_W-player.w,player.x+player.vx));
   player.y=Math.max(0,Math.min(GAME_H-player.h,player.y+player.vy));
+
   if(IS_MOBILE&&mobileAim.active&&enemies.length>0){
-    // Aim assist: cast virtual bullet ray, find nearest enemy to path
     const pcx2=player.x+player.w/2,pcy2=player.y+player.h/2;
     const rawAngle=Math.atan2(mouse.y-pcy2,mouse.x-pcx2);
     const cos2=Math.cos(rawAngle),sin2=Math.sin(rawAngle);
@@ -1050,10 +1461,8 @@ function updatePlayer() {
       if(perp<bestDist){bestDist=perp;bestE=e;}
     });
     if(bestE){
-      // Lead aim at the enemy
       const pred2=predictPos(bestE.x+bestE.w/2,bestE.y+bestE.h/2,bestE.vx||0,bestE.vy||0,pcx2,pcy2,player.weaponStats?.speed||10);
       player.rotation=Math.atan2(pred2.y-pcy2,pred2.x-pcx2);
-      // Smoothly nudge mouse toward predicted pos
       mouse.x=pcx2+Math.cos(player.rotation)*800;
       mouse.y=pcy2+Math.sin(player.rotation)*800;
     } else {
@@ -1062,13 +1471,14 @@ function updatePlayer() {
   } else {
     player.rotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
   }
+
   const shieldRegen=SHIELD_TIERS[playerLoadout.shieldTier||1].regenRate;
-  if(player.shields<player.maxShields)player.shields+=shieldRegen;
+  regenShieldFaces(player, shieldRegen);
+
   const isShooting=IS_MOBILE?mobileAim.shooting:(keys["Space"]||mouse.down);
   const isRailgun=player.weaponStats&&player.weaponStats.hitscan;
   if(isRailgun){
     if(player.dominionOvercharged&&isShooting&&player.shootTimer<=0){
-      // Overcharge: instant fire, 3× damage, no charge needed
       const oc={...player.weaponStats,damage:player.weaponStats.damage*3};
       fireRailgun(player,oc,player.rotation,true);
       player.dominionOvercharged=false;
@@ -1089,37 +1499,43 @@ function updatePlayer() {
   } else {
     player.shootTimer--;
     if(isShooting&&player.shootTimer<=0&&player.weaponType!=="none"&&player.weaponStats){
-      // Comet special: auto-aim at nearest enemy
       if(player.specialActive&&currentShipName==="Comet"){
         let cne=null,cnd=1e9;
         enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-player.x-player.w/2,e.y+e.h/2-player.y-player.h/2);if(d<cnd){cnd=d;cne=e;}});
         if(cne)player.rotation=Math.atan2(cne.y+cne.h/2-player.y-player.h/2,cne.x+cne.w/2-player.x-player.w/2);
       }
-      if(player.doubleShot)playerBullets.push(...fireDoubleShot(player,player.weaponStats,player.rotation,true));
-      else playerBullets.push(...fireBullets(player,player.weaponStats,player.rotation,true));
+      // Vengeance: draw bullet with red glow, no model (bullet is invisible but glow shows)
+      let finalBullets;
+      if(player.doubleShot) finalBullets=fireDoubleShot(player,player.weaponStats,player.rotation,true);
+      else finalBullets=fireBullets(player,player.weaponStats,player.rotation,true);
+
+      if(currentShipName==="Vengeance"){
+        finalBullets.forEach(b=>{ b.vengeanceShot=true; });
+      }
+      playerBullets.push(...finalBullets);
+
       const rougeM=(player.specialActive&&currentShipName==="Rouge")?1/3:1.0;
       const cometM=(player.specialActive&&currentShipName==="Comet")?1/3:1.0;
+      // Vengeance: 2x RPM while Revenge active is already handled by 2x damage in applyDamage
       player.shootTimer=Math.round(player.weaponStats.fireInterval*rougeM*cometM);
     }
   }
+
   missileTimer--;
   if(keys["KeyF"]&&missileTimer<=0&&player.missiles>0){
     const mKind=(typeof playerLoadout!=="undefined"?playerLoadout.missileKind||"standard":"standard");
     const mkDef=(typeof MISSILE_KINDS!=="undefined"&&MISSILE_KINDS[mKind])||{slots:1,aoe:0,lockOn:true,friendly:false,corrosion:false};
     const slotCost=mkDef.slots;
-    // Micro: 0.5 slot, stored as 0.5 increments; others: integer slots
-    if(mKind==="nuke"&&player.missiles<slotCost){} // not enough
+    if(mKind==="nuke"&&player.missiles<slotCost){}
     else {
       const freeAmmo=player.specialActive&&currentShipName==="Supernova";
       if(!freeAmmo) player.missiles=Math.max(0,player.missiles-Math.ceil(slotCost));
       else player.specialMissilesUsed++;
       const mt=MISSILE_TYPES[player.missileType||2];
-      const baseDmg=mt.damage*(typeof MISSILE_TYPE_MULT!=="undefined"?1:1);
-      // Lock-on target for mobile
+      const baseDmg=mt.damage;
       let lockTarget=null;
       if(IS_MOBILE&&mkDef.lockOn&&enemies.length>0){
         const pcx=player.x+player.w/2,pcy=player.y+player.h/2;
-        // aim along current aim direction, find closest enemy to ray
         const cos=Math.cos(player.rotation),sin=Math.sin(player.rotation);
         let bestScore=1e9;
         enemies.forEach(e=>{
@@ -1132,14 +1548,12 @@ function updatePlayer() {
       }
       const aim=lockTarget?Math.atan2(lockTarget.y+lockTarget.h/2-player.y-player.h/2,lockTarget.x+lockTarget.w/2-player.x-player.w/2):player.rotation;
       if(mKind==="cluster"){
-        // 4 mini-missiles in spread
         for(let ci=0;ci<4;ci++){
           const a=aim+(ci-1.5)*0.18;
           playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
             vx:Math.cos(a)*mt.speed*1.2,vy:Math.sin(a)*mt.speed*1.2,
             w:10,h:5,damage:baseDmg*0.3,color:"#ffaa00",
-            missile:true,category:"missile",weaponSize:4,
-            lockTarget:lockTarget||null});
+            missile:true,category:"missile",weaponSize:4,lockTarget:lockTarget||null});
         }
       } else {
         const aoe=mkDef.aoe;
@@ -1156,37 +1570,38 @@ function updatePlayer() {
       missileTimer=mKind==="micro"?25:45;
     }
   }
-  player.turrets&&player.turrets.forEach(t=>{
-    t.shootTimer--;
-    if(t.shootTimer<=0&&t.weaponStats){
-      const tbx=player.x+player.w/2,tby=player.y+player.h/2+t.ry;
-      let target=null,bestD=Infinity;
-      enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-tbx,e.y+e.h/2-tby);if(d<bestD){bestD=d;target=e;}});
-      if(target){
-        const pred=predictPos(target.x+target.w/2,target.y+target.h/2,target.vx||0,target.vy||0,tbx,tby,t.weaponStats.speed);
-        playerBullets.push(...fireBullets({x:tbx-player.w/2,y:tby-player.h/2,w:player.w,h:player.h},t.weaponStats,Math.atan2(pred.y-tby,pred.x-tbx),true));
+
+  // PDC turrets — disabled during shadow comet wave
+  if (!pdcDisabledThisWave) {
+    player.turrets&&player.turrets.forEach(t=>{
+      t.shootTimer--;
+      if(t.shootTimer<=0&&t.weaponStats){
+        const tbx=player.x+player.w/2,tby=player.y+player.h/2+t.ry;
+        let target=null,bestD=Infinity;
+        enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-tbx,e.y+e.h/2-tby);if(d<bestD){bestD=d;target=e;}});
+        if(target){
+          const pred=predictPos(target.x+target.w/2,target.y+target.h/2,target.vx||0,target.vy||0,tbx,tby,t.weaponStats.speed);
+          playerBullets.push(...fireBullets({x:tbx-player.w/2,y:tby-player.h/2,w:player.w,h:player.h},t.weaponStats,Math.atan2(pred.y-tby,pred.x-tbx),true));
+        }
+        const bulwM=(player.specialActive&&currentShipName==="Bulwark")?0.5:1.0;
+        t.shootTimer=Math.round(t.fireRate*bulwM);
       }
-      const bulwM=(player.specialActive&&currentShipName==="Bulwark")?0.5:1.0;
-      t.shootTimer=Math.round(t.fireRate*bulwM);
-    }
-  });
+    });
+  }
 }
 
 // ============================================================
 // UPDATE ALLIES
 // ============================================================
 function updateAllies() {
-  // Clean up dead ping target
   if(pingTarget&&pingTarget.dead) pingTarget=null;
   const shieldDown=player.shields<=0;
   const cos=Math.cos(player.rotation),sin=Math.sin(player.rotation);
   const pcx=player.x+player.w/2, pcy=player.y+player.h/2;
   allies.forEach((a,i)=>{
-    // Temp ally timer (Wasp special)
     if(a.tempAlly){a.tempTimer=(a.tempTimer||0)-1;if(a.tempTimer<=0){a.hp=-1;return;}}
     a.vx=a.vx||0;a.vy=a.vy||0;
     let fx,fy;
-    // Healer: always behind player regardless of formation
     if(a.isHealer){
       const dist=60+i*40,perp=(i-(allies.length-1)/2)*50;
       const fx2=pcx-cos*dist-sin*perp-a.w/2;
@@ -1197,11 +1612,10 @@ function updateAllies() {
       const as=Math.hypot(a.vx,a.vy);if(as>spd2){a.vx*=spd2/as;a.vy*=spd2/as;}
       a.vx*=0.84;a.vy*=0.84;a.x+=a.vx;a.y+=a.vy;
       a.rotation=player.rotation;
-      a.shootTimer=999;// no shooting
-      return; // skip rest of ally logic
+      a.shootTimer=999;
+      return;
     }
     if(pingTarget&&!pingTarget.dead){
-      // Command ping: surround the pinged enemy
       const ptcx=pingTarget.x+pingTarget.w/2,ptcy=pingTarget.y+pingTarget.h/2;
       const n=Math.max(1,allies.length);
       const angle=(Math.PI*2*i/n);
@@ -1218,7 +1632,7 @@ function updateAllies() {
     } else if(allyFormation==="surround"){
       const n=Math.max(1,allies.length);
       const angle=(Math.PI*2*i/n)+player.rotation;
-      const r=52+n*12; // tighter — actually surrounding the player
+      const r=52+n*12;
       fx=pcx+Math.cos(angle)*r-a.w/2;
       fy=pcy+Math.sin(angle)*r-a.h/2;
     } else {
@@ -1235,10 +1649,8 @@ function updateAllies() {
     if(spd>targetSpd){a.vx*=targetSpd/spd;a.vy*=targetSpd/spd;}
     a.vx*=0.84; a.vy*=0.84;
     a.x+=a.vx;a.y+=a.vy;
-    // Shield regen: behind formation = 3×
     const regenMult=(allyFormation==="behind"&&!pingTarget)?3.0:1.0;
     regenShieldFaces(a, 0.03*regenMult);
-    // Medic ally: heals others passively
     if(a.isHealer){
       const healAmt=0.08;
       player.hp=Math.min(player.maxHp, player.hp+healAmt);
@@ -1248,7 +1660,6 @@ function updateAllies() {
         regenShieldFaces(other, 0.06);
       });
     }
-    // Target: ping target if active, otherwise closest enemy
     let closest=null,closestD=1e9;
     if(pingTarget&&!pingTarget.dead){closest=pingTarget;}
     else enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-a.x-a.w/2,e.y+e.h/2-a.y-a.h/2);if(d<closestD){closestD=d;closest=e;}});
@@ -1258,12 +1669,10 @@ function updateAllies() {
       const acx=a.x+a.w/2,acy=a.y+a.h/2;
       const pred=predictPos(closest.x+closest.w/2,closest.y+closest.h/2,closest.vx||0,closest.vy||0,acx,acy,a.weaponStats.speed);
       const bullets=fireBullets(a,a.weaponStats,Math.atan2(pred.y-acy,pred.x-acx),true);
-      // Formation + vanguard damage bonuses
       const fmtMult=(allyFormation==="front"&&!pingTarget)?1.3:1.0;
       const vgMult=a.vanguardActive?1.5:1.0;
       bullets.forEach(b=>{b.color="#aaffaa";b.damage=(b.damage||0)*fmtMult*vgMult;});
       playerBullets.push(...bullets);
-      // Ping: +10% fire rate
       const pingMult=(pingTarget&&!pingTarget.dead)?0.9:1.0;
       a.shootTimer=(a.weaponStats.fireInterval||28)*2*pingMult;
     }
@@ -1278,20 +1687,24 @@ function updateEnemies() {
   const smallList=enemies.filter(e=>isSmallEnemy(e.type)&&!e.dead);
   const totalSmall=smallList.length;
   enemies.forEach(e=>{
+    // Shadow Comet has its own update
+    if(e.isShadowComet){
+      updateShadowCometAI(e);
+      regenShieldFaces(e, 0.01);
+      return;
+    }
     if(e.type==="Dreadnaught"){
       e.x=GAME_W-e.w/2;e.y+=e.vy;
       if(e.y<=0){e.y=0;e.vy=Math.abs(e.vy);}
       if(e.y+e.h>=GAME_H){e.y=GAME_H-e.h;e.vy=-Math.abs(e.vy);}
       if(Math.abs(e.vy)<e.speed*0.8)e.vy=e.speed*(e.vy>=0?1:-1);
-      // Gradual turn toward player based on turnSpeed
-    const targetRot=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2);
-    let rotDiff=targetRot-(e.rotation||0);
-    while(rotDiff>Math.PI)rotDiff-=Math.PI*2;
-    while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
-    e.rotation=(e.rotation||0)+Math.sign(rotDiff)*Math.min(Math.abs(rotDiff),e.turnSpeed||0.08);
-      if(e.shields<e.maxShields)e.shields+=0.015;
-    if(e.shieldFaces) e.shields=Object.values(e.shieldFaces).reduce((s,v)=>s+v,0);
-    if(e.corrosionTimer>0){e.corrosionTimer--;e.hp-=e.maxHp*0.0001;} // 1%/s = 0.01%/frame at 100fps
+      const targetRot=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2);
+      let rotDiff=targetRot-(e.rotation||0);
+      while(rotDiff>Math.PI)rotDiff-=Math.PI*2;
+      while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
+      e.rotation=(e.rotation||0)+Math.sign(rotDiff)*Math.min(Math.abs(rotDiff),e.turnSpeed||0.08);
+      regenShieldFaces(e, 0.015);
+      if(e.corrosionTimer>0){e.corrosionTimer--;e.hp-=e.maxHp*0.0001;}
       e.turrets&&e.turrets.forEach(t=>{
         t.shootTimer--;
         if(t.shootTimer<=0&&t.weaponStats){
@@ -1333,7 +1746,6 @@ function updateEnemies() {
       const accel=getEnemyAccel(e),friction=0.92;
       if(isSmallEnemy(e.type)){
         e.archetypeTimer=(e.archetypeTimer||0)-1;
-        // Adaptive: switch mode periodically
         if(e.archetype==="adaptive"&&e.archetypeTimer<=0){
           e.archetypeMode=e.archetypeMode==="bruiser"?"skirmisher":"bruiser";
           e.archetypeTimer=120+Math.floor(Math.random()*180);
@@ -1342,7 +1754,6 @@ function updateEnemies() {
         const orbitR = mode==="skirmisher"||mode==="suppressor"
           ? (mode==="suppressor"?600:360)
           : mode==="bruiser"||mode==="interceptor" ? 120 : 260;
-        // Interceptor: target allies instead of player
         let tx=pcx,ty=pcy;
         if(mode==="interceptor"&&allies.length>0){
           let closestA=allies[0],cad=1e9;
@@ -1351,7 +1762,6 @@ function updateEnemies() {
         }
         const myIdx=smallList.indexOf(e);
         e.surroundAngle+=mode==="flanker"?0.03:0.018;
-        // Flanker: periodically dash to side
         if(mode==="flanker"){
           if(e.archetypeTimer<=0){e.flankerPhase=e.flankerPhase==="flank"?"normal":"flank";e.archetypeTimer=90+Math.floor(Math.random()*120);}
           if(e.flankerPhase==="flank"){
@@ -1362,7 +1772,6 @@ function updateEnemies() {
             e.vx+=(sideX-e.x)/sd*accel*3;e.vy+=(sideY-e.y)/sd*accel*3;
           }
         }
-        // Pack hunter: chain to 2 nearest same-type
         if(mode==="packhunter"){
           const packmates=smallList.filter(o=>o!==e&&o.archetype==="packhunter").slice(0,2);
           if(packmates.length>0){
@@ -1405,7 +1814,6 @@ function updateEnemies() {
       e.vx*=friction;e.vy*=friction;
       const spd=Math.hypot(e.vx,e.vy);
       if(spd>e.speed){e.vx*=e.speed/spd;e.vy*=e.speed/spd;}
-      // Extra damping when near target range to prevent oscillation
       if(!isSmallEnemy(e.type)){
         const dToPlayer=Math.hypot(pcx-e.x-e.w/2,pcy-e.y-e.h/2);
         if(Math.abs(dToPlayer-430)<60){e.vx*=0.88;e.vy*=0.88;}
@@ -1416,7 +1824,7 @@ function updateEnemies() {
       if(e.y<m)e.vy+=accel*1.5;if(e.y>GAME_H-e.h-m)e.vy-=accel*1.5;
       e.x=Math.max(0,Math.min(GAME_W-e.w,e.x));e.y=Math.max(0,Math.min(GAME_H-e.h,e.y));
     }
-    if(e.shields<e.maxShields)e.shields+=0.015;
+    regenShieldFaces(e, 0.015);
     e.rotation=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2);
     const frMult=e.stunTimer>0?2:1;
     e.turrets&&e.turrets.forEach(t=>{
@@ -1472,7 +1880,6 @@ function checkCollisions() {
     if(b.visualOnly||b.dead)return;
     enemies.forEach(e=>{
       if(e.dead||!overlaps(b,e))return;
-      // AOE missile handling
       if(b.missile&&b.aoeRadius>0){
         b.dead=true;
         const bx=b.x+b.w/2,by=b.y+b.h/2;
@@ -1482,7 +1889,6 @@ function checkCollisions() {
           if(dist>b.aoeRadius)return;
           const falloff=1-(dist/b.aoeRadius)*0.5;
           if(b.missileKind==="emp"){
-            // EMP: strip shields, stun
             if(target.shieldFaces) for(const f of Object.keys(target.shieldFaces)) target.shieldFaces[f]=0;
             target.shields=0;
             target.stunTimer=Math.max(target.stunTimer||0,180);
@@ -1492,7 +1898,6 @@ function checkCollisions() {
           }
           if(target.hp<=0){spawnDeathEffect(target);playExplosion(ENEMIES[target.type]?.size||2);target.dead=true;money+=target.score;}
         });
-        // Friendly fire for nukes
         if(b.friendlyFire){
           const playerDist=Math.hypot(player.x+player.w/2-bx,player.y+player.h/2-by);
           if(playerDist<b.aoeRadius) applyDamage(player,{...b,damage:(b.damage||0)*(1-playerDist/b.aoeRadius)*0.5,aoeRadius:0});
@@ -1519,7 +1924,14 @@ function checkCollisions() {
         b.dead=true;
       }
       applyDamage(e,b);
-      if(e.hp<=0){spawnDeathEffect(e);playExplosion(ENEMIES[e.type]?.size||2);e.dead=true;money+=e.score;}
+      if(e.hp<=0){
+        spawnDeathEffect(e);
+        playExplosion(ENEMIES[e.type]?.size||2);
+        e.dead=true;
+        money+=e.score;
+        // Check shadow comet defeat
+        if(e.isShadowComet) checkShadowCometDefeat();
+      }
     });
   });
   enemyBullets.forEach(b=>{
@@ -1529,7 +1941,8 @@ function checkCollisions() {
       if(!a.dead&&overlaps(b,a)){applyDamage(a,b);if(a.hp<=0){spawnDeathEffect(a);a.dead=true;}}
     });
   });
-  if(player.pdcCount>0){
+  // PDC intercept — disabled during shadow comet wave
+  if(player.pdcCount>0&&!pdcDisabledThisWave){
     enemyBullets.forEach(b=>{
       if(!b.dead&&Math.abs(b.x-player.x)<180&&Math.random()<player.pdcCount*0.03)b.dead=true;
     });
@@ -1551,45 +1964,46 @@ function drawEntity(obj) {
   if(hasImg)ctx.drawImage(obj.img,-obj.w/2,-obj.h/2,obj.w,obj.h);
   else{ctx.fillStyle=obj.color||"#fff";ctx.fillRect(-obj.w/2,-obj.h/2,obj.w,obj.h);}
 
-  // Corner frame
   const isPlayer=obj===player, isAlly=obj.isAlly;
-  const frameColor=isPlayer?"#4488ff":isAlly?"#44ff88":"#ff4444";
+  const isShadow=obj.isShadowComet;
+  const frameColor=isPlayer?"#4488ff":isAlly?"#44ff88":isShadow?"#ff2200":"#ff4444";
   const hw=obj.w/2, hh=obj.h/2, cs=Math.min(hw,hh)*0.35, lw=2.5;
   ctx.strokeStyle=frameColor; ctx.lineWidth=lw;
   ctx.shadowColor=frameColor; ctx.shadowBlur=6;
-  // top-left
   ctx.beginPath();ctx.moveTo(-hw,-hh+cs);ctx.lineTo(-hw,-hh);ctx.lineTo(-hw+cs,-hh);ctx.stroke();
-  // top-right
   ctx.beginPath();ctx.moveTo(hw-cs,-hh);ctx.lineTo(hw,-hh);ctx.lineTo(hw,-hh+cs);ctx.stroke();
-  // bottom-left
   ctx.beginPath();ctx.moveTo(-hw,hh-cs);ctx.lineTo(-hw,hh);ctx.lineTo(-hw+cs,hh);ctx.stroke();
-  // bottom-right
   ctx.beginPath();ctx.moveTo(hw-cs,hh);ctx.lineTo(hw,hh);ctx.lineTo(hw,hh-cs);ctx.stroke();
-
   ctx.restore();
 
   if(obj.stunTimer>0){ctx.fillStyle="rgba(160,80,255,0.25)";ctx.fillRect(obj.x,obj.y,obj.w,obj.h);}
-  const bx=obj.x,bw=obj.w;
-  if(obj.maxShields>0){
-    ctx.fillStyle="#222";ctx.fillRect(bx,obj.y-17,bw,4);
-    // Draw 4 shield faces in slightly different shades
-    if(obj.shieldFaces){
-      const faces=["front","right","back","left"];const fc=["#0af","#06f","#0cf","#08f"];
-      let ox=bx;
-      faces.forEach((f,fi)=>{
-        const w=bw*(obj.shieldFaces[f]/Math.max(1,obj.maxShields));
-        ctx.fillStyle=fc[fi];ctx.fillRect(ox,obj.y-17,Math.max(0,w),4);
-        ox+=bw/4;
-      });
-    } else {
-      ctx.fillStyle="#0af";ctx.fillRect(bx,obj.y-17,bw*Math.max(0,obj.shields/obj.maxShields),4);
-    }
+
+  // Vengeance Revenge glow
+  if(obj===player&&currentShipName==="Vengeance"&&player.revengeActive){
+    ctx.save();
+    ctx.globalAlpha=0.18+0.10*Math.abs(Math.sin(Date.now()/120));
+    ctx.fillStyle="#ff0044";ctx.shadowColor="#ff0044";ctx.shadowBlur=30;
+    ctx.fillRect(obj.x-4,obj.y-4,obj.w+8,obj.h+8);
+    ctx.restore();
   }
+
+  const bx=obj.x,bw=obj.w;
+
+  // Draw shield faces as arcs (for ships that have them)
+  // Only draw arc faces — NO bar
+  if(obj.shieldFaces){
+    drawShieldFaces(obj);
+  } else if(!obj.shieldFaces&&obj.maxShields>0){
+    // Small ships without faces: draw simple shield bar
+    ctx.fillStyle="#222";ctx.fillRect(bx,obj.y-17,bw,4);
+    ctx.fillStyle="#0af";ctx.fillRect(bx,obj.y-17,bw*Math.max(0,obj.shields/obj.maxShields),4);
+  }
+
   if(obj.maxArmor>0){ctx.fillStyle="#333";ctx.fillRect(bx,obj.y-12,bw,4);ctx.fillStyle="#ccc";ctx.fillRect(bx,obj.y-12,bw*Math.max(0,obj.armor/obj.maxArmor),4);}
   ctx.fillStyle="#222";ctx.fillRect(bx,obj.y-7,bw,4);
   ctx.fillStyle=obj.isHealer?"#44ffee":obj.corrosionTimer>0?"#ff8800":"#0f0";
   ctx.fillRect(bx,obj.y-7,bw*Math.max(0,obj.hp/obj.maxHp),4);
-  // Archetype label
+
   if(obj.archetype&&typeof ARCHETYPE_LABEL!=="undefined"){
     const lbl=ARCHETYPE_LABEL[obj.archetype]||"";
     const col=(typeof ARCHETYPE_COLOR!=="undefined"&&ARCHETYPE_COLOR[obj.archetype])||"#fff";
@@ -1600,6 +2014,16 @@ function drawEntity(obj) {
 
 function drawBullets() {
   [...playerBullets,...enemyBullets].forEach(b=>{
+    // Vengeance shots: no body, just red glow
+    if(b.vengeanceShot){
+      ctx.save();
+      ctx.globalAlpha=0.85;
+      ctx.shadowColor="#ff0000";ctx.shadowBlur=14;
+      ctx.strokeStyle="#ff0000";ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(b.x+b.w/2,b.y+b.h/2,Math.max(2,b.w*0.3),0,Math.PI*2);ctx.stroke();
+      ctx.restore();
+      return;
+    }
     ctx.fillStyle=b.color||"#fff";ctx.fillRect(b.x,b.y,b.w,b.h);
     if(b.missile){ctx.fillStyle="#ff4400";ctx.fillRect(b.x-6,b.y+1,6,b.h-2);}
   });
@@ -1651,7 +2075,7 @@ function drawBoostHUD() {
     ctx.fillStyle="#00ff88";ctx.font="bold 14px monospace";
     ctx.fillText(IS_MOBILE?"BOOST READY":"BOOST READY [SHIFT]",bx+6,by+19);
   }
-  if(currentShipName==="Comet"){
+  if(currentShipName==="Comet"||currentShipName==="Vengeance"){
     const dodgeNow=player.boosting?player.dodgeBoosted:player.dodgeBase;
     ctx.fillStyle="#ffcc00";ctx.font="13px monospace";
     ctx.fillText(`DODGE ${Math.round(dodgeNow*100)}%`,bx+6,by+44);
@@ -1662,6 +2086,13 @@ function render() {
   ctx.fillStyle="#000011";ctx.fillRect(0,0,GAME_W,GAME_H);
   ctx.fillStyle="#ffffff";
   for(let i=0;i<150;i++)ctx.fillRect((i*137)%GAME_W,(i*97)%GAME_H,1,1);
+
+  // Shadow comet cutscene state
+  if(state==="shadowCometCutscene"){
+    drawShadowCometCutscene();
+    return;
+  }
+
   if(state==="waveTransition"){
     allies.forEach(drawEntity);drawEntity(player);drawDeathEffects();
     const secs=Math.ceil(waveTransitionTimer/60);
@@ -1680,6 +2111,18 @@ function render() {
     }
     ctx.restore();
   }
+
+  // Vengeance Revenge red screen tint
+  if(currentShipName==="Vengeance"&&player.revengeActive){
+    ctx.save();ctx.globalAlpha=0.07;ctx.fillStyle="#ff0000";ctx.fillRect(0,0,GAME_W,GAME_H);ctx.restore();
+  }
+
+  // PDC disabled banner
+  if(pdcDisabledThisWave){
+    ctx.save();ctx.globalAlpha=0.7;ctx.fillStyle="#ff2200";ctx.font="bold 13px monospace";
+    ctx.fillText("⚠ TURRETS DISABLED",10,GAME_H-30);ctx.restore();
+  }
+
   enemies.forEach(drawEntity);
   allies.forEach(drawEntity);
   drawEntity(player);
@@ -1701,7 +2144,7 @@ function render() {
 // HUD + LOOP
 // ============================================================
 function updateHUD() {
-  const inGame = state==="playing"||state==="waveTransition";
+  const inGame = state==="playing"||state==="waveTransition"||state==="shadowCometCutscene";
   document.getElementById("hud").style.display = inGame ? "block" : "none";
   document.getElementById("inGameBack").style.display = inGame ? "block" : "none";
   document.getElementById("health").textContent   = Math.max(0,Math.floor(player.hp||0));
@@ -1737,22 +2180,22 @@ function cycleFormation() {
 }
 
 function checkMeteorUnlock() {
-  if(!playerTookDamageThisWave&&!ownedShips.includes("Comet")){
-    ownedShips.push("Comet");
-    cometUnlocked=true;
-    const msg=document.createElement("div");
-    msg.innerHTML="🚀 PERFECT WAVE!<br>SECRET SHIP UNLOCKED: COMET";
-    msg.style.cssText="position:fixed;top:30%;left:50%;transform:translateX(-50%);background:#0a0a0a;color:#ff4400;font:bold 22px monospace;padding:20px 36px;border:2px solid #ff4400;z-index:9999;border-radius:8px;pointer-events:none;text-align:center;line-height:1.5";
-    document.body.appendChild(msg);
-    setTimeout(()=>msg.remove(),4000);
-  }
+  // This function now only fires for non-shadow-comet waves
+  // Shadow comet unlock is handled in checkShadowCometDefeat
 }
 
 function gameLoop() {
   frameCount++;
+  if(state==="shadowCometCutscene"){
+    updateShadowCometCutscene();
+    updateDeathEffects();
+    render();
+    updateHUD();
+    requestAnimationFrame(gameLoop);
+    return;
+  }
   if(state==="playing"){
     updatePlayer();updateAllies();updateEnemies();updateBullets();checkCollisions();updateSpecial();
-    // Reinforcement waves
     if(waveReinforceTimer>0){waveReinforceTimer--;if(waveReinforceTimer<=0&&!waveReinforceDone){
       waveReinforceDone=true;
       const wd=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
@@ -1775,12 +2218,16 @@ function gameLoop() {
         showSpecialToast("⚠ REINFORCEMENTS!");
       }
     }}
-    if(enemies.length===0){
+
+  if(enemies.length===0&&!shadowCometActive){
       const reward=infiniteMode?generateInfiniteWave(currentWave).reward:(WAVES[currentWave-1]?.reward||0);
       money+=reward;
       player.shields=player.maxShields;player.armor=player.maxArmor;
-      allies.forEach(a=>{a.shields=a.maxShields;a.armor=a.maxArmor;});
-      checkMeteorUnlock();
+      if(player.shieldFaces) initShieldFaces(player);
+      allies.forEach(a=>{
+        a.shields=a.maxShields;a.armor=a.maxArmor;
+        if(a.shieldFaces) initShieldFaces(a);
+      });
       waveTransitionText=`Wave ${currentWave} Cleared!  +${reward} credits`;
       waveTransitionTimer=300;state="waveTransition";updateHUD();
     }
@@ -1793,7 +2240,6 @@ function gameLoop() {
     updateHUD();
   }
   render();
-  // Mobile UI idle fade
   if(IS_MOBILE){
     const ui=document.getElementById("mobileUI");
     if(ui){
@@ -1808,6 +2254,7 @@ function gameLoop() {
 function confirmLeaveGame() {
   if(confirm("Are you sure you want to leave? All progress will be lost.")) {
     enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; hitEffects=[]; deathEffects=[];
+    shadowCometActive=false; pdcDisabledThisWave=false;
     state="menu";
     document.getElementById("mainMenu").style.display="block";
     document.getElementById("hud").style.display="none";
