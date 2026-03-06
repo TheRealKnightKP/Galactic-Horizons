@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.4.4";
+const CACHE = "galactic-horizons-v1.4.5";
 const ASSETS = [
   "./",
   "./index.html",
@@ -78,4 +78,5 @@ Versions:
 -V1.4.2 - Fixed comma in data.js preventing waves mode.
 -V1.4.3 - Forgot to change the number displayed on index.html so i had to make a new version. 
 -V1.4.4 - Added Shadow Comet boss wave 12, fixed shield faces, added Vengeance secret ship.
+-V1.4.5 - Fixed shields and other stuff 
 */
