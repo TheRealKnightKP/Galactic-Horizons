@@ -393,6 +393,7 @@ let shadowCometActive = false;
 let shadowCometCutsceneState = "none";
 let shadowCometCutsceneTimer = 0;
 let pdcDisabledThisWave = false;
+let shadowCometTurretLimit = false;
 
 const imgCache={};
 function getImage(fn) {
@@ -434,18 +435,20 @@ function initShieldFaces(obj) {
 }
 
 function getHitFace(bullet, target) {
-  // bullet traveling in SAME direction as ship facing = hitting BACK
-  // bullet traveling OPPOSITE to ship facing = hitting FRONT
-  const bAngle = Math.atan2(bullet.vy||0, bullet.vx||0);
-  let rel = bAngle - (target.rotation||0);
+  // Use angle from bullet TO target center — this is the impact direction
+  // rel ≈ 0   → impact from front of ship → FRONT face
+  // rel ≈ ±π  → impact from behind → BACK face
+  // rel ≈ +π/2 → impact from ship's right → RIGHT face
+  // rel ≈ -π/2 → impact from ship's left  → LEFT face
+  const tcx = target.x + target.w/2;
+  const tcy = target.y + target.h/2;
+  const impactAngle = Math.atan2(tcy - (bullet.y + (bullet.h||0)/2),
+                                  tcx - (bullet.x + (bullet.w||0)/2));
+  let rel = impactAngle - (target.rotation||0);
   while(rel >  Math.PI) rel -= Math.PI*2;
   while(rel < -Math.PI) rel += Math.PI*2;
-  // rel ≈ 0   → bullet same dir as ship → BACK
-  // rel ≈ ±π  → bullet opposite to ship → FRONT
-  // rel ≈ +π/2 → RIGHT side
-  // rel ≈ -π/2 → LEFT side
-  if(Math.abs(rel) < Math.PI*0.25) return "back";
-  if(Math.abs(rel) > Math.PI*0.75) return "front";
+  if(Math.abs(rel) < Math.PI*0.25) return "front";
+  if(Math.abs(rel) > Math.PI*0.75) return "back";
   return rel > 0 ? "right" : "left";
 }
 
@@ -545,22 +548,28 @@ function buildAlly(i,totalSlots) {
   const wType=resolveWType(slot.weapon,"laser_repeater");
   const _AB=typeof ALLY_BEHAVIORS!=="undefined"?ALLY_BEHAVIORS:{0:{name:"Balanced",speedMult:1,dmgMult:1,dodgeMult:1,shieldMult:1,rpmMult:1}};
   const beh=_AB[slot.behavior||0]||_AB[0];
+  const armorMult2=ARMOR_UPGRADE_TIERS[slot.armorTier||1].mult;
+  const engTier2=ENGINE_UPGRADE_TIERS[slot.engineTier||1];
+  const wqMult2=(typeof WEAPON_QUALITY_TIERS!=="undefined"&&WEAPON_QUALITY_TIERS[slot.weaponQualityTier||1]?.damageMult)||1.0;
   const shieldsFinal=Math.round(aDef.shields*shieldMult*beh.shieldMult);
   const wStatBase=getWeaponStats(wType,aDef.weaponSize);
   let wStats=null;
   if(wStatBase){
     wStats={...wStatBase,
-      damage:Math.round(wStatBase.damage*beh.dmgMult),
+      damage:Math.round(wStatBase.damage*beh.dmgMult*wqMult2),
       fireInterval:Math.round(wStatBase.fireInterval/beh.rpmMult),
     };
   }
-  const dodge=Math.min(0.95, Math.max(0, 0.25*beh.dodgeMult));
+  const dodge=Math.min(0.95, Math.max(0, 0.25*beh.dodgeMult*engTier2.dodgeBonus+0.25));
+  const allyHp=Math.round(aDef.hp*armorMult2);
+  const allyArmor=Math.round(100*armorMult2);
+  const allySpeed=(aDef.w>0?2.5:2.0)*engTier2.speedMult;
   const a = {
     type:sName, shipName:sName, name:slot.name||sName,
     x:player.x-80-i*50, y:player.y+(i-(totalSlots-1)/2)*70,
-    w:Math.round(aDef.w*SIZE_SCALE), h:Math.round(aDef.h*SIZE_SCALE), hp:aDef.hp, maxHp:aDef.hp,
+    w:Math.round(aDef.w*SIZE_SCALE), h:Math.round(aDef.h*SIZE_SCALE), hp:allyHp, maxHp:allyHp,
     shields:shieldsFinal, maxShields:shieldsFinal,
-    armor:100, maxArmor:100, armorType:aDef.armorType,
+    armor:allyArmor, maxArmor:allyArmor, armorType:aDef.armorType,
     img:getImage(aDef.image), color:aDef.color,
     shootTimer:Math.floor(Math.random()*30), vx:0, vy:0, rotation:0, spriteAngleOffset:Math.PI,
     weaponType:wType, weaponSize:aDef.weaponSize, weaponStats:wStats, isAlly:true,
@@ -577,7 +586,9 @@ function setPlayerShip(name) {
   let wType;
   if (d.bespoke||d.weaponType==="none") wType=d.weaponType;
   else wType=resolveWType(playerLoadout.mainWeapon,d.weaponType);
-  const wStats=(wType&&wType!=="none")?getWeaponStats(wType,d.weaponSize):null;
+  const _wStatsRaw=(wType&&wType!=="none")?getWeaponStats(wType,d.weaponSize):null;
+  const _wqMult=(typeof WEAPON_QUALITY_TIERS!=="undefined"&&WEAPON_QUALITY_TIERS[playerLoadout.weaponQualityTier||1]?.damageMult)||1.0;
+  const wStats=_wStatsRaw?{..._wStatsRaw,damage:Math.round(_wStatsRaw.damage*_wqMult)}:null;
   const shieldMult=SHIELD_TIERS[playerLoadout.shieldTier||1].mult;
   const baseShields=Math.round(d.shields*shieldMult);
   const armorMult=ARMOR_UPGRADE_TIERS[playerLoadout.armorTier||1].mult;
@@ -589,13 +600,18 @@ function setPlayerShip(name) {
   const isComet=name==="Comet"||name==="Vengeance";
   const boostDuration=Math.round((isComet?120:60)*engTier.boostDurMult);
   const boostCooldownMax=Math.round((isComet?120:180)*engTier.boostCDMult);
-  const dodgeBase=Math.min(0.90,(isComet?0.35:0.0)+engTier.dodgeBonus);
-  const dodgeBoosted=Math.min(0.95,(isComet?0.75:0.25)+engTier.dodgeBonus);
+  const sizeNum=d.size||1;
+  const baseDodgeBySize = sizeNum<=1?0.12 : sizeNum<=2?0.09 : sizeNum<=3?0.07 : sizeNum<=4?0.05 : sizeNum<=6?0.03 : 0.02;
+  const specialDodge=isComet?0.35:0;
+  const dodgeBase=Math.min(0.90, specialDodge + baseDodgeBySize + engTier.dodgeBonus);
+  const dodgeBoosted=Math.min(0.95, specialDodge + baseDodgeBySize*2 + engTier.dodgeBonus);
   player={
     x:80, y:GAME_H/2-20, w:Math.round((40+(d.size||1)*16)*SIZE_SCALE), h:Math.round((24+(d.size||1)*8)*SIZE_SCALE),
     hp:baseHp, maxHp:baseHp, shields:baseShields, maxShields:baseShields,
     armor:baseArmor, maxArmor:baseArmor, armorType:d.armorType||"light",
-    missiles:d.missiles, speed:baseSpeed, maxSpeed:baseSpeed, accel:baseSpeed*0.20,
+    missiles:Math.round(d.missiles*(typeof MISSILE_STORAGE_TIERS!=="undefined"?MISSILE_STORAGE_TIERS[playerLoadout.missileTier||1].mult:1)),
+    maxMissiles:Math.round(d.missiles*(typeof MISSILE_STORAGE_TIERS!=="undefined"?MISSILE_STORAGE_TIERS[playerLoadout.missileTier||1].mult:1)),
+    speed:baseSpeed, maxSpeed:baseSpeed, accel:baseSpeed*0.20,
     weaponType:wType, weaponSize:d.weaponSize, weaponStats:wStats,
     bespoke:d.bespoke, doubleShot:d.doubleShot||false, pdcCount:d.pdc, missileType:d.missileType||2,
     img:getImage(d.image), color:d.color, rotation:0, spriteAngleOffset:spriteOffset,
@@ -618,7 +634,9 @@ function setPlayerShip(name) {
     const pdcType=resolveWType(pdcWk,"laser_repeater");
     const pdcStats=getWeaponStats(pdcType,tSize);
     const ry=(ti-(d.pdc-1)/2)*12;
-    player.turrets.push({rx:0,ry,fireRate:pdcStats?pdcStats.fireInterval*2:40,shootTimer:Math.floor(Math.random()*40),weaponStats:pdcStats});
+    const _tuMult=(typeof TURRET_UPGRADE_TIERS!=="undefined"&&TURRET_UPGRADE_TIERS[playerLoadout.turretTier||1]?.rpmMult)||1.0;
+    const _tuFireRate=Math.round((pdcStats?pdcStats.fireInterval*2:40)/_tuMult);
+    player.turrets.push({rx:0,ry,fireRate:_tuFireRate,shootTimer:Math.floor(Math.random()*40),weaponStats:pdcStats});
   }
   const totalSlots=2+(d.extraAllySlots||0);
   while(playerLoadout.allies.length<totalSlots) playerLoadout.allies.push(null);
@@ -637,7 +655,14 @@ function respawnDeadAllies() {
 function spawnShadowCometWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; hitEffects=[]; deathEffects=[];
   allies=[];
-  pdcDisabledThisWave = true;
+  // Bulwark and Leviathan get 1 manual turret against Shadow Comet
+  const _scShip = playerLoadout.ship || currentShipName;
+  if (_scShip === "Bulwark" || _scShip === "Leviathan") {
+    pdcDisabledThisWave = false; // keep turrets on for these ships
+    shadowCometTurretLimit = true; // flag to limit to 1 effective turret
+  } else {
+    pdcDisabledThisWave = true;
+  }
   shadowCometActive = true;
   shadowCometNoHitWave = true;
   shadowCometCutsceneState = "intercepted";
@@ -677,6 +702,10 @@ function spawnShadowCometWave() {
   player.x = GAME_W * 0.25;
   player.y = GAME_H / 2 - player.h / 2;
   player.vx = 0; player.vy = 0;
+  // Face toward Shadow Comet position
+  const _scx = GAME_W * 0.7 + 20;
+  const _scy = GAME_H / 2;
+  player.rotation = Math.atan2(_scy - (player.y + player.h/2), _scx - (player.x + player.w/2));
 }
 
 function updateShadowCometCutscene() {
@@ -719,13 +748,13 @@ function drawShadowCometCutscene() {
     showSpecialToast("⚠ Allies were intercepted. Turrets disabled.");
     ctx.save();
     ctx.fillStyle = "rgba(0,0,0,0.82)";
-    ctx.fillRect(GAME_W/2 - 260, GAME_H/2 + 60, 520, 64);
+    ctx.fillRect(GAME_W/2 - 260, GAME_H/2 - 44, 520, 64);
     ctx.strokeStyle = "#ff4444"; ctx.lineWidth = 1.5;
-    ctx.strokeRect(GAME_W/2 - 260, GAME_H/2 + 60, 520, 64);
+    ctx.strokeRect(GAME_W/2 - 260, GAME_H/2 - 44, 520, 64);
     ctx.fillStyle = "#ff4444"; ctx.font = "bold 12px monospace";
-    ctx.fillText("Shadow Comet", GAME_W/2, GAME_H/2 + 76);
+    ctx.fillText("Shadow Comet", GAME_W/2, GAME_H/2 - 28);
     ctx.fillStyle = "#eee"; ctx.font = "15px monospace";
-    ctx.fillText("\"It's just you and me!\"", GAME_W/2, GAME_H/2 + 100);
+    ctx.fillText("\"It's just you and me!\"", GAME_W/2, GAME_H/2 - 4);
     ctx.restore();
     if (window._pendingShadowComet) {
       const sc = window._pendingShadowComet;
@@ -917,6 +946,7 @@ function nextWave() {
   if(!infiniteMode&&currentWave>WAVES.length){endGame(true);return;}
   pdcDisabledThisWave = false;
   shadowCometActive = false;
+  shadowCometTurretLimit = false;
   respawnDeadAllies();
   spawnWave();
   if (state !== "shadowCometCutscene") {
@@ -934,7 +964,39 @@ function startGame(infinite) {
   if(!ownedShips||ownedShips.length===0) ownedShips=["Starlight"];
   setPlayerShip(playerLoadout.ship||"Starlight");
   if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="none";}
-  state="shop"; shopOpenedFromMenu=false; showShop();
+  // Show confirmation dialog instead of shop
+  showWavesConfirm(infinite);
+}
+
+function showWavesConfirm(infinite) {
+  document.getElementById("mainMenu").style.display="none";
+  let el=document.getElementById("wavesConfirm");
+  if(!el){
+    el=document.createElement("div");
+    el.id="wavesConfirm";
+    el.style.cssText="position:fixed;inset:0;background:rgba(0,0,20,0.92);display:flex;align-items:center;justify-content:center;z-index:9000";
+    const box=document.createElement("div");
+    box.style.cssText="background:#090914;border:2px solid #0af;border-radius:12px;padding:32px 40px;text-align:center;font-family:monospace;max-width:420px";
+    box.innerHTML=`
+      <div style="color:#0af;font:bold 22px monospace;margin-bottom:10px">⚠ Enter Waves Mode?</div>
+      <div style="color:#aaa;font:14px monospace;margin-bottom:18px;line-height:1.6">Once you enter, your credits carry over<br>between waves but there's no turning back.<br>Visit <b style="color:#fff">Loadout</b> before starting to configure your ship.</div>
+      <div style="display:flex;gap:12px;justify-content:center">
+        <button id="wc_yes" style="padding:10px 28px;font:bold 15px monospace;background:rgba(0,170,255,0.18);border:2px solid #0af;color:#0af;border-radius:8px;cursor:pointer">Let's go!</button>
+        <button id="wc_no"  style="padding:10px 28px;font:bold 15px monospace;background:rgba(255,60,60,0.12);border:2px solid #f44;color:#f44;border-radius:8px;cursor:pointer">Go Back</button>
+      </div>`;
+    el.appendChild(box);
+    document.body.appendChild(el);
+  }
+  el.style.display="flex";
+  el.querySelector("#wc_yes").onclick=()=>{
+    el.style.display="none";
+    state="shop"; shopOpenedFromMenu=false; showShop();
+  };
+  el.querySelector("#wc_no").onclick=()=>{
+    el.style.display="none";
+    document.getElementById("mainMenu").style.display="block";
+    state="menu";
+  };
 }
 
 function returnToMenuPreserveMoney() {
@@ -1015,11 +1077,15 @@ function applyDamage(target,bullet) {
     target.hp-=hullDmg*hullFactor;
   }
 
-  if(cat==="distortion"&&target.shields<=0&&!target.stunTimer){
-    target.stunTimer=getStunDuration(wSize);
-    target.distortionWeakened=false;
+  if(cat==="distortion"){
+    const hitFaceDown = isFaceDown(target, bullet);
+    if(hitFaceDown && !target.stunTimer){
+      target.stunTimer=getStunDuration(wSize);
+      target.distortionWeakened=false;
+    } else if(!hitFaceDown){
+      target.distortionWeakened=true;
+    }
   }
-  if(cat==="distortion"&&target.shields>0) target.distortionWeakened=true;
 }
 
 function predictPos(tx,ty,tvx,tvy,sx,sy,spd) {
@@ -1060,8 +1126,15 @@ function fireRailgun(origin,wStats,angle,isPlayer) {
       spawnRailgunEffect(e.x+e.w/2,e.y+e.h/2,wStats.size);
       applyDamage(e,{...base,damage:wStats.damage});
       playHitSound("ballistic");
-      if(e.hp<=0){spawnDeathEffect(e);playExplosion(ENEMIES[e.type]?.size||2);e.dead=true;money+=e.score;}
+      if(e.hp<=0){
+        spawnDeathEffect(e);
+        playExplosion(ENEMIES[e.type]?.size||2);
+        e.dead=true;
+        money+=e.score;
+        if(e.isShadowComet) checkShadowCometDefeat();
+      }
     });
+    enemies=enemies.filter(e=>!e.dead);
     playSound("shoot_railgun",{volume:0.8});
   }
   beamFlashes.push({x1:bx,y1:by,x2:ep.x,y2:ep.y,life:12,maxLife:12,color:isPlayer?"#88ddff":"#ffff88"});
@@ -1508,8 +1581,11 @@ function updatePlayer() {
         let target=null,bestD=Infinity;
         enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-tbx,e.y+e.h/2-tby);if(d<bestD){bestD=d;target=e;}});
         if(target){
-          const pred=predictPos(target.x+target.w/2,target.y+target.h/2,target.vx||0,target.vy||0,tbx,tby,t.weaponStats.speed);
-          playerBullets.push(...fireBullets({x:tbx-player.w/2,y:tby-player.h/2,w:player.w,h:player.h},t.weaponStats,Math.atan2(pred.y-tby,pred.x-tbx),true));
+          const pred=predictPos(target.x+target.w/2,target.y+target.h/2,target.vx||0,target.vy||0,tbx,tby,t.weaponStats.speed||8);
+          const pdcAngle=Math.atan2(pred.y-tby,pred.x-tbx);
+          const pdcOrigin={x:tbx-player.w/2,y:tby-player.h/2,w:player.w,h:player.h};
+          if(t.weaponStats.hitscan){fireRailgun(pdcOrigin,t.weaponStats,pdcAngle,true);}
+          else{playerBullets.push(...fireBullets(pdcOrigin,t.weaponStats,pdcAngle,true));}
         }
         const bulwM=(player.specialActive&&currentShipName==="Bulwark")?0.5:1.0;
         t.shootTimer=Math.round(t.fireRate*bulwM);
@@ -1540,6 +1616,16 @@ function updateAllies() {
       const as=Math.hypot(a.vx,a.vy);if(as>spd2){a.vx*=spd2/as;a.vy*=spd2/as;}
       a.vx*=0.84;a.vy*=0.84;a.x+=a.vx;a.y+=a.vy;
       a.rotation=player.rotation;
+      regenShieldFaces(a, 0.04);
+      // Healer actively heals player and other allies
+      const healAmt=0.12;
+      player.hp=Math.min(player.maxHp, player.hp+healAmt);
+      regenShieldFaces(player, 0.08);
+      allies.forEach(other=>{
+        if(other===a)return;
+        other.hp=Math.min(other.maxHp, other.hp+healAmt);
+        regenShieldFaces(other, 0.06);
+      });
       a.shootTimer=999;
       return;
     }
@@ -1579,15 +1665,7 @@ function updateAllies() {
     a.x+=a.vx;a.y+=a.vy;
     const regenMult=(allyFormation==="behind"&&!pingTarget)?3.0:1.0;
     regenShieldFaces(a, 0.03*regenMult);
-    if(a.isHealer){
-      const healAmt=0.08;
-      player.hp=Math.min(player.maxHp, player.hp+healAmt);
-      allies.forEach(other=>{
-        if(other===a||other.isHealer)return;
-        other.hp=Math.min(other.maxHp, other.hp+healAmt);
-        regenShieldFaces(other, 0.06);
-      });
-    }
+
     let closest=null,closestD=1e9;
     if(pingTarget&&!pingTarget.dead){closest=pingTarget;}
     else enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-a.x-a.w/2,e.y+e.h/2-a.y-a.h/2);if(d<closestD){closestD=d;closest=e;}});
@@ -1595,12 +1673,17 @@ function updateAllies() {
     a.shootTimer--;
     if(a.shootTimer<=0&&closest&&a.weaponStats){
       const acx=a.x+a.w/2,acy=a.y+a.h/2;
-      const pred=predictPos(closest.x+closest.w/2,closest.y+closest.h/2,closest.vx||0,closest.vy||0,acx,acy,a.weaponStats.speed);
-      const bullets=fireBullets(a,a.weaponStats,Math.atan2(pred.y-acy,pred.x-acx),true);
+      const pred=predictPos(closest.x+closest.w/2,closest.y+closest.h/2,closest.vx||0,closest.vy||0,acx,acy,a.weaponStats.speed||8);
+      const aimAngle=Math.atan2(pred.y-acy,pred.x-acx);
       const fmtMult=(allyFormation==="front"&&!pingTarget)?1.3:1.0;
       const vgMult=a.vanguardActive?1.5:1.0;
-      bullets.forEach(b=>{b.color="#aaffaa";b.damage=(b.damage||0)*fmtMult*vgMult;});
-      playerBullets.push(...bullets);
+      if(a.weaponStats.hitscan){
+        fireRailgun(a,a.weaponStats,aimAngle,true);
+      } else {
+        const bullets=fireBullets(a,a.weaponStats,aimAngle,true);
+        bullets.forEach(b=>{b.color="#aaffaa";b.damage=(b.damage||0)*fmtMult*vgMult;});
+        playerBullets.push(...bullets);
+      }
       const pingMult=(pingTarget&&!pingTarget.dead)?0.9:1.0;
       a.shootTimer=(a.weaponStats.fireInterval||28)*2*pingMult;
     }
@@ -1636,9 +1719,13 @@ function updateEnemies() {
         t.shootTimer--;
         if(t.shootTimer<=0&&t.weaponStats){
           const tx=e.x+t.rx,ty=e.y+t.ry;
-          const pred=predictPos(pcx,pcy,player.vx||0,player.vy||0,tx,ty,t.weaponStats.speed);
-          enemyBullets.push(...fireBullets({x:tx-1,y:ty-1,w:2,h:2},t.weaponStats,Math.atan2(pred.y-ty,pred.x-tx),false));
-          t.shootTimer=t.fireRate;
+          const pred=predictPos(pcx,pcy,player.vx||0,player.vy||0,tx,ty,t.weaponStats.speed||8);
+          const dAngle=Math.atan2(pred.y-ty,pred.x-tx);
+          let dSide=dAngle-(e.rotation||0);
+          while(dSide>Math.PI)dSide-=Math.PI*2; while(dSide<-Math.PI)dSide+=Math.PI*2;
+          const dSideMult=(Math.abs(Math.abs(dSide)-Math.PI/2)<Math.PI/4)?2.0:1.0;
+          enemyBullets.push(...fireBullets({x:tx-1,y:ty-1,w:2,h:2},t.weaponStats,dAngle,false));
+          t.shootTimer=t.fireRate*dSideMult;
         }
       });
       e.beamTimer--;
@@ -1700,15 +1787,41 @@ function updateEnemies() {
           }
         }
         if(mode==="packhunter"){
-          const packmates=smallList.filter(o=>o!==e&&o.archetype==="packhunter").slice(0,2);
-          if(packmates.length>0){
-            const lineAngle=Math.atan2(ty-ecy,tx-ecx);
-            const offset=(smallList.indexOf(e)%3)*80;
-            const lineX=tx-Math.cos(lineAngle)*(200+offset)-e.w/2;
-            const lineY=ty-Math.sin(lineAngle)*(200+offset)-e.h/2;
-            const ld=Math.hypot(lineX-e.x,lineY-e.y)||1;
-            e.vx+=(lineX-e.x)/ld*accel*2.5;e.vy+=(lineY-e.y)/ld*accel*2.5;
+          // Assign pack: this ship + 2 closest eligible overrides
+          if(!e.packAssigned){
+            e.packAssigned=true;
+            const candidates=smallList.filter(o=>o!==e&&!o.packLeader&&!o.packMember);
+            candidates.sort((a,b)=>Math.hypot(a.x-e.x,a.y-e.y)-Math.hypot(b.x-e.x,b.y-e.y));
+            const pack=[e,...candidates.slice(0,2)];
+            pack.forEach((m,idx)=>{
+              m.archetype="packhunter";
+              m.packLeader=(idx===0);
+              m.packMember=true;
+              m.packGroup=e;
+              m.packPosition=idx;
+            });
+            e.packList=pack;
           }
+          const pack=e.packList||[e];
+          // Rotate pack leadership if front ship shields drop below 30%
+          if(pack[0]&&pack[0].shields<pack[0].maxShields*0.30&&pack.length>1){
+            const fallen=pack.shift();
+            fallen.packPosition=pack.length;
+            pack.push(fallen);
+            pack.forEach((m,idx)=>{
+              m.packPosition=idx;
+              m.packLeader=(idx===0);
+            });
+            e.packList=pack;
+          }
+          const lineAngle=Math.atan2(ty-ecy,tx-ecx);
+          const frontRange=280;
+          const myPos=e.packPosition||0;
+          const targetDist=frontRange+myPos*85;
+          const lineX=tx-Math.cos(lineAngle)*targetDist-e.w/2;
+          const lineY=ty-Math.sin(lineAngle)*targetDist-e.h/2;
+          const ld=Math.hypot(lineX-e.x,lineY-e.y)||1;
+          e.vx+=(lineX-e.x)/ld*accel*3;e.vy+=(lineY-e.y)/ld*accel*3;
         } else {
           const orbitAngle=e.surroundAngle+(Math.PI*2*myIdx/Math.max(totalSmall,1));
           const targetX=tx+Math.cos(orbitAngle)*orbitR-e.w/2;
@@ -1752,6 +1865,19 @@ function updateEnemies() {
       e.x=Math.max(0,Math.min(GAME_W-e.w,e.x));e.y=Math.max(0,Math.min(GAME_H-e.h,e.y));
     }
     regenShieldFaces(e, 0.015);
+    // Enemy healer aura — heals nearby enemies
+    if(e.type==="Healer"&&!e.stunTimer){
+      const ehr=ENEMIES.Healer.healRadius||280;
+      const ehp=ENEMIES.Healer.healPerFrame||8;
+      enemies.forEach(other=>{
+        if(other===e||other.dead)return;
+        const hd=Math.hypot(other.x+other.w/2-e.x-e.w/2,other.y+other.h/2-e.y-e.h/2);
+        if(hd<ehr){
+          other.hp=Math.min(other.maxHp,other.hp+ehp*0.016);
+          regenShieldFaces(other,0.04);
+        }
+      });
+    }
     // Gradual turn toward player
     const targetRot=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2);
     let rotDiff=targetRot-(e.rotation||0);
@@ -1763,9 +1889,25 @@ function updateEnemies() {
       t.shootTimer--;
       if(t.shootTimer<=0&&t.weaponStats){
         const tx=e.x+t.rx,ty=e.y+t.ry;
-        const pred=predictPos(pcx,pcy,player.vx||0,player.vy||0,tx,ty,t.weaponStats.speed);
-        enemyBullets.push(...fireBullets({x:tx-1,y:ty-1,w:2,h:2},t.weaponStats,Math.atan2(pred.y-ty,pred.x-tx),false));
-        t.shootTimer=t.fireRate*frMult;
+        const pred=predictPos(pcx,pcy,player.vx||0,player.vy||0,tx,ty,t.weaponStats.speed||8);
+        const aimAngle=Math.atan2(pred.y-ty,pred.x-tx);
+        // Half RPM if target is roughly to the side of the turret
+        const shipAngle=e.rotation||0;
+        let sideAngle=aimAngle-shipAngle;
+        while(sideAngle>Math.PI)sideAngle-=Math.PI*2;
+        while(sideAngle<-Math.PI)sideAngle+=Math.PI*2;
+        const isSideShot=Math.abs(Math.abs(sideAngle)-Math.PI/2)<Math.PI/4;
+        const sideMult=isSideShot?2.0:1.0; // double the timer = half RPM
+        if(t.weaponStats.hitscan){
+          const cos=Math.cos(aimAngle),sin=Math.sin(aimAngle);
+          const ep=rayEndpoint(tx,ty,cos,sin);
+          beamFlashes.push({x1:tx,y1:ty,x2:ep.x,y2:ep.y,life:12,maxLife:12,color:"#ffff88"});
+          if(rayHitsRect(tx,ty,cos,sin,player)){spawnRailgunEffect(player.x+player.w/2,player.y+player.h/2,t.weaponStats.size||3);applyDamage(player,{...t.weaponStats,damage:t.weaponStats.damage,category:"ballistic"});}
+          allies.forEach(a=>{if(rayHitsRect(tx,ty,cos,sin,a)){applyDamage(a,{...t.weaponStats,damage:t.weaponStats.damage,category:"ballistic"});}});
+        } else {
+          enemyBullets.push(...fireBullets({x:tx-1,y:ty-1,w:2,h:2},t.weaponStats,aimAngle,false));
+        }
+        t.shootTimer=t.fireRate*frMult*sideMult;
       }
     });
     if(e.type==="Dominion"){
@@ -2001,9 +2143,9 @@ function drawBoostHUD() {
     ctx.fillStyle="#00ff88";ctx.font="bold 14px monospace";
     ctx.fillText(IS_MOBILE?"BOOST READY":"BOOST READY [SHIFT]",bx+6,by+19);
   }
-  if(currentShipName==="Comet"||currentShipName==="Vengeance"){
+  {
     const dodgeNow=player.boosting?player.dodgeBoosted:player.dodgeBase;
-    ctx.fillStyle="#ffcc00";ctx.font="13px monospace";
+    ctx.fillStyle="#ffcc00";ctx.font="12px monospace";
     ctx.fillText(`DODGE ${Math.round(dodgeNow*100)}%`,bx+6,by+44);
   }
 }
@@ -2142,6 +2284,7 @@ function gameLoop() {
       const reward=infiniteMode?generateInfiniteWave(currentWave).reward:(WAVES[currentWave-1]?.reward||0);
       money+=reward;
       player.shields=player.maxShields;player.armor=player.maxArmor;
+      player.missiles=player.maxMissiles||player.missiles;
       if(player.shieldFaces) initShieldFaces(player);
       allies.forEach(a=>{
         a.shields=a.maxShields;a.armor=a.maxArmor;
@@ -2183,4 +2326,3 @@ function confirmLeaveGame() {
 }
 
 gameLoop();
-
