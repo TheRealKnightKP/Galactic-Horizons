@@ -44,6 +44,46 @@ const ARMOR_UPGRADE_TIERS = {
 };
 const ARMOR_UPGRADE_PRICES = { 2: 30000, 3: 120000 };
 
+
+// === PER-SHIP UPGRADE PRICES ===
+const SHIP_UPGRADE_PRICES = {
+  Starlight:  { shield:{ 2:8000,  3:25000  }, armor:{ 2:8000,  3:25000  }, engine:{ 2:8000,  3:25000  }, weapon:{ 2:10000, 3:30000  }, missile:{ 2:12000, 3:35000  } },
+  Falcon:     { shield:{ 2:10000, 3:32000  }, armor:{ 2:10000, 3:32000  }, engine:{ 2:12000, 3:38000  }, weapon:{ 2:14000, 3:42000  }, missile:{ 2:15000, 3:44000  } },
+  Rouge:      { shield:{ 2:15000, 3:50000  }, armor:{ 2:15000, 3:50000  }, engine:{ 2:18000, 3:55000  }, weapon:{ 2:20000, 3:60000  }, missile:{ 2:18000, 3:55000  } },
+  Marauder:   { shield:{ 2:16000, 3:52000  }, armor:{ 2:18000, 3:58000  }, engine:{ 2:16000, 3:50000  }, weapon:{ 2:20000, 3:60000  }, missile:{ 2:16000, 3:48000  } },
+  Wasp:       { shield:{ 2:22000, 3:75000  }, armor:{ 2:22000, 3:75000  }, engine:{ 2:28000, 3:88000  }, weapon:{ 2:28000, 3:85000  }, missile:{ 2:22000, 3:70000  } },
+  Supernova:  { shield:{ 2:28000, 3:90000  }, armor:{ 2:28000, 3:90000  }, engine:{ 2:25000, 3:80000  }, weapon:{ 2:35000, 3:105000 }, missile:{ 2:30000, 3:95000  } },
+  Bulwark:    { shield:{ 2:20000, 3:65000  }, armor:{ 2:25000, 3:80000  }, engine:{ 2:18000, 3:58000  }, weapon:{ 2:0,     3:0      }, missile:{ 2:20000, 3:60000  }, turret:{ 2:30000, 3:90000  } },
+  Tempest:    { shield:{ 2:40000, 3:130000 }, armor:{ 2:45000, 3:140000 }, engine:{ 2:38000, 3:120000 }, weapon:{ 2:50000, 3:155000 }, missile:{ 2:40000, 3:125000 }, turret:{ 2:45000, 3:140000 } },
+  Nemesis:    { shield:{ 2:38000, 3:120000 }, armor:{ 2:40000, 3:125000 }, engine:{ 2:35000, 3:110000 }, weapon:{ 2:50000, 3:155000 }, missile:{ 2:35000, 3:110000 } },
+  Prometheus: { shield:{ 2:55000, 3:175000 }, armor:{ 2:55000, 3:175000 }, engine:{ 2:50000, 3:160000 }, weapon:{ 2:60000, 3:190000 }, missile:{ 2:55000, 3:175000 }, turret:{ 2:60000, 3:185000 } },
+  Leviathan:  { shield:{ 2:75000, 3:240000 }, armor:{ 2:75000, 3:240000 }, engine:{ 2:65000, 3:210000 }, weapon:{ 2:0,     3:0      }, missile:{ 2:70000, 3:220000 }, turret:{ 2:80000, 3:250000 } },
+  Dominion:   { shield:{ 2:90000, 3:285000 }, armor:{ 2:90000, 3:285000 }, engine:{ 2:80000, 3:255000 }, weapon:{ 2:100000,3:315000 }, missile:{ 2:85000, 3:270000 }, turret:{ 2:95000, 3:300000 } },
+  Comet:      { shield:{ 2:20000, 3:65000  }, armor:{ 2:20000, 3:65000  }, engine:{ 2:22000, 3:70000  }, weapon:{ 2:25000, 3:78000  }, missile:{ 2:20000, 3:65000  } },
+  Vengeance:  { shield:{ 2:25000, 3:80000  }, armor:{ 2:25000, 3:80000  }, engine:{ 2:28000, 3:88000  }, weapon:{ 2:0,     3:0      }, missile:{ 2:25000, 3:78000  } },
+};
+
+// === MISSILE STORAGE UPGRADES ===
+const MISSILE_STORAGE_TIERS = {
+  1: { name: "Stock Racks",   mult: 1.0  },
+  2: { name: "Extended Racks", mult: 1.5  },
+  3: { name: "Max Capacity",  mult: 2.0  },
+};
+
+// === WEAPON QUALITY UPGRADES ===
+const WEAPON_QUALITY_TIERS = {
+  1: { name: "Standard",    damageMult: 1.0  },
+  2: { name: "Upgraded",    damageMult: 1.5  },
+  3: { name: "Elite",       damageMult: 2.0  },
+};
+
+// === TURRET UPGRADE TIERS ===
+const TURRET_UPGRADE_TIERS = {
+  1: { name: "Stock Turrets",   rpmMult: 1.0 },
+  2: { name: "High-RPM",        rpmMult: 1.5 },
+  3: { name: "Overclocked",     rpmMult: 2.0 },
+};
+
 const SHIELD_TIERS = {
   1: { name: "Standard",   mult: 1.0, regenRate: 0.02 },
   2: { name: "Reinforced", mult: 1.5, regenRate: 0.04 },
@@ -122,8 +162,9 @@ const ENEMIES = {
   Prometheus:  { hp: 8000,  shields: 7000,  armor: 200, speed: 0.25, score: 6000,  fireRate: 32, weaponType: "ballistic_cannon",  weaponSize: 6,  armorType: "capital",    image: "Polaris.png",         color: "#dd44ff" },
   Dominion:    { hp: 18000, shields: 14000, armor: 200, speed: 0.15, score: 10000, fireRate: 22, weaponType: "ballistic_railgun", weaponSize: 10, armorType: "capital",    image: "Idris.jpg",           color: "#ff0000" },
   Dreadnaught: { hp: 80000, shields: 60000, armor: 200, speed: 0.08, score: 50000, fireRate: 35, weaponType: "laser_cannon",      weaponSize: 8,  armorType: "capital",    image: "VanduulKingship.png", color: "#ff6600" },
+  Healer:      { hp: 3500, shields: 3000,  armor: 200, speed: 0.28, score: 2500,  fireRate: 45, weaponType: "laser_cannon",      weaponSize: 4,  armorType: "subcapital", image: "HammerHead.png", color: "#44ffaa" },
   Sprite:      { hp: 60,    shields: 70,    armor: 200, speed: 2.0,  score: 120,   fireRate: 60, weaponType: "laser_repeater",    weaponSize: 1,  armorType: "light",      image: "Merlin.png",          color: "#88ff88" },
-  ShadowComet: { hp: 100,   shields: 90,    armor: 300, speed: 4.0,  score: 0,     fireRate: 30, weaponType: "ballistic_cannon",  weaponSize: 5,  armorType: "light",      image: "Meteor.png",          color: "#ff0044" },
+  ShadowComet: { hp: 1400,  shields: 1000,  armor: 300, speed: 4.5,  score: 0,     fireRate: 16, weaponType: "ballistic_cannon",  weaponSize: 8,  armorType: "light",      image: "Meteor.png",          color: "#ff0044" },
 };
 
 ENEMIES.Raptor.turrets = [
@@ -258,6 +299,16 @@ ENEMIES.ShadowComet.size = 1;
 ENEMIES.ShadowComet.turrets = [];
 ENEMIES.ShadowComet.dodgeChance = 0.55; // very hard to hit
 ENEMIES.ShadowComet.isShadowComet = true;
+ENEMIES.Healer.turrets = [
+  { rx: 30, ry:  8, weaponType: "laser_cannon", weaponSize: 4, fireRate: 22 },
+  { rx: 30, ry: 44, weaponType: "laser_cannon", weaponSize: 4, fireRate: 22 },
+  { rx:  8, ry: 26, weaponType: "laser_repeater", weaponSize: 3, fireRate: 18 },
+];
+ENEMIES.Healer.size = 6;
+ENEMIES.Healer.isHealer = true;
+ENEMIES.Healer.healRadius = 280;
+ENEMIES.Healer.healPerFrame = 8;
+
 
 const MISSILE_TYPES = {
   1: { name: "Type 1 (Fast Strike)", speed: 8, damage: 400,  color: "#ff8800" },
@@ -266,27 +317,27 @@ const MISSILE_TYPES = {
 };
 
 const WAVES = [
-  { reinforceDelay:1500, reinforceEnemies:["Raptor"], enemies: ["Raptor","Raptor","Raptor"],                                                                                          reward: 1000   },
-  { reinforceDelay:1400, reinforceEnemies:["Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor"],                                                                                 reward: 1500   },
-  { reinforceDelay:1300, reinforceEnemies:["Raptor"], enemies: ["Raptor","Raptor","Raptor","Rouge"],                                                                                  reward: 2500   },
-  { reinforceDelay:1300, reinforceEnemies:["Raptor","Raptor"], enemies: ["Rouge","Rouge","Raptor","Raptor"],                                                                                   reward: 3500   },
-  { reinforceDelay:1200, reinforceEnemies:["Rouge"], enemies: ["Rouge","Rouge","Rouge","Raptor"],                                                                                    reward: 5000   },
-  { reinforceDelay:1200, reinforceEnemies:["Rouge","Raptor"], enemies: ["Rouge","Rouge","Rouge","Raptor","Raptor","Raptor"],                                                                   reward: 7000   },
-  { reinforceDelay:1100, reinforceEnemies:["Raptor","Raptor"], enemies: ["Corsair","Rouge","Raptor","Raptor"],                                                                                 reward: 9000   },
-  { reinforceDelay:1100, reinforceEnemies:["Rouge","Raptor"], enemies: ["Corsair","Corsair","Rouge","Rouge","Raptor"],                                                                        reward: 12000  },
-  { reinforceDelay:900, reinforceEnemies:["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 16000 },
-  { reinforceDelay:1000, reinforceEnemies:["Corsair","Raptor"], enemies: ["Bulwark","Corsair","Rouge","Raptor"],                                                                                reward: 22000  },
-  { reinforceDelay:1000, reinforceEnemies:["Corsair","Corsair"], enemies: ["Bulwark","Corsair","Corsair","Rouge","Rouge"],                                                                       reward: 28000  },
+  { reinforceDelay:4500, reinforceEnemies:["Raptor"], enemies: ["Raptor","Raptor","Raptor"],                                                                                          reward: 1000   },
+  { reinforceDelay:4200, reinforceEnemies:["Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor"],                                                                                 reward: 1500   },
+  { reinforceDelay:3900, reinforceEnemies:["Raptor"], enemies: ["Raptor","Raptor","Raptor","Rouge"],                                                                                  reward: 2500   },
+  { reinforceDelay:3900, reinforceEnemies:["Raptor","Raptor"], enemies: ["Rouge","Rouge","Raptor","Raptor"],                                                                                   reward: 3500   },
+  { reinforceDelay:3600, reinforceEnemies:["Rouge"], enemies: ["Rouge","Rouge","Rouge","Raptor"],                                                                                    reward: 5000   },
+  { reinforceDelay:3600, reinforceEnemies:["Rouge","Raptor"], enemies: ["Rouge","Rouge","Rouge","Raptor","Raptor","Raptor"],                                                                   reward: 7000   },
+  { reinforceDelay:3300, reinforceEnemies:["Raptor","Raptor"], enemies: ["Corsair","Rouge","Raptor","Raptor"],                                                                                 reward: 9000   },
+  { reinforceDelay:3300, reinforceEnemies:["Rouge","Raptor"], enemies: ["Corsair","Corsair","Rouge","Rouge","Raptor"],                                                                        reward: 12000  },
+  { reinforceDelay:2700, reinforceEnemies:["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 16000 },
+  { reinforceDelay:3000, reinforceEnemies:["Corsair","Raptor"], enemies: ["Bulwark","Corsair","Rouge","Raptor"],                                                                                reward: 22000  },
+  { reinforceDelay:3000, reinforceEnemies:["Corsair","Corsair"], enemies: ["Bulwark","Corsair","Corsair","Rouge","Rouge"],                                                                       reward: 28000  },
   // Wave 12: Shadow Comet boss fight
   { shadowCometWave: true, reinforceDelay:0, reinforceEnemies:[], enemies: [], reward: 35000 },
-  { reinforceDelay:900, reinforceEnemies:["Bulwark","Corsair"], enemies: ["Bulwark","Bulwark","Corsair","Corsair","Corsair","Rouge","Rouge"],                                                    reward: 44000  },
-  { reinforceDelay:800, reinforceEnemies:["Bulwark","Corsair","Corsair"], enemies: ["Bulwark","Bulwark","Bulwark","Corsair","Corsair","Rouge","Rouge","Raptor"],                                           reward: 55000  },
-  { reinforceDelay:800, reinforceEnemies:["Corsair","Corsair","Raptor"], enemies: ["Prometheus","Corsair","Corsair","Rouge","Rouge","Raptor","Raptor"],                                                   reward: 70000  },
-  { reinforceDelay:750, reinforceEnemies:["Bulwark","Corsair","Rouge"], enemies: ["Prometheus","Bulwark","Corsair","Corsair","Rouge","Raptor","Raptor"],                                                 reward: 85000  },
-  { reinforceDelay:700, reinforceEnemies:["Corsair","Corsair","Corsair"], enemies: ["Dominion","Corsair","Corsair","Corsair","Rouge","Rouge"],                                                             reward: 100000 },
-  { reinforceDelay:700, reinforceEnemies:["Bulwark","Bulwark","Corsair"], enemies: ["Dominion","Bulwark","Bulwark","Corsair","Rouge","Rouge","Rouge"],                                                     reward: 130000 },
-  { reinforceDelay:650, reinforceEnemies:["Bulwark","Corsair","Corsair"], enemies: ["Prometheus","Dominion","Bulwark","Corsair","Corsair","Corsair","Corsair"],                                            reward: 160000 },
-  { reinforceDelay:600, reinforceEnemies:["Dominion","Bulwark","Corsair","Corsair"], enemies: ["Dreadnaught","Bulwark","Bulwark","Corsair","Corsair","Corsair"],                                                     reward: 500000 },
+  { reinforceDelay:2700, reinforceEnemies:["Bulwark","Corsair"], enemies: ["Bulwark","Bulwark","Corsair","Corsair","Corsair","Rouge","Rouge"],                                                    reward: 44000  },
+  { reinforceDelay:2400, reinforceEnemies:["Bulwark","Corsair","Corsair"], enemies: ["Bulwark","Bulwark","Bulwark","Corsair","Corsair","Rouge","Rouge","Raptor","Healer"],                                           reward: 55000  },
+  { reinforceDelay:2400, reinforceEnemies:["Corsair","Corsair","Raptor"], enemies: ["Prometheus","Healer","Corsair","Corsair","Rouge","Rouge","Raptor","Raptor"],                                                   reward: 70000  },
+  { reinforceDelay:2250, reinforceEnemies:["Bulwark","Corsair","Rouge"], enemies: ["Prometheus","Healer","Bulwark","Corsair","Corsair","Rouge","Raptor","Raptor"],                                                 reward: 85000  },
+  { reinforceDelay:2100, reinforceEnemies:["Corsair","Corsair","Corsair"], enemies: ["Dominion","Corsair","Corsair","Corsair","Rouge","Rouge"],                                                             reward: 100000 },
+  { reinforceDelay:2100, reinforceEnemies:["Bulwark","Bulwark","Corsair"], enemies: ["Dominion","Bulwark","Bulwark","Corsair","Rouge","Rouge","Rouge"],                                                     reward: 130000 },
+  { reinforceDelay:1950, reinforceEnemies:["Bulwark","Corsair","Corsair"], enemies: ["Prometheus","Dominion","Bulwark","Corsair","Corsair","Corsair","Corsair"],                                            reward: 160000 },
+  { reinforceDelay:1800, reinforceEnemies:["Dominion","Bulwark","Corsair","Corsair"], enemies: ["Dreadnaught","Bulwark","Bulwark","Corsair","Corsair","Corsair"],                                                     reward: 500000 },
 ];
 
 
@@ -373,4 +424,3 @@ function getShadowCometStats(killCount) {
     damage: scaleMult, // multiplier applied to weapon damage in game.js
   };
 }
-
