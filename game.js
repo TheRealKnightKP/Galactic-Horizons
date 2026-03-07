@@ -609,12 +609,12 @@ function setPlayerShip(name) {
     x:80, y:GAME_H/2-20, w:Math.round((40+(d.size||1)*16)*SIZE_SCALE), h:Math.round((24+(d.size||1)*8)*SIZE_SCALE),
     hp:baseHp, maxHp:baseHp, shields:baseShields, maxShields:baseShields,
     armor:baseArmor, maxArmor:baseArmor, armorType:d.armorType||"light",
-    missiles:Math.round(d.missiles*(typeof MISSILE_STORAGE_TIERS!=="undefined"?MISSILE_STORAGE_TIERS[playerLoadout.missileTier||1].mult:1)),
-    maxMissiles:Math.round(d.missiles*(typeof MISSILE_STORAGE_TIERS!=="undefined"?MISSILE_STORAGE_TIERS[playerLoadout.missileTier||1].mult:1)),
+    missiles:(playerLoadout.missileRack||[]).length,
+    maxMissiles:(playerLoadout.missileRack||[]).length,
     speed:baseSpeed, maxSpeed:baseSpeed, accel:baseSpeed*0.20,
     weaponType:wType, weaponSize:d.weaponSize, weaponStats:wStats,
     bespoke:d.bespoke, doubleShot:d.doubleShot||false, pdcCount:d.pdc, missileType:d.missileType||2,
-    missileRack:[...(playerLoadout.missileRack||[])], missileRackIdx:0,
+    missileRack:[...(playerLoadout.missileRack||[])],
     img:getImage(d.image), color:d.color, rotation:0, spriteAngleOffset:spriteOffset,
     vx:0, vy:0, shootTimer:0,
     boosting:false, boostTimer:0, boostCooldown:0,
@@ -655,7 +655,6 @@ function respawnDeadAllies() {
 // ── SHADOW COMET WAVE ─────────────────────────────────────────
 function spawnShadowCometWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
-  if(window._packs) window._packs={};
   allies=[];
   // Bulwark and Leviathan get 1 manual turret against Shadow Comet
   const _scShip = playerLoadout.ship || currentShipName;
@@ -882,7 +881,6 @@ function fullUpgradeComet() {
 
 function spawnWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
-  if(window._packs) window._packs={};
   waveReinforceTimer=0; waveReinforceDone=false;
   shadowCometActive = false;
   pdcDisabledThisWave = false;
@@ -1326,7 +1324,7 @@ function activateSpecial() {
     case"Starlight":break;
     case"Comet":break;
     case"Supernova":player.specialMissilesUsed=0;break;
-    case"Prometheus":{const n=Math.max(1,Math.floor(player.missiles/4));player.specialSalvoTotal=n;player.specialSalvoCount=0;player.specialSalvoTimer=0;break;}
+    case"Prometheus":{const n=Math.max(1,Math.floor((player.missileRack||[]).length/4));player.specialSalvoTotal=n;player.specialSalvoCount=0;player.specialSalvoTimer=0;break;}
     case"Wasp":spawnWaspAlly();break;
     case"Leviathan":allies.forEach(a=>{a.vanguardActive=true;a.vanguardRPM=true;});break;
   }
@@ -1362,7 +1360,8 @@ function updateSpecial() {
     case"Prometheus":{
       player.specialSalvoTimer--;
       if(player.specialSalvoTimer<=0&&player.specialSalvoCount<player.specialSalvoTotal){
-        const _rackEntry=(player.missileRack&&player.missileRack[0])||{kind:"standard",tier:player.missileType||2};
+        const _rackEntry=player.missileRack&&player.missileRack.length>0?player.missileRack.shift():{kind:"standard",tier:player.missileType||2};
+        player.missiles=player.missileRack?player.missileRack.length:0;
         const mt=MISSILE_TYPES[_rackEntry.tier||player.missileType||2];
         playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
           vx:Math.cos(player.rotation)*mt.speed,vy:Math.sin(player.rotation)*mt.speed,
@@ -1374,8 +1373,15 @@ function updateSpecial() {
   }
   if(player.specialTimer<=0){
     if(currentShipName==="Supernova"&&player.specialMissilesUsed===0){
-      const mx=SHIPS[currentShipName]?.missiles||52;
-      player.missiles=Math.min(player.missiles+Math.ceil(mx*0.15),mx);
+      // Refill rack from loadout up to +15% of full rack
+      const fullRack=playerLoadout.missileRack||[];
+      const refillCount=Math.max(1,Math.ceil(fullRack.length*0.15));
+      const currentLen=player.missileRack.length;
+      if(fullRack.length>0&&currentLen<fullRack.length){
+        const toAdd=fullRack.slice(currentLen,currentLen+refillCount);
+        player.missileRack.push(...toAdd);
+        player.missiles=player.missileRack.length;
+      }
     }
     if(currentShipName==="Leviathan") allies.forEach(a=>{a.vanguardActive=false;a.vanguardRPM=false;});
     player.specialActive=false;
@@ -1526,61 +1532,56 @@ function updatePlayer() {
   }
 
   missileTimer--;
-  // Rack-based missile system: missileRack = [{kind, tier}, ...], cycles through
-  if(keys["KeyF"]&&missileTimer<=0){
-    const rack=player.missileRack||[];
-    if(rack.length>0){
-      if(!player.missileRackIdx)player.missileRackIdx=0;
-      // advance index until we find a live rack entry (rack never depletes mid-game, it just cycles)
-      const entry=rack[player.missileRackIdx%rack.length];
-      const mKind=entry.kind||"standard";
-      const mTier=entry.tier||2;
-      const mkDef=(typeof MISSILE_KINDS!=="undefined"&&MISSILE_KINDS[mKind])||{slots:1,aoe:0,lockOn:true,friendly:false,corrosion:false};
-      const freeAmmo=player.specialActive&&currentShipName==="Supernova";
-      // Missile count tracks total uses remaining (slots-weighted)
-      if(player.missiles>0||freeAmmo){
-        if(!freeAmmo) player.missiles=Math.max(0,player.missiles-1);
-        else player.specialMissilesUsed++;
-        player.missileRackIdx=(player.missileRackIdx+1)%rack.length;
-        const mt=MISSILE_TYPES[mTier]||MISSILE_TYPES[2];
-        const baseDmg=mt.damage*(mkDef.damageMult||1.0);
-        let lockTarget=null;
-        if(mkDef.lockOn&&enemies.length>0){
-          const pcx=player.x+player.w/2,pcy=player.y+player.h/2;
-          const cos=Math.cos(player.rotation),sin=Math.sin(player.rotation);
-          let bestScore=1e9;
-          enemies.forEach(e=>{
-            const ex=e.x+e.w/2,ey=e.y+e.h/2;
-            const t=(ex-pcx)*cos+(ey-pcy)*sin;
-            if(t<0)return;
-            const perp=Math.abs((ey-pcy)*cos-(ex-pcx)*sin);
-            if(perp<bestScore){bestScore=perp;lockTarget=e;}
-          });
-        }
-        const aim=lockTarget?Math.atan2(lockTarget.y+lockTarget.h/2-player.y-player.h/2,lockTarget.x+lockTarget.w/2-player.x-player.w/2):player.rotation;
-        if(mKind==="cluster"){
-          for(let ci=0;ci<4;ci++){
-            const a=aim+(ci-1.5)*0.18;
-            playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
-              vx:Math.cos(a)*mt.speed*1.2,vy:Math.sin(a)*mt.speed*1.2,
-              w:10,h:5,damage:baseDmg*0.3,color:"#ffaa00",
-              missile:true,category:"missile",weaponSize:4,lockTarget:lockTarget||null});
-          }
-        } else {
-          const aoe=mkDef.aoe||0;
-          const mColor=mKind==="emp"?"#44ffcc":mKind==="nuke"?"#ff2200":mKind==="micro"?"#ffcc44":mt.color;
-          playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
-            vx:Math.cos(aim)*mt.speed,vy:Math.sin(aim)*mt.speed,
-            w:mKind==="nuke"?28:mKind==="micro"?10:18,
-            h:mKind==="nuke"?16:mKind==="micro"?5:8,
-            damage:baseDmg,
-            color:mColor,missile:true,category:"missile",weaponSize:mKind==="nuke"?8:6,
-            missileKind:mKind,aoeRadius:aoe,corrosion:mkDef.corrosion,
-            friendlyFire:mkDef.friendly,lockTarget:lockTarget||null});
-        }
-        missileTimer=mKind==="micro"?20:mKind==="nuke"?70:40;
-      }
+  // ── Missile fire: consumes first missile from rack (shift) ────────────
+  if(keys["KeyF"]&&missileTimer<=0&&player.missileRack&&player.missileRack.length>0){
+    const freeAmmo=player.specialActive&&currentShipName==="Supernova";
+    const entry=freeAmmo
+      ? (player.missileRack[0]||{kind:"standard",tier:player.missileType||2})
+      : player.missileRack.shift(); // consume it
+    if(freeAmmo) player.specialMissilesUsed++;
+    player.missiles=player.missileRack.length;
+    const mKind=entry.kind||"standard";
+    const mTier=entry.tier||player.missileType||2;
+    const mkDef=(typeof MISSILE_KINDS!=="undefined"&&MISSILE_KINDS[mKind])||{aoe:0,lockOn:true,friendly:false,corrosion:false,damageMult:1};
+    const mt=MISSILE_TYPES[mTier]||MISSILE_TYPES[2];
+    const baseDmg=mt.damage*(mkDef.damageMult||1.0);
+    let lockTarget=null;
+    if(mkDef.lockOn&&enemies.length>0){
+      const pcx2=player.x+player.w/2,pcy2=player.y+player.h/2;
+      const cos2=Math.cos(player.rotation),sin2=Math.sin(player.rotation);
+      let bestScore=1e9;
+      enemies.forEach(en=>{
+        const ex=en.x+en.w/2,ey=en.y+en.h/2;
+        const dt=(ex-pcx2)*cos2+(ey-pcy2)*sin2;
+        if(dt<0)return;
+        const perp=Math.abs((ey-pcy2)*cos2-(ex-pcx2)*sin2);
+        if(perp<bestScore){bestScore=perp;lockTarget=en;}
+      });
     }
+    const aim=lockTarget
+      ? Math.atan2(lockTarget.y+lockTarget.h/2-player.y-player.h/2, lockTarget.x+lockTarget.w/2-player.x-player.w/2)
+      : player.rotation;
+    if(mKind==="cluster"){
+      for(let ci=0;ci<4;ci++){
+        const a=aim+(ci-1.5)*0.18;
+        playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
+          vx:Math.cos(a)*mt.speed*1.2,vy:Math.sin(a)*mt.speed*1.2,
+          w:10,h:5,damage:baseDmg*0.3,color:"#ffaa00",
+          missile:true,category:"missile",weaponSize:4,lockTarget:lockTarget||null});
+      }
+    } else {
+      const aoe=mkDef.aoe||0;
+      const mColor=mKind==="emp"?"#44ffcc":mKind==="nuke"?"#ff2200":mKind==="micro"?"#ffcc44":mt.color;
+      playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
+        vx:Math.cos(aim)*mt.speed, vy:Math.sin(aim)*mt.speed,
+        w:mKind==="nuke"?28:mKind==="micro"?10:18,
+        h:mKind==="nuke"?16:mKind==="micro"?5:8,
+        damage:baseDmg, color:mColor,
+        missile:true, category:"missile", weaponSize:mKind==="nuke"?8:6,
+        missileKind:mKind, aoeRadius:aoe, corrosion:mkDef.corrosion,
+        friendlyFire:mkDef.friendly, lockTarget:lockTarget||null});
+    }
+    missileTimer=mKind==="micro"?20:mKind==="nuke"?70:40;
   }
 
   if (!pdcDisabledThisWave) {
@@ -1796,60 +1797,7 @@ function updateEnemies() {
             e.vx+=(sideX-e.x)/sd*accel*3;e.vy+=(sideY-e.y)/sd*accel*3;
           }
         }
-        if(mode==="packhunter"){
-          // ── Pack Hunter: 3-ship column toward player ──────────────────────
-          // Init: first time this enemy runs, grab 2 nearest unassigned small
-          // enemies, override their archetypes, and register in global _packs.
-          if(!window._packs) window._packs={};
-          if(!e.packGroupId){
-            const gid="pk_"+Date.now()+"_"+Math.random().toString(36).slice(2,6);
-            const candidates=smallList.filter(o=>o!==e&&!o.packGroupId);
-            candidates.sort((a,b)=>Math.hypot(a.x-e.x,a.y-e.y)-Math.hypot(b.x-e.x,b.y-e.y));
-            const members=[e,...candidates.slice(0,2)];
-            members.forEach((m,i)=>{
-              m.archetype="packhunter";
-              m.packGroupId=gid;
-              m.packOrder=i; // 0=front(faces player), 1=mid, 2=back
-            });
-            window._packs[gid]={members,rotateCD:0};
-          }
-          const pd=window._packs[e.packGroupId];
-          if(pd){
-            // Remove dead members from pack list
-            pd.members=pd.members.filter(m=>!m.dead);
-            if(pd.members.length===0){delete window._packs[e.packGroupId];}
-            else{
-              // Cooldown tick (only once per group — the member with lowest packOrder does it)
-              const isGroupTick=pd.members.every(m=>m===e||m.packOrder>e.packOrder);
-              if(isGroupTick){
-                if(pd.rotateCD>0) pd.rotateCD--;
-                // Rotation: when front (order=0) shields drop below 25%, rotate orders
-                const front=pd.members.find(m=>m.packOrder===0);
-                if(front&&front.shields<front.maxShields*0.25&&pd.rotateCD<=0&&pd.members.length>1){
-                  // Shift orders: 0→last, everyone else moves up
-                  pd.members.sort((a,b)=>a.packOrder-b.packOrder);
-                  pd.members.push(pd.members.shift()); // move order-0 to end
-                  pd.members.forEach((m,i)=>m.packOrder=i);
-                  pd.rotateCD=240; // 4s before next rotation
-                }
-              }
-              // Formation: all ships form a column pointing from player outward
-              // Front (order 0) = 210px from player center
-              // Each subsequent ship = +130px behind the previous
-              const lineAngle=Math.atan2(ecy-pcy,ecx-pcx); // angle FROM player TO pack
-              const FRONT_DIST=210, SPACING=130;
-              const myDist=FRONT_DIST+e.packOrder*SPACING;
-              const formX=pcx+Math.cos(lineAngle)*myDist-e.w/2;
-              const formY=pcy+Math.sin(lineAngle)*myDist-e.h/2;
-              const fdx=formX-e.x,fdy=formY-e.y,fd=Math.hypot(fdx,fdy)||1;
-              // Strong pull to formation position
-              e.vx+=(fdx/fd)*accel*4.5;
-              e.vy+=(fdy/fd)*accel*4.5;
-              // All members face the player (rotate toward pcx,pcy)
-              e.rotation=Math.atan2(pcy-(e.y+e.h/2),pcx-(e.x+e.w/2));
-            }
-          }
-        } else {
+        {
           const orbitAngle=e.surroundAngle+(Math.PI*2*myIdx/Math.max(totalSmall,1));
           const targetX=tx+Math.cos(orbitAngle)*orbitR-e.w/2;
           const targetY=ty+Math.sin(orbitAngle)*orbitR-e.h/2;
@@ -2280,10 +2228,9 @@ function updateHUD() {
   document.getElementById("wave").textContent     = currentWave;
   {
     const rack=player.missileRack||[];
-    const rackIdx=(player.missileRackIdx||0)%Math.max(1,rack.length);
-    const nextKind=rack[rackIdx]?.kind||"—";
-    const mkName=(typeof MISSILE_KINDS!=="undefined"&&MISSILE_KINDS[nextKind]?.name)||nextKind;
-    document.getElementById("missiles").textContent=(player.missiles||0)+" ["+mkName+"]";
+    const nextKind=rack[0]?.kind||null;
+    const mkName=nextKind&&(typeof MISSILE_KINDS!=="undefined")?(MISSILE_KINDS[nextKind]?.name||nextKind):"—";
+    document.getElementById("missiles").textContent=rack.length>0?(rack.length+" | next: "+mkName):"0";
   }
 }
 
@@ -2351,7 +2298,9 @@ function gameLoop() {
       const reward=infiniteMode?generateInfiniteWave(currentWave).reward:(WAVES[currentWave-1]?.reward||0);
       money+=reward;
       player.shields=player.maxShields;player.armor=player.maxArmor;
-      player.missiles=player.maxMissiles||player.missiles;
+      player.missileRack=[...(playerLoadout.missileRack||[])];
+      player.missiles=player.missileRack.length;
+      player.maxMissiles=player.missiles;
       if(player.shieldFaces) initShieldFaces(player);
       allies.forEach(a=>{
         a.shields=a.maxShields;a.armor=a.maxArmor;
@@ -2383,7 +2332,6 @@ function gameLoop() {
 function confirmLeaveGame() {
   if(confirm("Are you sure you want to leave? All progress will be lost.")) {
     enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
-  if(window._packs) window._packs={};
     shadowCometActive=false; pdcDisabledThisWave=false;
     state="menu";
     document.getElementById("mainMenu").style.display="block";
