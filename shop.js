@@ -736,6 +736,7 @@ function renderShipLoadoutPanel(container) {
     html += `</div>`;
     if (loadout.length > 0) html += `<button style="width:auto;font-size:10px;background:rgba(255,50,50,0.1);border-color:#f44;color:#f44" onclick="clearMissileLoadout()">Clear All</button>`;
     html += `</div>`;
+  }
   html += `<p><b>Shields:</b> ${buildShieldSelect(playerLoadout.ownedShieldTiers, playerLoadout.shieldTier, "setPlayerShieldTier(parseInt(this.value))", "buyPlayerShield", sd.shields)}</p>`;
   html += `<p><b>Hull Armor:</b> ${buildArmorSelect(playerLoadout.ownedArmorTiers, playerLoadout.armorTier, "setPlayerArmorTier(parseInt(this.value))", "buyPlayerArmor", sd.armor)}</p>`;
   html += `<p><b>Engines:</b> ${buildEngineSelect(playerLoadout.ownedEngineTiers, playerLoadout.engineTier, "setPlayerEngineTier(parseInt(this.value))", "buyPlayerEngine")}</p>`;
