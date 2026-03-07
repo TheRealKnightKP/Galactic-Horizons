@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.4.11";
+const CACHE = "galactic-horizons-v1.4.12";
 const ASSETS = [
   "./",
   "./index.html",
@@ -83,6 +83,7 @@ Versions:
 -V1.4.7 - Removed aim assist because it was attrociously bugged
 -V1.4.8 - Atrocious bug persisted so tried removing again.
 -V1.4.9 - Trying to fix "Favicon" error, whatever the hell that is
--V1.4.10 - Major fixes: Shadow Comet rework, shield face direction fix, distortion stun fix, pack hunter rework, dodge for all ships, enemy healer, weapon/missile/turret upgrades, new weapon buy UI, inventory tab, wave confirmation, ally full upgrades, enemy turret side penalty, Bulwark/Leviathan turret in SC wave, railgun wave clear fix, medic ally fix.
+-V1.4.10 - Major fixes: Shadow Comet rework, shield face direction fix, distortion stun fix, pack hunter rework, dodge for all ships, enemy healer, weapon/missile/turret upgrades, new weapon buy UI, inventory tab, wave confirmation, ally full upgrades, enemy turret side penalty, Bulwark/Leviathan turret in SC wave, railgun wave clear fix, medic ally fix. (6/3/2026)
 -V1.4.11 - Fixed money, nukes, missile choosing, ship upgrade prices, removed shop when entering waves.
+-V1.4.12 - Fixed syntax error in shop.js
 */
