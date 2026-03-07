@@ -96,6 +96,12 @@ function saveShipUpgrades(name) {
   u.ownedArmorTiers   = [...playerLoadout.ownedArmorTiers];
   u.engineTier        = playerLoadout.engineTier;
   u.ownedEngineTiers  = [...playerLoadout.ownedEngineTiers];
+  u.missileTier           = playerLoadout.missileTier||1;
+  u.ownedMissileTiers     = [...(playerLoadout.ownedMissileTiers||[1])];
+  u.weaponQualityTier     = playerLoadout.weaponQualityTier||1;
+  u.ownedWeaponQualityTiers = [...(playerLoadout.ownedWeaponQualityTiers||[1])];
+  u.turretTier            = playerLoadout.turretTier||1;
+  u.ownedTurretTiers      = [...(playerLoadout.ownedTurretTiers||[1])];
 }
 function loadShipUpgrades(name) {
   const u = getShipUpgrades(name);
@@ -107,6 +113,12 @@ function loadShipUpgrades(name) {
   playerLoadout.ownedArmorTiers  = [...u.ownedArmorTiers];
   playerLoadout.engineTier       = u.engineTier;
   playerLoadout.ownedEngineTiers = [...u.ownedEngineTiers];
+  playerLoadout.missileTier           = u.missileTier||1;
+  playerLoadout.ownedMissileTiers     = [...(u.ownedMissileTiers||[1])];
+  playerLoadout.weaponQualityTier     = u.weaponQualityTier||1;
+  playerLoadout.ownedWeaponQualityTiers = [...(u.ownedWeaponQualityTiers||[1])];
+  playerLoadout.turretTier            = u.turretTier||1;
+  playerLoadout.ownedTurretTiers      = [...(u.ownedTurretTiers||[1])];
 }
 
 // Ally inventory
@@ -365,33 +377,75 @@ function renderShopAllies(container) {
 }
 
 function renderShopWeapons(container) {
-  const maxSize = 8;
-  let html = `<p style="color:#aaa;font-size:12px;margin:4px 0">Each purchase is one weapon unit. (Vengeance Cannon is bespoke — not purchasable.)</p>
-  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
-    <tr style="color:#0af"><th style="text-align:left;padding:4px 6px">Weapon</th>`;
-  for (let s = 1; s <= maxSize; s++) html += `<th style="padding:4px">S${s}</th>`;
-  html += `</tr>`;
+  const selectedSizes = window._wpSizes || {};
+  const selectedQty   = window._wpQtys  || {};
+  let html = `<div style="padding:10px;color:#aaa;font:12px monospace">
+    <p style="color:#0af;font:bold 14px monospace;margin-bottom:8px">Weapons</p>
+    <p style="margin-bottom:14px;color:#888">Choose a weapon, pick a size and quantity, then buy. (Vengeance Cannon is bespoke — not for sale.)</p>
+    <div style="display:flex;flex-direction:column;gap:10px">`;
   for (const [type, def] of Object.entries(WEAPON_DEFS)) {
-    if (type === "vengeance_cannon") continue; // skip bespoke
-    html += `<tr style="border-top:1px solid #223"><td style="padding:4px 6px;white-space:nowrap">
-      <b style="color:#eee">${def.name}</b><br><span style="color:#888;font-size:11px">${def.category}</span>
-    </td>`;
-    for (let s = 1; s <= maxSize; s++) {
-      const price = wPrice(type, s);
-      const k = wKey(type, s);
-      const owned = wOwned(k);
-      const canAfford = money >= price;
-      const priceStr = price >= 1000000 ? (price/1000000).toFixed(1)+"M" : price >= 1000 ? Math.round(price/1000)+"k" : price;
-      html += `<td style="padding:2px 4px;text-align:center;min-width:52px">
-        <div style="color:#888;font-size:10px">${priceStr}</div>
-        <div style="color:#0af;font-size:11px;font-weight:bold">×${owned}</div>
-        <button style="width:auto;padding:1px 5px;font-size:11px;${canAfford?"":"opacity:0.4"}"
-          onclick="buyWeapon('${type}',${s})" ${canAfford?"":"disabled"}>+1</button>
-      </td>`;
-    }
-    html += `</tr>`;
+    if (type === "vengeance_cannon") continue;
+    const selSize = selectedSizes[type] || 1;
+    const selQty  = selectedQty[type]  || 1;
+    const price   = wPrice(type, selSize) * selQty;
+    const k       = wKey(type, selSize);
+    const owned   = wOwned(k);
+    const canAfford = money >= price;
+    const priceStr = price >= 1000000 ? (price/1000000).toFixed(2)+"M" : price >= 1000 ? (price/1000).toFixed(1)+"k" : price;
+    // Stat preview
+    const ws = typeof getWeaponStats === "function" ? getWeaponStats(type, selSize) : null;
+    const statLine = ws ? `DMG:${ws.damage} | PEN:${ws.penetration} | SPD:${ws.speed}` : "";
+    html += `<div style="background:#0a0e1a;border:1px solid #223;border-radius:8px;padding:10px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+      <div style="min-width:160px">
+        <div style="color:#eee;font:bold 13px monospace">${def.name}</div>
+        <div style="color:#888;font:10px monospace">${def.category} &nbsp; Owned: <span style="color:#0af">×${owned}</span></div>
+        <div style="color:#666;font:10px monospace;margin-top:2px">${statLine}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <label style="color:#888;font:11px monospace">Size:</label>
+        <select style="background:#111;border:1px solid #445;color:#eee;font:12px monospace;padding:2px 4px;border-radius:4px"
+          onchange="window._wpSizes=window._wpSizes||{};window._wpSizes['${type}']=parseInt(this.value);renderShopTab()">
+          ${Array.from({length:8},(_,i)=>i+1).map(sz=>`<option value="${sz}" ${sz===selSize?"selected":""}">S${sz} — ${(()=>{const p=wPrice(type,sz);return p>=1000000?(p/1000000).toFixed(1)+"M":p>=1000?Math.round(p/1000)+"k":p;})()}/ea</option>`).join("")}
+        </select>
+        <label style="color:#888;font:11px monospace">Qty:</label>
+        <input type="number" min="1" max="99" value="${selQty}" style="width:52px;background:#111;border:1px solid #445;color:#eee;font:12px monospace;padding:2px 4px;border-radius:4px;text-align:center"
+          onchange="window._wpQtys=window._wpQtys||{};window._wpQtys['${type}']=Math.max(1,parseInt(this.value)||1);renderShopTab()">
+        <button style="padding:4px 14px;font:bold 12px monospace;${canAfford?"background:rgba(0,170,255,0.18);border:2px solid #0af;color:#0af":"background:rgba(80,80,80,0.2);border:1px solid #444;color:#555;opacity:0.5"};border-radius:6px;cursor:pointer"
+          onclick="buyWeaponQty('${type}',${selSize},${selQty})" ${canAfford?"":"disabled"}>
+          Buy ×${selQty} <span style="font:11px monospace">(${priceStr})</span>
+        </button>
+      </div>
+    </div>`;
   }
-  html += `</table></div>`;
+  // Missile section
+  html += `</div><hr style="border-color:#223;margin:14px 0"><p style="color:#0af;font:bold 14px monospace;margin-bottom:8px">Missiles</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px">`;
+  const mkDefs = typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS : {};
+  const mtDefs = typeof MISSILE_TYPES !== "undefined" ? MISSILE_TYPES : {};
+  for (const [kind, mk] of Object.entries(mkDefs)) {
+    for (const [tier, mt] of Object.entries(mtDefs)) {
+      const mKey  = `missile_${kind}_${tier}`;
+      const mOwned = (typeof missileInventory !== "undefined" ? missileInventory[mKey] || 0 : 0);
+      const mSelQty = (window._mQtys || {})[mKey] || 1;
+      const mPrice = Math.round(mt.damage * mk.slots * 0.8 * mSelQty * tier);
+      const canAffordM = money >= mPrice;
+      const priceM = mPrice >= 1000 ? Math.round(mPrice/1000)+"k" : mPrice;
+      html += `<div style="background:#0a0e1a;border:1px solid #223;border-radius:8px;padding:10px 12px;width:190px">
+        <div style="color:#eee;font:bold 12px monospace">${mk.name} T${tier}</div>
+        <div style="color:#888;font:10px monospace;line-height:1.5;margin-bottom:6px">${mk.desc}<br>DMG: ${Math.round(mt.damage * mk.slots)} | Slots: ${mk.slots}<br>Owned: <span style="color:#f80">×${mOwned}</span></div>
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:6px">
+          <label style="color:#888;font:10px monospace">Qty:</label>
+          <input type="number" min="1" max="99" value="${mSelQty}" style="width:44px;background:#111;border:1px solid #445;color:#eee;font:11px monospace;padding:2px;border-radius:4px;text-align:center"
+            onchange="window._mQtys=window._mQtys||{};window._mQtys['${mKey}']=Math.max(1,parseInt(this.value)||1);renderShopTab()">
+        </div>
+        <button style="width:100%;padding:4px;font:11px monospace;${canAffordM?"background:rgba(255,120,0,0.18);border:2px solid #f80;color:#f80":"background:rgba(80,80,80,0.2);border:1px solid #444;color:#555;opacity:0.5"};border-radius:6px;cursor:pointer"
+          onclick="buyMissiles('${kind}',${tier},${mSelQty})" ${canAffordM?"":"disabled"}>
+          Buy ×${mSelQty} (${priceM})
+        </button>
+      </div>`;
+    }
+  }
+  html += `</div></div>`;
   container.innerHTML = html;
 }
 
@@ -401,8 +455,26 @@ function buyWeapon(type, size) {
   money -= price;
   const k = wKey(type, size);
   weaponInventory[k] = (weaponInventory[k] || 0) + 1;
-  renderShopTab();
-  updateHUD();
+  renderShopTab(); updateHUD();
+}
+function buyWeaponQty(type, size, qty) {
+  const price = wPrice(type, size) * qty;
+  if (money < price) return;
+  money -= price;
+  const k = wKey(type, size);
+  weaponInventory[k] = (weaponInventory[k] || 0) + qty;
+  renderShopTab(); updateHUD();
+}
+let missileInventory = {};
+function buyMissiles(kind, tier, qty) {
+  const mk = MISSILE_KINDS[kind]; const mt = MISSILE_TYPES[tier];
+  if (!mk || !mt) return;
+  const price = Math.round(mt.damage * mk.slots * 0.8 * qty * tier);
+  if (money < price) return;
+  money -= price;
+  const k = `missile_${kind}_${tier}`;
+  missileInventory[k] = (missileInventory[k] || 0) + qty;
+  renderShopTab(); updateHUD();
 }
 
 function buyShip(name) {
@@ -461,16 +533,76 @@ function closeLoadout() {
   document.getElementById("mainMenu").style.display = "block";
 }
 function loadoutTab(tab) { _loadoutTab = tab; renderLoadout(); }
+function renderInventoryPanel(container) {
+  let html = `<div style="padding:10px;color:#aaa;font:12px monospace">`;
+  html += `<p style="color:#0af;font:bold 14px monospace;margin-bottom:8px">Weapons Inventory</p>`;
+  const hasAny = Object.entries(weaponInventory).some(([k,v])=>v>0);
+  if (!hasAny) {
+    html += `<p style="color:#555">No weapons purchased yet. Buy from Shop → Weapons tab.</p>`;
+  } else {
+    html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
+    for (const [k,qty] of Object.entries(weaponInventory)) {
+      if (!qty) continue;
+      const [type,, sizeStr] = k.split("_s");
+      const def = WEAPON_DEFS[type];
+      if (!def) continue;
+      const equipped = wEquipped(k);
+      html += `<div style="background:#0a0e1a;border:1px solid #223;border-radius:6px;padding:6px 10px;min-width:110px">
+        <div style="color:#eee;font:bold 11px monospace">${def.name} S${sizeStr}</div>
+        <div style="color:#0af;font:11px monospace">×${qty} owned</div>
+        ${equipped>0?`<div style="color:#ff8;font:10px monospace">×${equipped} equipped</div>`:""}
+        <div style="color:#0f0;font:10px monospace">×${qty-equipped} free</div>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  html += `<p style="color:#0af;font:bold 14px monospace;margin-bottom:8px">Missiles Inventory</p>`;
+  if (typeof missileInventory === "undefined" || !Object.entries(missileInventory).some(([k,v])=>v>0)) {
+    html += `<p style="color:#555">No missiles purchased yet. Buy from Shop → Weapons tab.</p>`;
+  } else {
+    html += `<div style="display:flex;flex-wrap:wrap;gap:6px">`;
+    for (const [k,qty] of Object.entries(missileInventory)) {
+      if (!qty) continue;
+      const parts = k.split("_");
+      const kind = parts[1]; const tier = parseInt(parts[2]);
+      const mk = MISSILE_KINDS?.[kind]; const mt = MISSILE_TYPES?.[tier];
+      if (!mk || !mt) continue;
+      html += `<div style="background:#0a0e1a;border:1px solid #223;border-radius:6px;padding:6px 10px;min-width:110px">
+        <div style="color:#f80;font:bold 11px monospace">${mk.name} T${tier}</div>
+        <div style="color:#f80;font:11px monospace">×${qty}</div>
+        <div style="color:#888;font:10px monospace">DMG:${Math.round(mt.damage*mk.slots)}</div>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div>`;
+  container.innerHTML = html;
+}
 
 function renderLoadout() {
   document.getElementById("loadoutMoney").textContent = "Credits: " + money;
-  document.getElementById("tabShip").style.borderBottom   = _loadoutTab === "ship"   ? "2px solid #0af" : "none";
-  document.getElementById("tabAllies").style.borderBottom = _loadoutTab === "allies" ? "2px solid #0af" : "none";
+  document.getElementById("tabShip").style.borderBottom     = _loadoutTab === "ship"      ? "2px solid #0af" : "none";
+  document.getElementById("tabAllies").style.borderBottom   = _loadoutTab === "allies"    ? "2px solid #0af" : "none";
+  // Add inventory tab if it doesn't exist
+  let tabInv = document.getElementById("tabInventory");
+  if (!tabInv) {
+    tabInv = document.createElement("button");
+    tabInv.id = "tabInventory";
+    tabInv.textContent = "Inventory";
+    tabInv.style.cssText = "width:auto;display:inline-block;margin:2px";
+    tabInv.onclick = () => loadoutTab("inventory");
+    const tabAllies = document.getElementById("tabAllies");
+    if (tabAllies && tabAllies.parentNode) tabAllies.parentNode.insertBefore(tabInv, tabAllies.nextSibling);
+  }
+  tabInv.style.borderBottom = _loadoutTab === "inventory" ? "2px solid #ff8800" : "none";
   const sp = document.getElementById("loadoutShipPanel");
   const ap = document.getElementById("loadoutAlliesPanel");
   if (_loadoutTab === "ship") {
     sp.style.display = "block"; ap.style.display = "none";
     renderShipLoadoutPanel(sp);
+  } else if (_loadoutTab === "inventory") {
+    sp.style.display = "none"; ap.style.display = "block";
+    renderInventoryPanel(ap);
   } else {
     sp.style.display = "none"; ap.style.display = "block";
     renderAllyLoadoutPanel(ap);
@@ -591,6 +723,82 @@ function renderShipLoadoutPanel(container) {
   html += `<p><b>Hull Armor:</b> ${buildArmorSelect(playerLoadout.ownedArmorTiers, playerLoadout.armorTier, "setPlayerArmorTier(parseInt(this.value))", "buyPlayerArmor", sd.armor)}</p>`;
   html += `<p><b>Engines:</b> ${buildEngineSelect(playerLoadout.ownedEngineTiers, playerLoadout.engineTier, "setPlayerEngineTier(parseInt(this.value))", "buyPlayerEngine")}</p>`;
 
+  // Missile storage upgrade
+  const mPrices = (typeof SHIP_UPGRADE_PRICES !== "undefined" && SHIP_UPGRADE_PRICES[sName]?.missile) || { 2: 30000, 3: 90000 };
+  if (shipMaxMissiles > 0) {
+    const ownedMs = playerLoadout.ownedMissileTiers || [1];
+    const curMs = playerLoadout.missileTier || 1;
+    html += `<p><b>Missile Storage:</b> <select onchange="setPlayerMissileTier(parseInt(this.value))">`;
+    for (let t=1;t<=3;t++) {
+      if (ownedMs.includes(t)) {
+        const msT = typeof MISSILE_STORAGE_TIERS !== "undefined" ? MISSILE_STORAGE_TIERS[t] : {name:"T"+t, mult:1+(t-1)*0.5};
+        const cap = Math.round(shipMaxMissiles * msT.mult);
+        html += `<option value="${t}" ${curMs===t?"selected":""}>${msT.name} (${cap} missiles)</option>`;
+      }
+    }
+    html += `</select>`;
+    for (let t=2;t<=3;t++) {
+      if (!(ownedMs.includes(t))) {
+        const prereq = t===3 ? ownedMs.includes(2) : true;
+        const price = mPrices[t] || (t===2?30000:90000);
+        const canBuy = prereq && money >= price;
+        const msT = typeof MISSILE_STORAGE_TIERS !== "undefined" ? MISSILE_STORAGE_TIERS[t] : {name:"T"+t};
+        html += ` <button style="width:auto;display:inline-block;font-size:11px;${canBuy?"":"opacity:0.4"}" onclick="buyPlayerMissileTier(${t})" ${canBuy?"":"disabled"}>Buy ${msT.name} (${price.toLocaleString()} cr)</button>`;
+      }
+    }
+    html += `</p>`;
+  }
+
+  // Weapon quality upgrade
+  const wqPrices = (typeof SHIP_UPGRADE_PRICES !== "undefined" && SHIP_UPGRADE_PRICES[sName]?.weapon) || { 2: 25000, 3: 80000 };
+  if (sd.weaponType !== "none" && !sd.bespoke) {
+    const ownedWq = playerLoadout.ownedWeaponQualityTiers || [1];
+    const curWq = playerLoadout.weaponQualityTier || 1;
+    html += `<p><b>Weapon Quality:</b> <select onchange="setPlayerWeaponQualityTier(parseInt(this.value))">`;
+    for (let t=1;t<=3;t++) {
+      if (ownedWq.includes(t)) {
+        const wqT = typeof WEAPON_QUALITY_TIERS !== "undefined" ? WEAPON_QUALITY_TIERS[t] : {name:"T"+t, damageMult:1+(t-1)*0.5};
+        html += `<option value="${t}" ${curWq===t?"selected":""}>${wqT.name} (×${wqT.damageMult} dmg)</option>`;
+      }
+    }
+    html += `</select>`;
+    for (let t=2;t<=3;t++) {
+      if (!(ownedWq.includes(t))) {
+        const prereq = t===3 ? ownedWq.includes(2) : true;
+        const price = wqPrices[t] || (t===2?25000:80000);
+        const canBuy = prereq && money >= price;
+        const wqT = typeof WEAPON_QUALITY_TIERS !== "undefined" ? WEAPON_QUALITY_TIERS[t] : {name:"T"+t};
+        html += ` <button style="width:auto;display:inline-block;font-size:11px;${canBuy?"":"opacity:0.4"}" onclick="buyPlayerWeaponQualityTier(${t})" ${canBuy?"":"disabled"}>Buy ${wqT.name} (${price.toLocaleString()} cr)</button>`;
+      }
+    }
+    html += `</p>`;
+  }
+
+  // Turret upgrade (for ships with PDC)
+  const tuPrices = (typeof SHIP_UPGRADE_PRICES !== "undefined" && SHIP_UPGRADE_PRICES[sName]?.turret);
+  if (sd.pdc > 0 && tuPrices) {
+    const ownedTu = playerLoadout.ownedTurretTiers || [1];
+    const curTu = playerLoadout.turretTier || 1;
+    html += `<p><b>Turret Upgrade:</b> <select onchange="setPlayerTurretTier(parseInt(this.value))">`;
+    for (let t=1;t<=3;t++) {
+      if (ownedTu.includes(t)) {
+        const tuT = typeof TURRET_UPGRADE_TIERS !== "undefined" ? TURRET_UPGRADE_TIERS[t] : {name:"T"+t, rpmMult:1+(t-1)*0.5};
+        html += `<option value="${t}" ${curTu===t?"selected":""}>${tuT.name} (×${tuT.rpmMult} RPM)</option>`;
+      }
+    }
+    html += `</select>`;
+    for (let t=2;t<=3;t++) {
+      if (!(ownedTu.includes(t))) {
+        const prereq = t===3 ? ownedTu.includes(2) : true;
+        const price = tuPrices[t] || (t===2?30000:90000);
+        const canBuy = prereq && money >= price;
+        const tuT = typeof TURRET_UPGRADE_TIERS !== "undefined" ? TURRET_UPGRADE_TIERS[t] : {name:"T"+t};
+        html += ` <button style="width:auto;display:inline-block;font-size:11px;${canBuy?"":"opacity:0.4"}" onclick="buyPlayerTurretTier(${t})" ${canBuy?"":"disabled"}>Buy ${tuT.name} (${price.toLocaleString()} cr)</button>`;
+      }
+    }
+    html += `</p>`;
+  }
+
   container.innerHTML = html;
 }
 
@@ -633,11 +841,69 @@ function renderAllyLoadoutPanel(container) {
       html += `</select> <span style="color:#666;font-size:10px">${beh.desc}</span></div>`;
       html += `<div style="margin:4px 0">Weapon (S${aDef.weaponSize}): ${buildWeaponSelect(aDef.weaponSize, slot.weapon, `setAllyWeapon(${i},this.value)`)}</div>`;
       html += `<div style="margin:4px 0">Shield: ${buildShieldSelect(slot.ownedShieldTiers||[1], slot.shieldTier||1, `setAllyShieldTier(${i},parseInt(this.value))`, `buyAllyShield_${i}`, aDef.shields)}</div>`;
+      html += `<div style="margin:4px 0">Armor: ${buildArmorSelect(slot.ownedArmorTiers||[1], slot.armorTier||1, `setAllyArmorTier(${i},parseInt(this.value))`, `buyAllyArmor_${i}`, aDef.hp)}</div>`;
+      html += `<div style="margin:4px 0">Engines: ${buildEngineSelect(slot.ownedEngineTiers||[1], slot.engineTier||1, `setAllyEngineTier(${i},parseInt(this.value))`, `buyAllyEngine_${i}`)}</div>`;
+      if (aDef.weaponSize > 0) {
+        html += `<div style="margin:4px 0">Weapon Quality: ${buildWeaponQualitySelect(slot.ownedWeaponQualityTiers||[1], slot.weaponQualityTier||1, `setAllyWeaponQualityTier(${i},parseInt(this.value))`, `buyAllyWeaponQuality_${i}`)}</div>`;
+      }
       html += `</div>`;
     }
   }
   container.innerHTML = html;
-  for (let i = 0; i < totalSlots; i++) window[`buyAllyShield_${i}`] = (tier) => buyAllyShield(i, tier);
+  for (let i = 0; i < totalSlots; i++) {
+    window[`buyAllyShield_${i}`]         = (tier) => buyAllyShield(i, tier);
+    window[`buyAllyArmor_${i}`]          = (tier) => buyAllyArmor(i, tier);
+    window[`buyAllyEngine_${i}`]         = (tier) => buyAllyEngine(i, tier);
+    window[`buyAllyWeaponQuality_${i}`]  = (tier) => buyAllyWeaponQuality(i, tier);
+  }
+}
+
+// === NEW UPGRADE SETTERS ===
+function setPlayerMissileTier(t)        { if((playerLoadout.ownedMissileTiers||[1]).includes(t)){playerLoadout.missileTier=t; setPlayerShip(currentShipName); renderLoadout();} }
+function setPlayerWeaponQualityTier(t)  { if((playerLoadout.ownedWeaponQualityTiers||[1]).includes(t)){playerLoadout.weaponQualityTier=t; setPlayerShip(currentShipName); renderLoadout();} }
+function setPlayerTurretTier(t)         { if((playerLoadout.ownedTurretTiers||[1]).includes(t)){playerLoadout.turretTier=t; setPlayerShip(currentShipName); renderLoadout();} }
+function buyPlayerMissileTier(t) {
+  const sn=playerLoadout.ship||"Starlight";
+  const prices=(typeof SHIP_UPGRADE_PRICES!=="undefined"&&SHIP_UPGRADE_PRICES[sn]?.missile)||{2:30000,3:90000};
+  const price=prices[t]; if(!price||money<price||(playerLoadout.ownedMissileTiers||[1]).includes(t))return;
+  if(t===3&&!(playerLoadout.ownedMissileTiers||[1]).includes(2))return;
+  money-=price; if(!playerLoadout.ownedMissileTiers)playerLoadout.ownedMissileTiers=[1];
+  playerLoadout.ownedMissileTiers.push(t); playerLoadout.missileTier=t;
+  saveShipUpgrades(sn); setPlayerShip(sn); renderLoadout(); updateHUD();
+}
+function buyPlayerWeaponQualityTier(t) {
+  const sn=playerLoadout.ship||"Starlight";
+  const prices=(typeof SHIP_UPGRADE_PRICES!=="undefined"&&SHIP_UPGRADE_PRICES[sn]?.weapon)||{2:25000,3:80000};
+  const price=prices[t]; if(!price||money<price||(playerLoadout.ownedWeaponQualityTiers||[1]).includes(t))return;
+  if(t===3&&!(playerLoadout.ownedWeaponQualityTiers||[1]).includes(2))return;
+  money-=price; if(!playerLoadout.ownedWeaponQualityTiers)playerLoadout.ownedWeaponQualityTiers=[1];
+  playerLoadout.ownedWeaponQualityTiers.push(t); playerLoadout.weaponQualityTier=t;
+  saveShipUpgrades(sn); setPlayerShip(sn); renderLoadout(); updateHUD();
+}
+function buyPlayerTurretTier(t) {
+  const sn=playerLoadout.ship||"Starlight";
+  const prices=(typeof SHIP_UPGRADE_PRICES!=="undefined"&&SHIP_UPGRADE_PRICES[sn]?.turret)||{2:30000,3:90000};
+  const price=prices[t]; if(!price||money<price||(playerLoadout.ownedTurretTiers||[1]).includes(t))return;
+  if(t===3&&!(playerLoadout.ownedTurretTiers||[1]).includes(2))return;
+  money-=price; if(!playerLoadout.ownedTurretTiers)playerLoadout.ownedTurretTiers=[1];
+  playerLoadout.ownedTurretTiers.push(t); playerLoadout.turretTier=t;
+  saveShipUpgrades(sn); setPlayerShip(sn); renderLoadout(); updateHUD();
+}
+// Ally setters
+function setAllyArmorTier(idx,t)        { const sl=playerLoadout.allies[idx];if(!sl||(!(sl.ownedArmorTiers||[1]).includes(t)))return;sl.armorTier=t;renderLoadout(); }
+function setAllyEngineTier(idx,t)       { const sl=playerLoadout.allies[idx];if(!sl||(!(sl.ownedEngineTiers||[1]).includes(t)))return;sl.engineTier=t;renderLoadout(); }
+function setAllyWeaponQualityTier(idx,t){ const sl=playerLoadout.allies[idx];if(!sl||(!(sl.ownedWeaponQualityTiers||[1]).includes(t)))return;sl.weaponQualityTier=t;renderLoadout(); }
+function buyAllyArmor(idx,t)    { const sl=playerLoadout.allies[idx];const p=ARMOR_UPGRADE_PRICES[t];if(!sl||!p||money<p)return;if(t===3&&!(sl.ownedArmorTiers||[1]).includes(2))return;if((sl.ownedArmorTiers||[1]).includes(t))return;money-=p;if(!sl.ownedArmorTiers)sl.ownedArmorTiers=[1];sl.ownedArmorTiers.push(t);sl.armorTier=t;renderLoadout();updateHUD(); }
+function buyAllyEngine(idx,t)   { const sl=playerLoadout.allies[idx];const p=ENGINE_UPGRADE_PRICES[t];if(!sl||!p||money<p)return;if(t===3&&!(sl.ownedEngineTiers||[1]).includes(2))return;if((sl.ownedEngineTiers||[1]).includes(t))return;money-=p;if(!sl.ownedEngineTiers)sl.ownedEngineTiers=[1];sl.ownedEngineTiers.push(t);sl.engineTier=t;renderLoadout();updateHUD(); }
+function buyAllyWeaponQuality(idx,t) { const sl=playerLoadout.allies[idx];const prices={2:20000,3:65000};const p=prices[t];if(!sl||!p||money<p)return;if(t===3&&!(sl.ownedWeaponQualityTiers||[1]).includes(2))return;if((sl.ownedWeaponQualityTiers||[1]).includes(t))return;money-=p;if(!sl.ownedWeaponQualityTiers)sl.ownedWeaponQualityTiers=[1];sl.ownedWeaponQualityTiers.push(t);sl.weaponQualityTier=t;renderLoadout();updateHUD(); }
+
+function buildWeaponQualitySelect(ownedTiers, curTier, onchangeFn, buyFn) {
+  const prices={2:20000,3:65000};
+  let html=`<select onchange="${onchangeFn}">`;
+  for(let t=1;t<=3;t++){if((ownedTiers||[1]).includes(t)){const wqT=typeof WEAPON_QUALITY_TIERS!=="undefined"?WEAPON_QUALITY_TIERS[t]:{name:"T"+t,damageMult:1+(t-1)*0.5};html+=`<option value="${t}" ${curTier===t?"selected":""}>${wqT.name} (×${wqT.damageMult})</option>`;}}
+  html+=`</select>`;
+  for(let t=2;t<=3;t++){if(!(ownedTiers||[1]).includes(t)){const prereq=t===3?(ownedTiers||[1]).includes(2):true;const price=prices[t];const canBuy=prereq&&money>=price;const wqT=typeof WEAPON_QUALITY_TIERS!=="undefined"?WEAPON_QUALITY_TIERS[t]:{name:"T"+t};html+=` <button style="width:auto;display:inline-block;font-size:11px;${canBuy?"":"opacity:0.4"}" onclick="${buyFn}(${t})" ${canBuy?"":"disabled"}>Buy ${wqT.name} (${price.toLocaleString()} cr)</button>`;}}
+  return html;
 }
 
 // === SETTERS ===
