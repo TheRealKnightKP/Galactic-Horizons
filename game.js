@@ -49,7 +49,7 @@ if (!IS_MOBILE) {
     if(e.code==="KeyE"&&state==="playing") cycleFormation();
     if(e.code==="KeyQ"&&state==="playing") activateSpecial();
     if(e.code==="KeyR"&&state==="playing") activatePing();
-    if(e.code==="KeyT"&&state==="playing") cycleMissileKind();
+   if(e.code==="KeyT"&&state==="playing"&&typeof cycleMissileKind==="function") cycleMissileKind();
     e.preventDefault();
   });
   document.addEventListener("keyup",   e => { keys[e.code] = false; });
@@ -2377,3 +2377,4 @@ function confirmLeaveGame() {
 }
 
 gameLoop();
+
