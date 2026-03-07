@@ -159,7 +159,7 @@ const SHIPS = {
   Leviathan:  { price: 750000,    hp: 7500,  shields: 7000,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "none",    weaponSize: 0,  bespoke: false, pdc: 8, pdcSizes: [7,5,5,5,4,4,4,4], image: "Kraken.png", color: "#88ff00", size: 8,  missileType: 3, armorType: "capital", extraAllySlots: 6 },
   Dominion:   { price: 1200000,   hp: 10000, shields: 8000, armor: 100, missiles: 32, speed: 0.45, weaponType: "ballistic_railgun", weaponSize: 10, bespoke: true,  pdc: 8,  pdcSizes: [6,6,5,5,4,4,3,3],        image: "Idris.jpg",            color: "#cc88ff", size: 10, missileType: 3, armorType: "capital",   extraAllySlots: 4 },
   // --- SECRET ---
-  Comet:      { price: null,      hp: 100,   shields: 90,   armor: 100, missiles: 30,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  doubleShot: true, pdc: 0,  pdcSize: 0,                         image: "Meteor.png",           color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
+  Comet:      { price: null,      hp: 100,   shields: 90,   armor: 100, missiles: 30,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 6,  bespoke: true,  doubleShot: false, pdc: 0,  pdcSize: 0,                         image: "Meteor.png",           color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
   Vengeance:  { price: null,      hp: 200,   shields: 400,  armor: 100, missiles: 20,  speed: 3.8,  weaponType: "vengeance_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: false, pdc: 1, pdcSize: 4,                         image: "Meteor.png",           color: "#ff0044", size: 2,  missileType: 2, armorType: "medium", secret: true, extraAllySlots: 1 },
 };
 
@@ -433,3 +433,4 @@ function getShadowCometStats(killCount) {
     damage: scaleMult, // multiplier applied to weapon damage in game.js
   };
 }
+
