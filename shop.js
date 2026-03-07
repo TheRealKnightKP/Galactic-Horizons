@@ -711,31 +711,13 @@ function renderShipLoadoutPanel(container) {
   const mkDefs = typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS : {};
   const shipMaxMissiles = sd.missiles || 0;
   if (shipMaxMissiles > 0) {
-    // Slot-based missile loadout
-    const loadout = playerLoadout.missileLoadout || [];
-    const usedSlots = loadout.reduce((sum, k) => sum + (mkDefs[k]?.slots || 1), 0);
-    const capSlots  = shipMaxMissiles; // missiles stat = total slots
-    html += `<div style="margin:8px 0"><b>Missiles</b> <span style="color:#888;font-size:11px">(${usedSlots.toFixed(1)} / ${capSlots} slots used)</span>`;
-    html += `<div style="margin:4px 0 6px;display:flex;flex-wrap:wrap;gap:4px">`;
-    if (loadout.length === 0) {
-      html += `<span style="color:#555;font:11px monospace">No missiles loaded.</span>`;
-    } else {
-      loadout.forEach((k, idx) => {
-        const mk = mkDefs[k];
-        if (!mk) return;
-        html += `<span style="background:#0a0e1a;border:1px solid #334;border-radius:4px;padding:3px 8px;font:11px monospace;color:#f80">${mk.name} <span style="color:#555">[${mk.slots}sl]</span> <button style="width:auto;padding:0 5px;font-size:10px;background:rgba(255,50,50,0.15);border-color:#f44;color:#f44;cursor:pointer" onclick="removeMissileFromLoadout(${idx})">×</button></span>`;
-      });
+    html += `<p><b>Missile Type:</b> <select onchange="setMissileKind(this.value)">`;
+    for (const [k,mk] of Object.entries(mkDefs)) {
+      const count = Math.floor(shipMaxMissiles/mk.slots);
+      const sel = (playerLoadout.missileKind||"standard")===k ? "selected" : "";
+      html += `<option value="${k}" ${sel}>${mk.name} (×${count} max) — ${mk.desc}</option>`;
     }
-    html += `</div>`;
-    html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px">`;
-    for (const [k, mk] of Object.entries(mkDefs)) {
-      const slotsNeeded = mk.slots;
-      const canFit = (usedSlots + slotsNeeded) <= capSlots;
-      html += `<button style="width:auto;display:inline-block;font-size:11px;${canFit?"":"opacity:0.4"}" onclick="addMissileToLoadout('${k}')" ${canFit?"":"disabled"}>+ ${mk.name} (${slotsNeeded}sl)</button>`;
-    }
-    html += `</div>`;
-    if (loadout.length > 0) html += `<button style="width:auto;font-size:10px;background:rgba(255,50,50,0.1);border-color:#f44;color:#f44" onclick="clearMissileLoadout()">Clear All</button>`;
-    html += `</div>`;
+    html += `</select></p>`;
   }
   html += `<p><b>Shields:</b> ${buildShieldSelect(playerLoadout.ownedShieldTiers, playerLoadout.shieldTier, "setPlayerShieldTier(parseInt(this.value))", "buyPlayerShield", sd.shields)}</p>`;
   html += `<p><b>Hull Armor:</b> ${buildArmorSelect(playerLoadout.ownedArmorTiers, playerLoadout.armorTier, "setPlayerArmorTier(parseInt(this.value))", "buyPlayerArmor", sd.armor)}</p>`;
@@ -926,36 +908,6 @@ function buildWeaponQualitySelect(ownedTiers, curTier, onchangeFn, buyFn) {
 
 // === SETTERS ===
 function setMissileKind(k) { playerLoadout.missileKind=k; if(typeof setPlayerMissileKind==="function")setPlayerMissileKind(k); renderLoadout(); }
-
-// === MISSILE LOADOUT (slot-based) ===
-function addMissileToLoadout(kind) {
-  const mk = MISSILE_KINDS[kind]; if (!mk) return;
-  const sd = SHIPS[playerLoadout.ship||"Starlight"];
-  const capSlots = sd.missiles || 0;
-  const loadout = playerLoadout.missileLoadout || [];
-  const usedSlots = loadout.reduce((s,k)=>s+(MISSILE_KINDS[k]?.slots||1),0);
-  if (usedSlots + mk.slots > capSlots) return;
-  playerLoadout.missileLoadout = [...loadout, kind];
-  _syncMissileKindToPlayer();
-  renderLoadout();
-}
-function removeMissileFromLoadout(idx) {
-  const loadout = playerLoadout.missileLoadout || [];
-  playerLoadout.missileLoadout = loadout.filter((_,i)=>i!==idx);
-  _syncMissileKindToPlayer();
-  renderLoadout();
-}
-function clearMissileLoadout() {
-  playerLoadout.missileLoadout = [];
-  _syncMissileKindToPlayer();
-  renderLoadout();
-}
-function _syncMissileKindToPlayer() {
-  // Keep missileKind in sync with first loadout entry for legacy code
-  const l = playerLoadout.missileLoadout;
-  playerLoadout.missileKind = (l && l.length > 0) ? l[0] : "standard";
-  if (typeof setPlayerMissileKind === "function") setPlayerMissileKind(playerLoadout.missileKind);
-}
 function setMainWeapon(wk)           { playerLoadout.mainWeapon = wk; renderLoadout(); }
 function setPDCWeapon(idx, wk)       { if (!playerLoadout.pdcWeapons) playerLoadout.pdcWeapons = []; playerLoadout.pdcWeapons[idx] = wk; renderLoadout(); }
 function setPlayerShieldTier(tier)   { if ((playerLoadout.ownedShieldTiers||[1]).includes(tier)) { playerLoadout.shieldTier = tier; renderLoadout(); } }
