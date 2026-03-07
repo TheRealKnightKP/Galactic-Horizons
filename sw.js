@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.4.18";
+const CACHE = "galactic-horizons-v1.4.19";
 const ASSETS = [
   "./",
   "./index.html",
@@ -92,4 +92,5 @@ Versions:
 -V1.4.16 - Fixed missile equipping again, removed pack hunters.
 -V1.4.17 - Fixed missile restock and added option to cycle missile types
 -V1.4.18 - Fixed missile cycle
+-V1.4.19 - Fixing missile cycle again
 */
