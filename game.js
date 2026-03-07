@@ -49,7 +49,7 @@ if (!IS_MOBILE) {
     if(e.code==="KeyE"&&state==="playing") cycleFormation();
     if(e.code==="KeyQ"&&state==="playing") activateSpecial();
     if(e.code==="KeyR"&&state==="playing") activatePing();
-   if(e.code==="KeyT"&&state==="playing"&&typeof cycleMissileKind==="function") cycleMissileKind();
+    if(e.code==="KeyT"&&state==="playing") cycleMissileKind();
     e.preventDefault();
   });
   document.addEventListener("keyup",   e => { keys[e.code] = false; });
@@ -621,7 +621,7 @@ function setPlayerShip(name) {
     speed:baseSpeed, maxSpeed:baseSpeed, accel:baseSpeed*0.20,
     weaponType:wType, weaponSize:d.weaponSize, weaponStats:wStats,
     bespoke:d.bespoke, doubleShot:d.doubleShot||false, pdcCount:d.pdc, missileType:d.missileType||2,
-    missileRack:[...(playerLoadout.missileRack||[])], missileActiveKind:null,
+    missileRack:[...(playerLoadout.missileRack||[])], missileActiveKind:(playerLoadout.missileRack||[])[0]?.kind||null,
     img:getImage(d.image), color:d.color, rotation:0, spriteAngleOffset:spriteOffset,
     vx:0, vy:0, shootTimer:0,
     boosting:false, boostTimer:0, boostCooldown:0,
@@ -1549,7 +1549,7 @@ function updatePlayer() {
     if (_fireIdx < 0) _fireIdx = 0; // fallback
     const entry = freeAmmo
       ? (player.missileRack[_fireIdx]||{kind:"standard",tier:player.missileType||2})
-      : player.missileRack.splice(_fireIdx, 1)[0]; // consume specifically
+      : (player.missileRack.splice(_fireIdx, 1)[0]||{kind:"standard",tier:player.missileType||2});
     if(freeAmmo) player.specialMissilesUsed++;
     player.missiles=player.missileRack.length;
     // If active kind is now gone, auto-cycle to next available
@@ -2242,6 +2242,43 @@ function render() {
 // ============================================================
 // HUD + LOOP
 // ============================================================
+function getMissileKindsInRack() {
+  const seen = [], rack = player?.missileRack || [];
+  rack.forEach(e => { if (!seen.includes(e.kind)) seen.push(e.kind); });
+  return seen;
+}
+
+function showNotification(text, color) {
+  let el = document.getElementById("gameNotif");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "gameNotif";
+    el.style.cssText = "position:fixed;top:18%;left:50%;transform:translateX(-50%);font:bold 18px monospace;padding:7px 22px;border-radius:8px;pointer-events:none;z-index:8000;transition:opacity 0.4s";
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.style.color = color || "#fff";
+  el.style.background = "rgba(0,0,0,0.75)";
+  el.style.border = "1.5px solid " + (color || "#888");
+  el.style.opacity = "1";
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.opacity = "0"; }, 1600);
+}
+
+function cycleMissileKind() {
+  if (!player || !player.missileRack) return;
+  const kinds = getMissileKindsInRack();
+  if (kinds.length === 0) return;
+  const cur = player.missileActiveKind;
+  const idx = kinds.indexOf(cur);
+  player.missileActiveKind = kinds[(idx + 1) % kinds.length];
+  updateHUD();
+  const mk = (typeof MISSILE_KINDS !== "undefined" && MISSILE_KINDS[player.missileActiveKind]) || {};
+  const kc = player.missileActiveKind==="nuke"?"#ff4400":player.missileActiveKind==="emp"?"#44ffcc":player.missileActiveKind==="micro"?"#ffcc44":player.missileActiveKind==="cluster"?"#ff88ff":"#aaddff";
+  const count = player.missileRack.filter(e=>e.kind===player.missileActiveKind).length;
+  showNotification("▶ " + (mk.name || player.missileActiveKind) + " ×" + count, kc);
+}
+
 function updateHUD() {
   const inGame = state==="playing"||state==="waveTransition"||state==="shadowCometCutscene";
   document.getElementById("hud").style.display = inGame ? "block" : "none";
@@ -2255,7 +2292,8 @@ function updateHUD() {
     const rack = player.missileRack || [];
     const mkDefs = typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS : {};
     // Ensure missileActiveKind is valid
-    if (!player.missileActiveKind || !rack.some(e=>e.kind===player.missileActiveKind)) {
+    if (rack.length === 0) { player.missileActiveKind = null; }
+    else if (!player.missileActiveKind || !rack.some(e=>e.kind===player.missileActiveKind)) {
       player.missileActiveKind = rack[0]?.kind || null;
     }
     const curKind = player.missileActiveKind;
@@ -2377,4 +2415,3 @@ function confirmLeaveGame() {
 }
 
 gameLoop();
-
