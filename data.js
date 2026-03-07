@@ -42,43 +42,25 @@ const ARMOR_UPGRADE_TIERS = {
   2: { name: "Extra Plating",  mult: 5.0 },
   3: { name: "Hardened",       mult: 7.5 },
 };
-const ARMOR_UPGRADE_PRICES = { 2: 8000, 3: 30000 };
+const ARMOR_UPGRADE_PRICES = { 2: 30000, 3: 120000 };
 
 
 // === PER-SHIP UPGRADE PRICES ===
-// Tier 2 should be affordable ~2-4 waves after you'd realistically get the ship.
-// Tier 3 should be affordable ~5-8 waves after tier 2.
-// Wave rewards: w1=1k, w2=1.5k, w3=2.5k, w4=3.5k, w5=5k, w6=7k, w7=9k, w8=12k,
-//               w9=16k, w10=22k, w11=28k, w12=35k, w13=44k, w14=55k, w15=70k...
 const SHIP_UPGRADE_PRICES = {
-  // Starlight: starter ship, upgrades available from wave 1-3 money
-  Starlight:  { shield:{ 2:2500,  3:7000   }, armor:{ 2:2500,  3:7000   }, engine:{ 2:2500,  3:7000   }, weapon:{ 2:3500,  3:9000   }, missile:{ 2:3000,  3:8000   } },
-  // Falcon: ~wave 2-3 ship, upgrades wave 3-6
-  Falcon:     { shield:{ 2:3500,  3:10000  }, armor:{ 2:3500,  3:10000  }, engine:{ 2:4000,  3:12000  }, weapon:{ 2:5000,  3:14000  }, missile:{ 2:4500,  3:12000  } },
-  // Rouge: ~wave 4-5, upgrades wave 5-9
-  Rouge:      { shield:{ 2:6000,  3:18000  }, armor:{ 2:6000,  3:18000  }, engine:{ 2:7000,  3:20000  }, weapon:{ 2:8000,  3:22000  }, missile:{ 2:7000,  3:19000  } },
-  // Marauder: ~wave 4-5, upgrades wave 5-9
-  Marauder:   { shield:{ 2:6000,  3:18000  }, armor:{ 2:7000,  3:20000  }, engine:{ 2:6000,  3:17000  }, weapon:{ 2:8000,  3:22000  }, missile:{ 2:6000,  3:16000  } },
-  // Wasp: ~wave 6-7, upgrades wave 7-11
-  Wasp:       { shield:{ 2:9000,  3:28000  }, armor:{ 2:9000,  3:28000  }, engine:{ 2:11000, 3:33000  }, weapon:{ 2:11000, 3:32000  }, missile:{ 2:9000,  3:26000  } },
-  // Supernova: ~wave 7-8, upgrades wave 8-13
-  Supernova:  { shield:{ 2:12000, 3:35000  }, armor:{ 2:12000, 3:35000  }, engine:{ 2:10000, 3:30000  }, weapon:{ 2:14000, 3:40000  }, missile:{ 2:12000, 3:36000  } },
-  // Bulwark: ~wave 8-9, upgrades wave 9-14
-  Bulwark:    { shield:{ 2:10000, 3:28000  }, armor:{ 2:12000, 3:34000  }, engine:{ 2:9000,  3:25000  }, weapon:{ 2:0,     3:0      }, missile:{ 2:10000, 3:28000  }, turret:{ 2:13000, 3:38000  } },
-  // Tempest: ~wave 13-14, upgrades wave 14-18
-  Tempest:    { shield:{ 2:22000, 3:65000  }, armor:{ 2:24000, 3:70000  }, engine:{ 2:20000, 3:60000  }, weapon:{ 2:26000, 3:78000  }, missile:{ 2:22000, 3:64000  }, turret:{ 2:24000, 3:70000  } },
-  // Nemesis: ~wave 11-12, upgrades wave 12-16
-  Nemesis:    { shield:{ 2:18000, 3:55000  }, armor:{ 2:19000, 3:58000  }, engine:{ 2:16000, 3:50000  }, weapon:{ 2:22000, 3:68000  }, missile:{ 2:17000, 3:52000  } },
-  // Prometheus: ~wave 14-15, upgrades wave 15-19
-  Prometheus: { shield:{ 2:28000, 3:85000  }, armor:{ 2:28000, 3:85000  }, engine:{ 2:25000, 3:78000  }, weapon:{ 2:32000, 3:95000  }, missile:{ 2:28000, 3:85000  }, turret:{ 2:30000, 3:90000  } },
-  // Leviathan: ~wave 16-17, upgrades wave 17-20
-  Leviathan:  { shield:{ 2:38000, 3:115000 }, armor:{ 2:38000, 3:115000 }, engine:{ 2:32000, 3:100000 }, weapon:{ 2:0,     3:0      }, missile:{ 2:35000, 3:108000 }, turret:{ 2:40000, 3:122000 } },
-  // Dominion: ~wave 17-18, upgrades wave 18-20+
-  Dominion:   { shield:{ 2:45000, 3:138000 }, armor:{ 2:45000, 3:138000 }, engine:{ 2:40000, 3:122000 }, weapon:{ 2:50000, 3:152000 }, missile:{ 2:42000, 3:130000 }, turret:{ 2:47000, 3:144000 } },
-  // Comet: secret, treat like Wasp tier
-  Comet:      { shield:{ 2:9000,  3:27000  }, armor:{ 2:9000,  3:27000  }, engine:{ 2:10000, 3:30000  }, weapon:{ 2:11000, 3:33000  }, missile:{ 2:9000,  3:27000  } },
-  // Vengeance: secret, treat like Supernova tier
-  Vengeance:  { shield:{ 2:12000, 3:36000  }, armor:{ 2:12000, 3:36000  }, engine:{ 2:13000, 3:40000  }, weapon:{ 2:0,     3:0      }, missile:{ 2:12000, 3:36000  } },
+  Starlight:  { shield:{ 2:8000,  3:25000  }, armor:{ 2:8000,  3:25000  }, engine:{ 2:8000,  3:25000  }, weapon:{ 2:10000, 3:30000  }, missile:{ 2:12000, 3:35000  } },
+  Falcon:     { shield:{ 2:10000, 3:32000  }, armor:{ 2:10000, 3:32000  }, engine:{ 2:12000, 3:38000  }, weapon:{ 2:14000, 3:42000  }, missile:{ 2:15000, 3:44000  } },
+  Rouge:      { shield:{ 2:15000, 3:50000  }, armor:{ 2:15000, 3:50000  }, engine:{ 2:18000, 3:55000  }, weapon:{ 2:20000, 3:60000  }, missile:{ 2:18000, 3:55000  } },
+  Marauder:   { shield:{ 2:16000, 3:52000  }, armor:{ 2:18000, 3:58000  }, engine:{ 2:16000, 3:50000  }, weapon:{ 2:20000, 3:60000  }, missile:{ 2:16000, 3:48000  } },
+  Wasp:       { shield:{ 2:22000, 3:75000  }, armor:{ 2:22000, 3:75000  }, engine:{ 2:28000, 3:88000  }, weapon:{ 2:28000, 3:85000  }, missile:{ 2:22000, 3:70000  } },
+  Supernova:  { shield:{ 2:28000, 3:90000  }, armor:{ 2:28000, 3:90000  }, engine:{ 2:25000, 3:80000  }, weapon:{ 2:35000, 3:105000 }, missile:{ 2:30000, 3:95000  } },
+  Bulwark:    { shield:{ 2:20000, 3:65000  }, armor:{ 2:25000, 3:80000  }, engine:{ 2:18000, 3:58000  }, weapon:{ 2:0,     3:0      }, missile:{ 2:20000, 3:60000  }, turret:{ 2:30000, 3:90000  } },
+  Tempest:    { shield:{ 2:40000, 3:130000 }, armor:{ 2:45000, 3:140000 }, engine:{ 2:38000, 3:120000 }, weapon:{ 2:50000, 3:155000 }, missile:{ 2:40000, 3:125000 }, turret:{ 2:45000, 3:140000 } },
+  Nemesis:    { shield:{ 2:38000, 3:120000 }, armor:{ 2:40000, 3:125000 }, engine:{ 2:35000, 3:110000 }, weapon:{ 2:50000, 3:155000 }, missile:{ 2:35000, 3:110000 } },
+  Prometheus: { shield:{ 2:55000, 3:175000 }, armor:{ 2:55000, 3:175000 }, engine:{ 2:50000, 3:160000 }, weapon:{ 2:60000, 3:190000 }, missile:{ 2:55000, 3:175000 }, turret:{ 2:60000, 3:185000 } },
+  Leviathan:  { shield:{ 2:75000, 3:240000 }, armor:{ 2:75000, 3:240000 }, engine:{ 2:65000, 3:210000 }, weapon:{ 2:0,     3:0      }, missile:{ 2:70000, 3:220000 }, turret:{ 2:80000, 3:250000 } },
+  Dominion:   { shield:{ 2:90000, 3:285000 }, armor:{ 2:90000, 3:285000 }, engine:{ 2:80000, 3:255000 }, weapon:{ 2:100000,3:315000 }, missile:{ 2:85000, 3:270000 }, turret:{ 2:95000, 3:300000 } },
+  Comet:      { shield:{ 2:20000, 3:65000  }, armor:{ 2:20000, 3:65000  }, engine:{ 2:22000, 3:70000  }, weapon:{ 2:25000, 3:78000  }, missile:{ 2:20000, 3:65000  } },
+  Vengeance:  { shield:{ 2:25000, 3:80000  }, armor:{ 2:25000, 3:80000  }, engine:{ 2:28000, 3:88000  }, weapon:{ 2:0,     3:0      }, missile:{ 2:25000, 3:78000  } },
 };
 
 // === MISSILE STORAGE UPGRADES ===
@@ -107,7 +89,7 @@ const SHIELD_TIERS = {
   2: { name: "Reinforced", mult: 1.5, regenRate: 0.04 },
   3: { name: "Milspec",    mult: 2.0, regenRate: 0.07 },
 };
-const SHIELD_TIER_PRICES = { 2: 6000, 3: 20000 };
+const SHIELD_TIER_PRICES = { 2: 20000, 3: 80000 };
 
 // === ENGINE UPGRADES ===
 const ENGINE_UPGRADE_TIERS = {
@@ -115,7 +97,7 @@ const ENGINE_UPGRADE_TIERS = {
   2: { name: "Tuned Engines",    speedMult: 1.20, boostDurMult: 1.30, boostCDMult: 0.75, dodgeBonus: 0.05 },
   3: { name: "Overclocked",      speedMult: 1.50, boostDurMult: 1.60, boostCDMult: 0.50, dodgeBonus: 0.12 },
 };
-const ENGINE_UPGRADE_PRICES = { 2: 6000, 3: 20000 };
+const ENGINE_UPGRADE_PRICES = { 2: 25000, 3: 100000 };
 
 const ALLY_SHIP_DEFS = {
   Sprite:    { price: 0,      weaponSize: 1, hp: 60,  shields: 70,   armorType: "light",   image: "Merlin.png",        color: "#88ff88", w: 52, h: 32 },
@@ -331,7 +313,7 @@ ENEMIES.Healer.healPerFrame = 8;
 const MISSILE_TYPES = {
   1: { name: "Type 1 (Fast Strike)", speed: 8, damage: 400,  color: "#ff8800" },
   2: { name: "Type 2 (Standard)",    speed: 6, damage: 600,  color: "#ffaa44" },
-  3: { name: "Type 3 (Warhead)",     speed: 4, damage: 3500, color: "#ff4444" },
+  3: { name: "Type 3 (Warhead)",     speed: 4, damage: 1000, color: "#ff4444" },
 };
 
 const WAVES = [
@@ -384,7 +366,7 @@ const MISSILE_KINDS = {
     desc:"Small AOE, strips shields and stuns. No lock-on." },
   cluster:  { name:"Cluster",   slots:1,   aoe:0,    lockOn:true,  friendly:false, corrosion:false,
     desc:"Splits into 4 mini-missiles on impact area." },
-  nuke:     { name:"Nuke",      slots:5,   aoe:700,  lockOn:false, friendly:true,  corrosion:true,
+  nuke:     { name:"Nuke",      slots:5,   aoe:320,  lockOn:false, friendly:true,  corrosion:true,
     desc:"Massive AOE. Damages allies if in blast. Leaves 10s corrosion." },
   micro:    { name:"Micro",     slots:0.5, aoe:0,    lockOn:true,  friendly:false, corrosion:false,
     desc:"Half slot cost, half damage. Two fit per slot." },
