@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.4.16";
+const CACHE = "galactic-horizons-v1.4.17";
 const ASSETS = [
   "./",
   "./index.html",
@@ -90,4 +90,5 @@ Versions:
 -V1.4.14 - Fixed money, nukes, missile choosing, ship upgrade prices, removed shop when entering waves, for real this time.
 -V1.4.15 - Fixed missile equipping, upgrade prices, pack huners.
 -V1.4.16 - Fixed missile equipping again, removed pack hunters.
+-V1.4.17 - Fixed missile restock and added option to cycle missile types
 */
