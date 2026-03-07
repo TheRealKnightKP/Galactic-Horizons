@@ -49,6 +49,7 @@ if (!IS_MOBILE) {
     if(e.code==="KeyE"&&state==="playing") cycleFormation();
     if(e.code==="KeyQ"&&state==="playing") activateSpecial();
     if(e.code==="KeyR"&&state==="playing") activatePing();
+    if(e.code==="KeyT"&&state==="playing") cycleMissileKind();
     e.preventDefault();
   });
   document.addEventListener("keyup",   e => { keys[e.code] = false; });
@@ -69,6 +70,11 @@ function buildMobileControls() {
   missileBtn.style.cssText = "position:absolute;left:65px;bottom:185px;width:70px;height:70px;background:rgba(255,120,0,0.18);border:2px solid rgba(255,120,0,0.7);border-radius:50%;color:#f80;font:bold 12px monospace;display:flex;align-items:center;justify-content:center;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none";
   missileBtn.addEventListener("touchstart", e => { e.preventDefault(); keys["KeyF"] = true;  initAudio(); }, { passive: false });
   missileBtn.addEventListener("touchend",   e => { e.preventDefault(); keys["KeyF"] = false; }, { passive: false });
+  const cycleMissileBtn = document.createElement("div");
+  cycleMissileBtn.textContent = "⇄";
+  cycleMissileBtn.title = "Cycle missile type";
+  cycleMissileBtn.style.cssText = "position:absolute;left:80px;bottom:262px;width:40px;height:40px;background:rgba(255,180,0,0.15);border:2px solid rgba(255,180,0,0.6);border-radius:50%;color:#fb0;font:bold 18px monospace;display:flex;align-items:center;justify-content:center;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none";
+  cycleMissileBtn.addEventListener("touchstart", e => { e.preventDefault(); if(state==="playing") cycleMissileKind(); initAudio(); }, { passive: false });
 
   const leftBase = document.createElement("div");
   leftBase.style.cssText = "position:absolute;left:10px;bottom:20px;width:160px;height:160px;background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.2);border-radius:50%;pointer-events:all;touch-action:none";
@@ -114,6 +120,7 @@ function buildMobileControls() {
   });
 
   leftPanel.appendChild(missileBtn);
+  leftPanel.appendChild(cycleMissileBtn);
   leftPanel.appendChild(leftBase);
 
   const rightPanel = document.createElement("div");
@@ -614,7 +621,7 @@ function setPlayerShip(name) {
     speed:baseSpeed, maxSpeed:baseSpeed, accel:baseSpeed*0.20,
     weaponType:wType, weaponSize:d.weaponSize, weaponStats:wStats,
     bespoke:d.bespoke, doubleShot:d.doubleShot||false, pdcCount:d.pdc, missileType:d.missileType||2,
-    missileRack:[...(playerLoadout.missileRack||[])],
+    missileRack:[...(playerLoadout.missileRack||[])], missileActiveKind:null,
     img:getImage(d.image), color:d.color, rotation:0, spriteAngleOffset:spriteOffset,
     vx:0, vy:0, shootTimer:0,
     boosting:false, boostTimer:0, boostCooldown:0,
@@ -1535,11 +1542,29 @@ function updatePlayer() {
   // ── Missile fire: consumes first missile from rack (shift) ────────────
   if(keys["KeyF"]&&missileTimer<=0&&player.missileRack&&player.missileRack.length>0){
     const freeAmmo=player.specialActive&&currentShipName==="Supernova";
-    const entry=freeAmmo
-      ? (player.missileRack[0]||{kind:"standard",tier:player.missileType||2})
-      : player.missileRack.shift(); // consume it
+    // Fire from active kind (T cycles it); fallback to first available
+    const _activeKind = player.missileActiveKind;
+    let _fireIdx = -1;
+    if (_activeKind) _fireIdx = player.missileRack.findIndex(e=>e.kind===_activeKind);
+    if (_fireIdx < 0) _fireIdx = 0; // fallback
+    const entry = freeAmmo
+      ? (player.missileRack[_fireIdx]||{kind:"standard",tier:player.missileType||2})
+      : player.missileRack.splice(_fireIdx, 1)[0]; // consume specifically
     if(freeAmmo) player.specialMissilesUsed++;
     player.missiles=player.missileRack.length;
+    // If active kind is now gone, auto-cycle to next available
+    if (!freeAmmo && player.missileActiveKind) {
+      const _stillHas = player.missileRack.some(e=>e.kind===player.missileActiveKind);
+      if (!_stillHas) {
+        const _kinds = getMissileKindsInRack();
+        player.missileActiveKind = _kinds[0] || null;
+        if (player.missileActiveKind) {
+          const _mk2 = (typeof MISSILE_KINDS!=="undefined"&&MISSILE_KINDS[player.missileActiveKind])||{};
+          const _kc2 = player.missileActiveKind==="nuke"?"#ff4400":player.missileActiveKind==="emp"?"#44ffcc":player.missileActiveKind==="micro"?"#ffcc44":player.missileActiveKind==="cluster"?"#ff88ff":"#aaddff";
+          showNotification("Switched to: " + (_mk2.name||player.missileActiveKind), _kc2);
+        }
+      }
+    }
     const mKind=entry.kind||"standard";
     const mTier=entry.tier||player.missileType||2;
     const mkDef=(typeof MISSILE_KINDS!=="undefined"&&MISSILE_KINDS[mKind])||{aoe:0,lockOn:true,friendly:false,corrosion:false,damageMult:1};
@@ -2227,10 +2252,23 @@ function updateHUD() {
   document.getElementById("money").textContent    = money;
   document.getElementById("wave").textContent     = currentWave;
   {
-    const rack=player.missileRack||[];
-    const nextKind=rack[0]?.kind||null;
-    const mkName=nextKind&&(typeof MISSILE_KINDS!=="undefined")?(MISSILE_KINDS[nextKind]?.name||nextKind):"—";
-    document.getElementById("missiles").textContent=rack.length>0?(rack.length+" | next: "+mkName):"0";
+    const rack = player.missileRack || [];
+    const mkDefs = typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS : {};
+    // Ensure missileActiveKind is valid
+    if (!player.missileActiveKind || !rack.some(e=>e.kind===player.missileActiveKind)) {
+      player.missileActiveKind = rack[0]?.kind || null;
+    }
+    const curKind = player.missileActiveKind;
+    const curName = curKind ? (mkDefs[curKind]?.name || curKind) : "—";
+    // Build per-kind counts
+    const counts = {};
+    rack.forEach(e => { counts[e.kind] = (counts[e.kind]||0)+1; });
+    const countStr = Object.entries(counts).map(([k,n]) => {
+      const nm = mkDefs[k]?.name || k;
+      return (k === curKind ? "▶ " : "") + nm + ":" + n;
+    }).join("  ");
+    const el = document.getElementById("missiles");
+    if (el) el.textContent = rack.length > 0 ? ("Current: " + curName + "  |  " + countStr) : "0";
   }
 }
 
@@ -2298,9 +2336,6 @@ function gameLoop() {
       const reward=infiniteMode?generateInfiniteWave(currentWave).reward:(WAVES[currentWave-1]?.reward||0);
       money+=reward;
       player.shields=player.maxShields;player.armor=player.maxArmor;
-      player.missileRack=[...(playerLoadout.missileRack||[])];
-      player.missiles=player.missileRack.length;
-      player.maxMissiles=player.missiles;
       if(player.shieldFaces) initShieldFaces(player);
       allies.forEach(a=>{
         a.shields=a.maxShields;a.armor=a.maxArmor;
