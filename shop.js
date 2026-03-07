@@ -626,7 +626,8 @@ function buildWeaponSelect(slotSize, currentWk, onchangeFn) {
   return html;
 }
 
-function buildShieldSelect(ownedTiers, currentTier, onchangeFn, buyFn, shipShields) {
+function buildShieldSelect(ownedTiers, currentTier, onchangeFn, buyFn, shipShields, shipName) {
+  const shipPrices = (typeof SHIP_UPGRADE_PRICES!=="undefined"&&shipName&&SHIP_UPGRADE_PRICES[shipName]?.shield)||null;
   let html = `<select onchange="${onchangeFn}">`;
   for (let t = 1; t <= 3; t++) {
     if ((ownedTiers||[1]).includes(t)) {
@@ -638,7 +639,7 @@ function buildShieldSelect(ownedTiers, currentTier, onchangeFn, buyFn, shipShiel
   for (let t = 2; t <= 3; t++) {
     if (!(ownedTiers||[1]).includes(t)) {
       const prereq = t === 3 ? (ownedTiers||[1]).includes(2) : true;
-      const price = SHIELD_TIER_PRICES[t];
+      const price = shipPrices?.[t] ?? SHIELD_TIER_PRICES[t];
       const canBuy = prereq && money >= price;
       html += ` <button style="width:auto;display:inline-block;font-size:11px;${canBuy?"":"opacity:0.4"}" onclick="${buyFn}(${t})" ${canBuy?"":"disabled"}>Buy ${SHIELD_TIERS[t].name} (${price.toLocaleString()} cr)</button>`;
     }
@@ -646,7 +647,8 @@ function buildShieldSelect(ownedTiers, currentTier, onchangeFn, buyFn, shipShiel
   return html;
 }
 
-function buildArmorSelect(ownedTiers, currentTier, onchangeFn, buyFn, baseArmor) {
+function buildArmorSelect(ownedTiers, currentTier, onchangeFn, buyFn, baseArmor, shipName) {
+  const shipPrices = (typeof SHIP_UPGRADE_PRICES!=="undefined"&&shipName&&SHIP_UPGRADE_PRICES[shipName]?.armor)||null;
   let html = `<select onchange="${onchangeFn}">`;
   for (let t = 1; t <= 3; t++) {
     if ((ownedTiers||[1]).includes(t))
@@ -656,7 +658,7 @@ function buildArmorSelect(ownedTiers, currentTier, onchangeFn, buyFn, baseArmor)
   for (let t = 2; t <= 3; t++) {
     if (!(ownedTiers||[1]).includes(t)) {
       const prereq = t === 3 ? (ownedTiers||[1]).includes(2) : true;
-      const price = ARMOR_UPGRADE_PRICES[t];
+      const price = shipPrices?.[t] ?? ARMOR_UPGRADE_PRICES[t];
       const canBuy = prereq && money >= price;
       html += ` <button style="width:auto;display:inline-block;font-size:11px;${canBuy?"":"opacity:0.4"}" onclick="${buyFn}(${t})" ${canBuy?"":"disabled"}>Buy ${ARMOR_UPGRADE_TIERS[t].name} (${price.toLocaleString()} cr)</button>`;
     }
@@ -664,7 +666,8 @@ function buildArmorSelect(ownedTiers, currentTier, onchangeFn, buyFn, baseArmor)
   return html;
 }
 
-function buildEngineSelect(ownedTiers, currentTier, onchangeFn, buyFn) {
+function buildEngineSelect(ownedTiers, currentTier, onchangeFn, buyFn, shipName) {
+  const shipPrices = (typeof SHIP_UPGRADE_PRICES!=="undefined"&&shipName&&SHIP_UPGRADE_PRICES[shipName]?.engine)||null;
   let html = `<select onchange="${onchangeFn}">`;
   for (let t = 1; t <= 3; t++) {
     if ((ownedTiers||[1]).includes(t)) {
@@ -676,7 +679,7 @@ function buildEngineSelect(ownedTiers, currentTier, onchangeFn, buyFn) {
   for (let t = 2; t <= 3; t++) {
     if (!(ownedTiers||[1]).includes(t)) {
       const prereq = t === 3 ? (ownedTiers||[1]).includes(2) : true;
-      const price = ENGINE_UPGRADE_PRICES[t];
+      const price = shipPrices?.[t] ?? ENGINE_UPGRADE_PRICES[t];
       const canBuy = prereq && money >= price;
       const tier = ENGINE_UPGRADE_TIERS[t];
       html += ` <button style="width:auto;display:inline-block;font-size:11px;${canBuy?"":"opacity:0.4"}" onclick="${buyFn}(${t})" ${canBuy?"":"disabled"}>Buy ${tier.name} (${price.toLocaleString()} cr)</button>`;
@@ -715,9 +718,9 @@ function renderShipLoadoutPanel(container) {
   if (shipMaxMissiles > 0) {
     html += buildMissileRackUI(sName, shipMaxMissiles);
   }
-  html += `<p><b>Shields:</b> ${buildShieldSelect(playerLoadout.ownedShieldTiers, playerLoadout.shieldTier, "setPlayerShieldTier(parseInt(this.value))", "buyPlayerShield", sd.shields)}</p>`;
-  html += `<p><b>Hull Armor:</b> ${buildArmorSelect(playerLoadout.ownedArmorTiers, playerLoadout.armorTier, "setPlayerArmorTier(parseInt(this.value))", "buyPlayerArmor", sd.armor)}</p>`;
-  html += `<p><b>Engines:</b> ${buildEngineSelect(playerLoadout.ownedEngineTiers, playerLoadout.engineTier, "setPlayerEngineTier(parseInt(this.value))", "buyPlayerEngine")}</p>`;
+  html += `<p><b>Shields:</b> ${buildShieldSelect(playerLoadout.ownedShieldTiers, playerLoadout.shieldTier, "setPlayerShieldTier(parseInt(this.value))", "buyPlayerShield", sd.shields, sName)}</p>`;
+  html += `<p><b>Hull Armor:</b> ${buildArmorSelect(playerLoadout.ownedArmorTiers, playerLoadout.armorTier, "setPlayerArmorTier(parseInt(this.value))", "buyPlayerArmor", sd.armor, sName)}</p>`;
+  html += `<p><b>Engines:</b> ${buildEngineSelect(playerLoadout.ownedEngineTiers, playerLoadout.engineTier, "setPlayerEngineTier(parseInt(this.value))", "buyPlayerEngine", sName)}</p>`;
 
   // Missile storage upgrade
   const mPrices = (typeof SHIP_UPGRADE_PRICES !== "undefined" && SHIP_UPGRADE_PRICES[sName]?.missile) || { 2: 30000, 3: 90000 };
@@ -859,104 +862,130 @@ function renderAllyLoadoutPanel(container) {
 // MISSILE RACK UI
 // ============================
 function getMissileRackSlots() {
-  // Returns total slots used by current rack
   const rack = playerLoadout.missileRack || [];
-  return rack.reduce((sum, entry) => sum + ((typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS[entry.kind]?.slots : 1) || 1), 0);
+  return rack.reduce((sum, e2) => sum + ((typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS[e2.kind]?.slots : 1) || 1), 0);
+}
+
+function getRackCountByKind(kind, tier) {
+  return (playerLoadout.missileRack||[]).filter(e2=>e2.kind===kind&&e2.tier===tier).length;
 }
 
 function buildMissileRackUI(shipName, maxSlots) {
+  const sd = SHIPS[shipName];
+  const mTier = sd?.missileType || 2; // ship's fixed missile tier
   const rack = playerLoadout.missileRack || [];
   const mkDefs = typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS : {};
   const usedSlots = getMissileRackSlots();
   const freeSlots = maxSlots - usedSlots;
+  const tierLabel = mTier===1?"Fast (T1)":mTier===2?"Standard (T2)":"Heavy (T3)";
 
-  // Slot bar
   const pct = Math.min(100, (usedSlots / maxSlots) * 100);
   const barColor = freeSlots < 0 ? "#f44" : freeSlots === 0 ? "#fa0" : "#0af";
-  let html = `
-  <div style="background:#060810;border:1px solid #223;border-radius:8px;padding:10px 12px;margin-bottom:8px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+
+  let html = `<div style="background:#060810;border:1px solid #223;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
       <b style="color:#0af;font:13px monospace">Missile Rack</b>
-      <span style="font:11px monospace;color:${barColor}">${usedSlots.toFixed(1)} / ${maxSlots} slots used</span>
+      <span style="font:10px monospace;color:#888">This ship uses ${tierLabel} missiles</span>
     </div>
-    <div style="background:#111;border-radius:4px;height:8px;margin-bottom:10px;overflow:hidden">
-      <div style="background:${barColor};height:100%;width:${pct}%;border-radius:4px;transition:width 0.2s"></div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+      <span style="font:11px monospace;color:${barColor}">${usedSlots.toFixed(1)} / ${maxSlots} slots loaded</span>
+      <span style="font:10px monospace;color:#555">(micro=0.5 slot, nuke=5 slots)</span>
+    </div>
+    <div style="background:#111;border-radius:4px;height:7px;margin-bottom:10px;overflow:hidden">
+      <div style="background:${barColor};height:100%;width:${pct}%;border-radius:4px"></div>
     </div>`;
 
-  // Current rack — each entry as a removable pill
-  if (rack.length === 0) {
-    html += `<div style="color:#555;font:11px monospace;margin-bottom:8px;text-align:center">Rack empty — add missiles below</div>`;
+  // Current rack grouped by kind — show count + remove button
+  const grouped = {};
+  rack.forEach(e2 => { const k=e2.kind+"_"+e2.tier; grouped[k]=(grouped[k]||0)+1; });
+  if (Object.keys(grouped).length === 0) {
+    html += `<div style="color:#555;font:11px monospace;margin-bottom:10px;text-align:center">Rack empty — buy and add missiles below</div>`;
   } else {
-    html += `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">`;
-    rack.forEach((entry, idx) => {
-      const mk = mkDefs[entry.kind] || { name: entry.kind, slots: 1 };
-      const tierNames = { 1: "Fast", 2: "Std", 3: "Heavy" };
-      const tierColor = entry.tier === 3 ? "#f44" : entry.tier === 1 ? "#0af" : "#fa0";
-      const kindColor = entry.kind === "nuke" ? "#ff4400" : entry.kind === "emp" ? "#44ffcc" : entry.kind === "micro" ? "#ffcc44" : entry.kind === "cluster" ? "#ff88ff" : "#aaddff";
-      html += `<div style="display:flex;align-items:center;gap:3px;background:#0a0e1a;border:1px solid ${kindColor}44;border-radius:5px;padding:3px 7px">
-        <span style="color:${kindColor};font:bold 11px monospace">${mk.name}</span>
-        <span style="color:${tierColor};font:10px monospace">${tierNames[entry.tier]||"T"+entry.tier}</span>
-        <span style="color:#666;font:9px monospace">${mk.slots}sl</span>
-        <button onclick="removeMissileFromRack(${idx})" style="background:none;border:none;color:#f66;font:bold 12px monospace;cursor:pointer;padding:0 2px;line-height:1">×</button>
+    html += `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">`;
+    for (const [gk, cnt] of Object.entries(grouped)) {
+      const [kind] = gk.split("_");
+      const mk = mkDefs[kind]||{name:kind,slots:1};
+      const kc = kind==="nuke"?"#ff4400":kind==="emp"?"#44ffcc":kind==="micro"?"#ffcc44":kind==="cluster"?"#ff88ff":"#aaddff";
+      html += `<div style="display:flex;align-items:center;gap:4px;background:#0a0e1a;border:1px solid ${kc}44;border-radius:5px;padding:3px 8px">
+        <span style="color:${kc};font:bold 11px monospace">×${cnt} ${mk.name}</span>
+        <span style="color:#555;font:9px monospace">(${(mk.slots*cnt).toFixed(1)}sl)</span>
+        <button onclick="removeMissileKindFromRack('${kind}',${mTier})" style="background:none;border:none;color:#f66;font:bold 12px monospace;cursor:pointer;padding:0 2px;line-height:1" title="Remove one">−</button>
+        <button onclick="removeAllMissileKindFromRack('${kind}',${mTier})" style="background:none;border:none;color:#f44;font:bold 11px monospace;cursor:pointer;padding:0 2px;line-height:1" title="Remove all">✕</button>
       </div>`;
-    });
+    }
     html += `</div>`;
-    html += `<button onclick="clearMissileRack()" style="width:auto;display:inline-block;font-size:10px;padding:2px 8px;opacity:0.6;margin-bottom:10px">Clear All</button>`;
+    html += `<button onclick="clearMissileRack()" style="width:auto;display:inline-block;font-size:10px;padding:2px 8px;opacity:0.6;margin-bottom:10px">Clear Rack</button>`;
   }
 
-  // Add missiles section
-  html += `<div style="border-top:1px solid #1a2030;padding-top:10px"><div style="color:#888;font:11px monospace;margin-bottom:7px">Add to rack:</div><div style="display:flex;flex-wrap:wrap;gap:6px">`;
+  // Add section — only show kinds in inventory
+  html += `<div style="border-top:1px solid #1a2030;padding-top:10px">
+    <div style="color:#888;font:11px monospace;margin-bottom:7px">Add to rack (must own missiles):</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">`;
   for (const [kind, mk] of Object.entries(mkDefs)) {
+    const invKey = `missile_${kind}_${mTier}`;
+    const inInv = (typeof missileInventory!=="undefined"?missileInventory[invKey]||0:0);
+    const inRack = getRackCountByKind(kind, mTier);
+    const available = inInv - inRack; // not yet in rack
     const slotCost = mk.slots;
-    const canAdd = freeSlots >= slotCost;
-    const kindColor = kind === "nuke" ? "#ff4400" : kind === "emp" ? "#44ffcc" : kind === "micro" ? "#ffcc44" : kind === "cluster" ? "#ff88ff" : "#aaddff";
-    // Show tier selector inline
-    html += `<div style="background:#0a0e1a;border:1px solid #223;border-radius:7px;padding:6px 8px;min-width:130px">
-      <div style="color:${kindColor};font:bold 11px monospace;margin-bottom:2px">${mk.name} <span style="color:#555;font-weight:normal">(${slotCost} slot${slotCost!==1?"s":""})</span></div>
-      <div style="color:#666;font:9px monospace;margin-bottom:5px;line-height:1.4">${mk.desc}</div>
-      <div style="display:flex;align-items:center;gap:4px">
-        <select id="mrTier_${kind}" style="flex:1;background:#111;border:1px solid #334;color:#ccc;font:10px monospace;padding:2px;border-radius:4px">
-          <option value="1">Fast (T1)</option>
-          <option value="2" selected>Standard (T2)</option>
-          <option value="3">Heavy (T3)</option>
-        </select>
-        <button onclick="addMissileToRack('${kind}')" ${canAdd?"":"disabled"}
-          style="width:auto;padding:2px 8px;font:bold 11px monospace;${canAdd?"background:rgba(0,170,255,0.15);border:1px solid #0af;color:#0af":"opacity:0.3;background:#111;border:1px solid #333;color:#555"};border-radius:5px;cursor:${canAdd?"pointer":"default"}">
-          + Add
-        </button>
-      </div>
+    const maxQty = Math.min(available, Math.floor((freeSlots+0.01) / slotCost));
+    const kc = kind==="nuke"?"#ff4400":kind==="emp"?"#44ffcc":kind==="micro"?"#ffcc44":kind==="cluster"?"#ff88ff":"#aaddff";
+    const canAdd = available > 0 && maxQty >= 1;
+    html += `<div style="background:#0a0e1a;border:1px solid ${canAdd?"#223":"#111"};border-radius:7px;padding:6px 8px;min-width:140px;opacity:${canAdd?1:0.5}">
+      <div style="color:${kc};font:bold 11px monospace;margin-bottom:1px">${mk.name} <span style="color:#555;font-weight:normal">(${slotCost}sl)</span></div>
+      <div style="color:#666;font:9px monospace;margin-bottom:4px;line-height:1.4">${mk.desc}</div>
+      <div style="color:${inInv>0?"#0af":"#555"};font:10px monospace;margin-bottom:5px">In inventory: ${inInv} | In rack: ${inRack}</div>
+      ${canAdd ? `<div style="display:flex;align-items:center;gap:4px">
+        <input type="number" id="mrQty_${kind}" min="1" max="${maxQty}" value="1"
+          style="width:42px;background:#111;border:1px solid #334;color:#eee;font:11px monospace;padding:2px;border-radius:4px;text-align:center">
+        <button onclick="addMissileToRack('${kind}',${mTier})"
+          style="width:auto;padding:2px 8px;font:bold 11px monospace;background:rgba(0,170,255,0.15);border:1px solid #0af;color:#0af;border-radius:5px;cursor:pointer">+ Add</button>
+      </div>` : `<div style="color:#444;font:9px monospace">${inInv===0?"No stock — buy from Shop":"No slots left"}</div>`}
     </div>`;
   }
   html += `</div></div></div>`;
   return html;
 }
 
-function addMissileToRack(kind) {
-  const mk = (typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS[kind] : null) || { slots: 1 };
-  const sName = playerLoadout.ship || "Starlight";
+function addMissileToRack(kind, tier) {
+  const mk = (typeof MISSILE_KINDS!=="undefined"?MISSILE_KINDS[kind]:null)||{slots:1};
+  const sName = playerLoadout.ship||"Starlight";
   const sd = SHIPS[sName];
-  const maxSlots = sd?.missiles || 0;
-  if (getMissileRackSlots() + mk.slots > maxSlots + 0.01) return; // no room
-  const tierEl = document.getElementById("mrTier_" + kind);
-  const tier = tierEl ? parseInt(tierEl.value) : 2;
-  if (!playerLoadout.missileRack) playerLoadout.missileRack = [];
-  playerLoadout.missileRack.push({ kind, tier });
-  if (typeof setPlayerShip === "function") setPlayerShip(sName);
+  const maxSlots = sd?.missiles||0;
+  const qtyEl = document.getElementById("mrQty_"+kind);
+  const qty = Math.max(1, parseInt(qtyEl?.value)||1);
+  const invKey = `missile_${kind}_${tier}`;
+  const inInv = (typeof missileInventory!=="undefined"?missileInventory[invKey]||0:0);
+  const inRack = getRackCountByKind(kind, tier);
+  const available = inInv - inRack;
+  const actualQty = Math.min(qty, available, Math.floor((maxSlots - getMissileRackSlots() + 0.01)/mk.slots));
+  if(actualQty < 1) return;
+  if(!playerLoadout.missileRack) playerLoadout.missileRack=[];
+  for(let i=0;i<actualQty;i++) playerLoadout.missileRack.push({kind,tier});
+  if(typeof setPlayerShip==="function") setPlayerShip(sName);
   renderLoadout();
 }
 
-function removeMissileFromRack(idx) {
-  if (!playerLoadout.missileRack) return;
-  playerLoadout.missileRack.splice(idx, 1);
-  const sName = playerLoadout.ship || "Starlight";
-  if (typeof setPlayerShip === "function") setPlayerShip(sName);
+function removeMissileKindFromRack(kind, tier) {
+  if(!playerLoadout.missileRack) return;
+  const idx = playerLoadout.missileRack.findLastIndex(e2=>e2.kind===kind&&e2.tier===tier);
+  if(idx>=0) playerLoadout.missileRack.splice(idx,1);
+  const sName=playerLoadout.ship||"Starlight";
+  if(typeof setPlayerShip==="function") setPlayerShip(sName);
+  renderLoadout();
+}
+
+function removeAllMissileKindFromRack(kind, tier) {
+  if(!playerLoadout.missileRack) return;
+  playerLoadout.missileRack = playerLoadout.missileRack.filter(e2=>!(e2.kind===kind&&e2.tier===tier));
+  const sName=playerLoadout.ship||"Starlight";
+  if(typeof setPlayerShip==="function") setPlayerShip(sName);
   renderLoadout();
 }
 
 function clearMissileRack() {
-  playerLoadout.missileRack = [];
-  const sName = playerLoadout.ship || "Starlight";
-  if (typeof setPlayerShip === "function") setPlayerShip(sName);
+  playerLoadout.missileRack=[];
+  const sName=playerLoadout.ship||"Starlight";
+  if(typeof setPlayerShip==="function") setPlayerShip(sName);
   renderLoadout();
 }
 
@@ -1023,8 +1052,12 @@ function setAllyWeapon(idx, wk)      { playerLoadout.allies[idx].weapon = wk; re
 function setAllyShieldTier(idx,tier) { const s=playerLoadout.allies[idx]; if(!s||(!(s.ownedShieldTiers||[1]).includes(tier)))return; s.shieldTier=tier; renderLoadout(); }
 
 // === BUY ===
+function _shipPrice(cat, tier) {
+  const sn = playerLoadout.ship||"Starlight";
+  return (typeof SHIP_UPGRADE_PRICES!=="undefined"&&SHIP_UPGRADE_PRICES[sn]?.[cat]?.[tier]) ?? null;
+}
 function buyPlayerShield(tier) {
-  const price = SHIELD_TIER_PRICES[tier];
+  const price = _shipPrice("shield",tier)??SHIELD_TIER_PRICES[tier];
   if (!price||money<price||(playerLoadout.ownedShieldTiers||[1]).includes(tier)) return;
   if (tier===3&&!(playerLoadout.ownedShieldTiers||[1]).includes(2)) return;
   money -= price;
@@ -1034,7 +1067,7 @@ function buyPlayerShield(tier) {
   renderLoadout(); updateHUD();
 }
 function buyPlayerArmor(tier) {
-  const price = ARMOR_UPGRADE_PRICES[tier];
+  const price = _shipPrice("armor",tier)??ARMOR_UPGRADE_PRICES[tier];
   if (!price||money<price||(playerLoadout.ownedArmorTiers||[1]).includes(tier)) return;
   if (tier===3&&!(playerLoadout.ownedArmorTiers||[1]).includes(2)) return;
   money -= price;
@@ -1044,7 +1077,7 @@ function buyPlayerArmor(tier) {
   renderLoadout(); updateHUD();
 }
 function buyPlayerEngine(tier) {
-  const price = ENGINE_UPGRADE_PRICES[tier];
+  const price = _shipPrice("engine",tier)??ENGINE_UPGRADE_PRICES[tier];
   if (!price||money<price||(playerLoadout.ownedEngineTiers||[1]).includes(tier)) return;
   if (tier===3&&!(playerLoadout.ownedEngineTiers||[1]).includes(2)) return;
   money -= price;
