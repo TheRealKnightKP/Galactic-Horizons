@@ -372,10 +372,10 @@ function drawDeathEffects() {
 // ============================================================
 // GAME STATE
 // ============================================================
-let state="menu", money=0, currentWave=0, infiniteMode=false, currentShipName="Starlight";
+let state="menu", money=5000000, currentWave=0, infiniteMode=false, currentShipName="Starlight";
 let player={}, allies=[], enemies=[], playerBullets=[], enemyBullets=[];
 let missileTimer=0, ownedShips=[], shopOpenedFromMenu=false;
-let waveTransitionTimer=0, waveTransitionText="", beamFlashes=[];
+let waveTransitionTimer=0, waveTransitionText="", beamFlashes=[], nukeRings=[];
 let frameCount = 0;
 let allyFormation = "behind";
 let playerTookDamageThisWave = false;
@@ -614,6 +614,7 @@ function setPlayerShip(name) {
     speed:baseSpeed, maxSpeed:baseSpeed, accel:baseSpeed*0.20,
     weaponType:wType, weaponSize:d.weaponSize, weaponStats:wStats,
     bespoke:d.bespoke, doubleShot:d.doubleShot||false, pdcCount:d.pdc, missileType:d.missileType||2,
+    missileRack:[...(playerLoadout.missileRack||[])], missileRackIdx:0,
     img:getImage(d.image), color:d.color, rotation:0, spriteAngleOffset:spriteOffset,
     vx:0, vy:0, shootTimer:0,
     boosting:false, boostTimer:0, boostCooldown:0,
@@ -653,7 +654,7 @@ function respawnDeadAllies() {
 
 // ── SHADOW COMET WAVE ─────────────────────────────────────────
 function spawnShadowCometWave() {
-  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; hitEffects=[]; deathEffects=[];
+  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
   allies=[];
   // Bulwark and Leviathan get 1 manual turret against Shadow Comet
   const _scShip = playerLoadout.ship || currentShipName;
@@ -879,7 +880,7 @@ function fullUpgradeComet() {
 }
 
 function spawnWave() {
-  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; hitEffects=[]; deathEffects=[];
+  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
   waveReinforceTimer=0; waveReinforceDone=false;
   shadowCometActive = false;
   pdcDisabledThisWave = false;
@@ -960,11 +961,9 @@ function nextWave() {
 function startGame(infinite) {
   infiniteMode=infinite; currentWave=0;
   document.getElementById("mainMenu").style.display="none";
-  money=5000000;
   if(!ownedShips||ownedShips.length===0) ownedShips=["Starlight"];
   setPlayerShip(playerLoadout.ship||"Starlight");
   if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="none";}
-  // Show confirmation dialog instead of shop
   showWavesConfirm(infinite);
 }
 
@@ -979,7 +978,7 @@ function showWavesConfirm(infinite) {
     box.style.cssText="background:#090914;border:2px solid #0af;border-radius:12px;padding:32px 40px;text-align:center;font-family:monospace;max-width:420px";
     box.innerHTML=`
       <div style="color:#0af;font:bold 22px monospace;margin-bottom:10px">⚠ Enter Waves Mode?</div>
-      <div style="color:#aaa;font:14px monospace;margin-bottom:18px;line-height:1.6">Once you enter, your credits carry over<br>between waves but there's no turning back.<br>Visit <b style="color:#fff">Loadout</b> before starting to configure your ship.</div>
+      <div style="color:#aaa;font:14px monospace;margin-bottom:18px;line-height:1.6">Once you enter, your credits carry over<br>between waves but there's no turning back.<br>Configure your ship in <b style="color:#fff">Loadout</b> before entering.</div>
       <div style="display:flex;gap:12px;justify-content:center">
         <button id="wc_yes" style="padding:10px 28px;font:bold 15px monospace;background:rgba(0,170,255,0.18);border:2px solid #0af;color:#0af;border-radius:8px;cursor:pointer">Let's go!</button>
         <button id="wc_no"  style="padding:10px 28px;font:bold 15px monospace;background:rgba(255,60,60,0.12);border:2px solid #f44;color:#f44;border-radius:8px;cursor:pointer">Go Back</button>
@@ -990,7 +989,7 @@ function showWavesConfirm(infinite) {
   el.style.display="flex";
   el.querySelector("#wc_yes").onclick=()=>{
     el.style.display="none";
-    state="shop"; shopOpenedFromMenu=false; showShop();
+    nextWave(); // go straight in — no shop
   };
   el.querySelector("#wc_no").onclick=()=>{
     el.style.display="none";
@@ -1361,7 +1360,8 @@ function updateSpecial() {
     case"Prometheus":{
       player.specialSalvoTimer--;
       if(player.specialSalvoTimer<=0&&player.specialSalvoCount<player.specialSalvoTotal){
-        const mt=MISSILE_TYPES[player.missileType||2];
+        const _rackEntry=(player.missileRack&&player.missileRack[0])||{kind:"standard",tier:player.missileType||2};
+        const mt=MISSILE_TYPES[_rackEntry.tier||player.missileType||2];
         playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
           vx:Math.cos(player.rotation)*mt.speed,vy:Math.sin(player.rotation)*mt.speed,
           w:18,h:8,damage:mt.damage,color:mt.color,missile:true,category:"missile",weaponSize:6});
@@ -1524,52 +1524,60 @@ function updatePlayer() {
   }
 
   missileTimer--;
-  if(keys["KeyF"]&&missileTimer<=0&&player.missiles>0){
-    const mKind=(typeof playerLoadout!=="undefined"?playerLoadout.missileKind||"standard":"standard");
-    const mkDef=(typeof MISSILE_KINDS!=="undefined"&&MISSILE_KINDS[mKind])||{slots:1,aoe:0,lockOn:true,friendly:false,corrosion:false};
-    const slotCost=mkDef.slots;
-    if(mKind==="nuke"&&player.missiles<slotCost){}
-    else {
+  // Rack-based missile system: missileRack = [{kind, tier}, ...], cycles through
+  if(keys["KeyF"]&&missileTimer<=0){
+    const rack=player.missileRack||[];
+    if(rack.length>0){
+      if(!player.missileRackIdx)player.missileRackIdx=0;
+      // advance index until we find a live rack entry (rack never depletes mid-game, it just cycles)
+      const entry=rack[player.missileRackIdx%rack.length];
+      const mKind=entry.kind||"standard";
+      const mTier=entry.tier||2;
+      const mkDef=(typeof MISSILE_KINDS!=="undefined"&&MISSILE_KINDS[mKind])||{slots:1,aoe:0,lockOn:true,friendly:false,corrosion:false};
       const freeAmmo=player.specialActive&&currentShipName==="Supernova";
-      if(!freeAmmo) player.missiles=Math.max(0,player.missiles-Math.ceil(slotCost));
-      else player.specialMissilesUsed++;
-      const mt=MISSILE_TYPES[player.missileType||2];
-      const baseDmg=mt.damage;
-      let lockTarget=null;
-      if(IS_MOBILE&&mkDef.lockOn&&enemies.length>0){
-        const pcx=player.x+player.w/2,pcy=player.y+player.h/2;
-        const cos=Math.cos(player.rotation),sin=Math.sin(player.rotation);
-        let bestScore=1e9;
-        enemies.forEach(e=>{
-          const ex=e.x+e.w/2,ey=e.y+e.h/2;
-          const t=(ex-pcx)*cos+(ey-pcy)*sin;
-          if(t<0)return;
-          const perp=Math.abs((ey-pcy)*cos-(ex-pcx)*sin);
-          if(perp<bestScore){bestScore=perp;lockTarget=e;}
-        });
-      }
-      const aim=lockTarget?Math.atan2(lockTarget.y+lockTarget.h/2-player.y-player.h/2,lockTarget.x+lockTarget.w/2-player.x-player.w/2):player.rotation;
-      if(mKind==="cluster"){
-        for(let ci=0;ci<4;ci++){
-          const a=aim+(ci-1.5)*0.18;
-          playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
-            vx:Math.cos(a)*mt.speed*1.2,vy:Math.sin(a)*mt.speed*1.2,
-            w:10,h:5,damage:baseDmg*0.3,color:"#ffaa00",
-            missile:true,category:"missile",weaponSize:4,lockTarget:lockTarget||null});
+      // Missile count tracks total uses remaining (slots-weighted)
+      if(player.missiles>0||freeAmmo){
+        if(!freeAmmo) player.missiles=Math.max(0,player.missiles-1);
+        else player.specialMissilesUsed++;
+        player.missileRackIdx=(player.missileRackIdx+1)%rack.length;
+        const mt=MISSILE_TYPES[mTier]||MISSILE_TYPES[2];
+        const baseDmg=mt.damage*(mkDef.damageMult||1.0);
+        let lockTarget=null;
+        if(mkDef.lockOn&&enemies.length>0){
+          const pcx=player.x+player.w/2,pcy=player.y+player.h/2;
+          const cos=Math.cos(player.rotation),sin=Math.sin(player.rotation);
+          let bestScore=1e9;
+          enemies.forEach(e=>{
+            const ex=e.x+e.w/2,ey=e.y+e.h/2;
+            const t=(ex-pcx)*cos+(ey-pcy)*sin;
+            if(t<0)return;
+            const perp=Math.abs((ey-pcy)*cos-(ex-pcx)*sin);
+            if(perp<bestScore){bestScore=perp;lockTarget=e;}
+          });
         }
-      } else {
-        const aoe=mkDef.aoe;
-        const mColor=mKind==="emp"?"#44ffcc":mKind==="nuke"?"#ff2200":mKind==="micro"?"#ffcc44":mt.color;
-        playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
-          vx:Math.cos(aim)*mt.speed,vy:Math.sin(aim)*mt.speed,
-          w:mKind==="nuke"?24:mKind==="micro"?10:18,
-          h:mKind==="nuke"?14:mKind==="micro"?5:8,
-          damage:mKind==="micro"?baseDmg*0.5:baseDmg,
-          color:mColor,missile:true,category:"missile",weaponSize:6,
-          missileKind:mKind,aoeRadius:aoe,corrosion:mkDef.corrosion,
-          friendlyFire:mkDef.friendly,lockTarget:lockTarget||null});
+        const aim=lockTarget?Math.atan2(lockTarget.y+lockTarget.h/2-player.y-player.h/2,lockTarget.x+lockTarget.w/2-player.x-player.w/2):player.rotation;
+        if(mKind==="cluster"){
+          for(let ci=0;ci<4;ci++){
+            const a=aim+(ci-1.5)*0.18;
+            playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
+              vx:Math.cos(a)*mt.speed*1.2,vy:Math.sin(a)*mt.speed*1.2,
+              w:10,h:5,damage:baseDmg*0.3,color:"#ffaa00",
+              missile:true,category:"missile",weaponSize:4,lockTarget:lockTarget||null});
+          }
+        } else {
+          const aoe=mkDef.aoe||0;
+          const mColor=mKind==="emp"?"#44ffcc":mKind==="nuke"?"#ff2200":mKind==="micro"?"#ffcc44":mt.color;
+          playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
+            vx:Math.cos(aim)*mt.speed,vy:Math.sin(aim)*mt.speed,
+            w:mKind==="nuke"?28:mKind==="micro"?10:18,
+            h:mKind==="nuke"?16:mKind==="micro"?5:8,
+            damage:baseDmg,
+            color:mColor,missile:true,category:"missile",weaponSize:mKind==="nuke"?8:6,
+            missileKind:mKind,aoeRadius:aoe,corrosion:mkDef.corrosion,
+            friendlyFire:mkDef.friendly,lockTarget:lockTarget||null});
+        }
+        missileTimer=mKind==="micro"?20:mKind==="nuke"?70:40;
       }
-      missileTimer=mKind==="micro"?25:45;
     }
   }
 
@@ -1935,6 +1943,8 @@ function updateBullets() {
     }
   });
   beamFlashes.forEach(f=>f.life--);
+  nukeRings.forEach(r=>{r.life--;r.r=r.maxR*(1-(r.life/r.maxLife));});
+  nukeRings=nukeRings.filter(r=>r.life>0);
   beamFlashes=beamFlashes.filter(f=>f.life>0);
   updateHitEffects(); updateDeathEffects();
   const inBounds=b=>!b.dead&&b.x>-60&&b.x<GAME_W+60&&b.y>-60&&b.y<GAME_H+60;
@@ -1980,7 +1990,15 @@ function checkCollisions() {
             if(d<b.aoeRadius) applyDamage(a,{...b,damage:(b.damage||0)*(1-d/b.aoeRadius)*0.5,aoeRadius:0});
           });
         }
-        spawnDeathEffect({x:bx-30,y:by-30,w:60,h:60,type:"Raptor"});
+        // Visual explosion ring for nukes
+        if(b.missileKind==="nuke"){
+          nukeRings.push({x:bx,y:by,r:0,maxR:b.aoeRadius,life:40,maxLife:40,color:"#ff4400"});
+          nukeRings.push({x:bx,y:by,r:0,maxR:b.aoeRadius*0.7,life:30,maxLife:30,color:"#ff8800"});
+          nukeRings.push({x:bx,y:by,r:0,maxR:b.aoeRadius*0.4,life:20,maxLife:20,color:"#ffff00"});
+          spawnDeathEffect({x:bx-60,y:by-60,w:120,h:120,type:"Bulwark"});
+        } else {
+          spawnDeathEffect({x:bx-30,y:by-30,w:60,h:60,type:"Raptor"});
+        }
         return;
       }
       if(b.piercing){
@@ -2097,6 +2115,29 @@ function drawBullets() {
   });
 }
 
+function drawNukeRings() {
+  nukeRings.forEach(r=>{
+    const alpha=r.life/r.maxLife;
+    ctx.save();
+    ctx.globalAlpha=alpha*0.85;
+    ctx.strokeStyle=r.color;
+    ctx.lineWidth=Math.max(2, 8*alpha);
+    ctx.shadowColor=r.color;
+    ctx.shadowBlur=20*alpha;
+    ctx.beginPath();
+    ctx.arc(r.x,r.y,Math.max(1,r.r),0,Math.PI*2);
+    ctx.stroke();
+    // Inner fill flash at start
+    if(alpha>0.6){
+      ctx.globalAlpha=(alpha-0.6)*2*0.3;
+      ctx.fillStyle=r.color;
+      ctx.beginPath();
+      ctx.arc(r.x,r.y,Math.max(1,r.r*0.5),0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+}
 function drawBeamFlashes() {
   beamFlashes.forEach(f=>{
     const alpha=f.life/f.maxLife;
@@ -2194,6 +2235,7 @@ function render() {
   drawRailgunCharge();
   drawAimArrow();
   drawBullets();
+  drawNukeRings();
   drawBeamFlashes();
   drawHitEffects();
   drawDeathEffects();
@@ -2217,7 +2259,13 @@ function updateHUD() {
   document.getElementById("shields").textContent  = Math.max(0,Math.floor(player.shields||0));
   document.getElementById("money").textContent    = money;
   document.getElementById("wave").textContent     = currentWave;
-  document.getElementById("missiles").textContent = player.missiles||0;
+  {
+    const rack=player.missileRack||[];
+    const rackIdx=(player.missileRackIdx||0)%Math.max(1,rack.length);
+    const nextKind=rack[rackIdx]?.kind||"—";
+    const mkName=(typeof MISSILE_KINDS!=="undefined"&&MISSILE_KINDS[nextKind]?.name)||nextKind;
+    document.getElementById("missiles").textContent=(player.missiles||0)+" ["+mkName+"]";
+  }
 }
 
 function setPlayerMissileKind(k) {
@@ -2315,7 +2363,7 @@ function gameLoop() {
 
 function confirmLeaveGame() {
   if(confirm("Are you sure you want to leave? All progress will be lost.")) {
-    enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; hitEffects=[]; deathEffects=[];
+    enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
     shadowCometActive=false; pdcDisabledThisWave=false;
     state="menu";
     document.getElementById("mainMenu").style.display="block";
