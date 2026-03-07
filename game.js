@@ -4,8 +4,8 @@ const ctx = canvas.getContext("2d");
 
 let GAME_W = window.innerWidth;
 let GAME_H = window.innerHeight;
-const SIZE_SCALE = 0.5;
-let displayScale = 1;
+const SIZE_SCALE = 0.67;
+let displayScale = 1.2;
 
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1);
 
@@ -2374,3 +2374,4 @@ function confirmLeaveGame() {
 }
 
 gameLoop();
+
