@@ -861,131 +861,157 @@ function renderAllyLoadoutPanel(container) {
 // ============================
 // MISSILE RACK UI
 // ============================
-function getMissileRackSlots() {
-  const rack = playerLoadout.missileRack || [];
-  return rack.reduce((sum, e2) => sum + ((typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS[e2.kind]?.slots : 1) || 1), 0);
+
+// Total slot-weight of the current rack
+function getRackSlotWeight() {
+  const mk = typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS : {};
+  return (playerLoadout.missileRack||[]).reduce((sum, e) => sum + (mk[e.kind]?.slots||1), 0);
 }
 
-function getRackCountByKind(kind, tier) {
-  return (playerLoadout.missileRack||[]).filter(e2=>e2.kind===kind&&e2.tier===tier).length;
+// How many of {kind, tier} are currently in the rack
+function countInRack(kind, tier) {
+  return (playerLoadout.missileRack||[]).filter(e=>e.kind===kind&&e.tier===tier).length;
 }
 
-function buildMissileRackUI(shipName, maxSlots) {
+// How many of {kind, tier} are in inventory but NOT yet in rack
+function availableInInv(kind, tier) {
+  const key = `missile_${kind}_${tier}`;
+  const inInv = (typeof missileInventory!=="undefined" ? missileInventory[key]||0 : 0);
+  return Math.max(0, inInv - countInRack(kind, tier));
+}
+
+function getMissileSlotCap(shipName) {
   const sd = SHIPS[shipName];
-  const mTier = sd?.missileType || 2; // ship's fixed missile tier
-  const rack = playerLoadout.missileRack || [];
-  const mkDefs = typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS : {};
-  const usedSlots = getMissileRackSlots();
-  const freeSlots = maxSlots - usedSlots;
-  const tierLabel = mTier===1?"Fast (T1)":mTier===2?"Standard (T2)":"Heavy (T3)";
+  const baseCap = sd?.missiles || 0;
+  const tier = playerLoadout.missileTier || 1;
+  const mult = (typeof MISSILE_STORAGE_TIERS!=="undefined" ? MISSILE_STORAGE_TIERS[tier]?.mult : 1) || 1;
+  return Math.round(baseCap * mult);
+}
 
-  const pct = Math.min(100, (usedSlots / maxSlots) * 100);
-  const barColor = freeSlots < 0 ? "#f44" : freeSlots === 0 ? "#fa0" : "#0af";
+function buildMissileRackUI(shipName, _unused) {
+  const sd = SHIPS[shipName];
+  const mTier = sd?.missileType || 2;
+  const tierLabel = mTier===1 ? "T1 Fast" : mTier===2 ? "T2 Standard" : "T3 Heavy";
+  const slotCap = getMissileSlotCap(shipName);
+  const usedSlots = getRackSlotWeight();
+  const freeSlots = slotCap - usedSlots;
+  const mkDefs = typeof MISSILE_KINDS !== "undefined" ? MISSILE_KINDS : {};
+  const rack = playerLoadout.missileRack || [];
+
+  const pct = slotCap > 0 ? Math.min(100, (usedSlots / slotCap) * 100) : 0;
+  const barColor = freeSlots < 0 ? "#f44" : freeSlots < 1 ? "#fa0" : "#0af";
+
+  // Group rack by kind for display
+  const grouped = {};
+  rack.forEach(e => { grouped[e.kind] = (grouped[e.kind]||0)+1; });
 
   let html = `<div style="background:#060810;border:1px solid #223;border-radius:8px;padding:10px 12px;margin-bottom:8px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
       <b style="color:#0af;font:13px monospace">Missile Rack</b>
-      <span style="font:10px monospace;color:#888">This ship uses ${tierLabel} missiles</span>
+      <span style="font:10px monospace;color:#666">Ship tier: <span style="color:#fa0">${tierLabel}</span></span>
     </div>
-    <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-      <span style="font:11px monospace;color:${barColor}">${usedSlots.toFixed(1)} / ${maxSlots} slots loaded</span>
-      <span style="font:10px monospace;color:#555">(micro=0.5 slot, nuke=5 slots)</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+      <span style="font:11px monospace;color:${barColor}">Slots: ${usedSlots.toFixed(1)} / ${slotCap}</span>
+      <span style="font:9px monospace;color:#444">micro=½sl &nbsp; nuke=5sl</span>
     </div>
-    <div style="background:#111;border-radius:4px;height:7px;margin-bottom:10px;overflow:hidden">
-      <div style="background:${barColor};height:100%;width:${pct}%;border-radius:4px"></div>
+    <div style="background:#0a0e1a;border-radius:4px;height:7px;margin-bottom:10px;overflow:hidden">
+      <div style="background:${barColor};height:100%;width:${pct}%"></div>
     </div>`;
 
-  // Current rack grouped by kind — show count + remove button
-  const grouped = {};
-  rack.forEach(e2 => { const k=e2.kind+"_"+e2.tier; grouped[k]=(grouped[k]||0)+1; });
-  if (Object.keys(grouped).length === 0) {
-    html += `<div style="color:#555;font:11px monospace;margin-bottom:10px;text-align:center">Rack empty — buy and add missiles below</div>`;
+  // Loaded missiles
+  if (rack.length === 0) {
+    html += `<div style="color:#444;font:11px monospace;text-align:center;margin-bottom:10px">Rack is empty — load missiles below</div>`;
   } else {
-    html += `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">`;
-    for (const [gk, cnt] of Object.entries(grouped)) {
-      const [kind] = gk.split("_");
+    html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">`;
+    for (const [kind, cnt] of Object.entries(grouped)) {
       const mk = mkDefs[kind]||{name:kind,slots:1};
       const kc = kind==="nuke"?"#ff4400":kind==="emp"?"#44ffcc":kind==="micro"?"#ffcc44":kind==="cluster"?"#ff88ff":"#aaddff";
-      html += `<div style="display:flex;align-items:center;gap:4px;background:#0a0e1a;border:1px solid ${kc}44;border-radius:5px;padding:3px 8px">
-        <span style="color:${kc};font:bold 11px monospace">×${cnt} ${mk.name}</span>
-        <span style="color:#555;font:9px monospace">(${(mk.slots*cnt).toFixed(1)}sl)</span>
-        <button onclick="removeMissileKindFromRack('${kind}',${mTier})" style="background:none;border:none;color:#f66;font:bold 12px monospace;cursor:pointer;padding:0 2px;line-height:1" title="Remove one">−</button>
-        <button onclick="removeAllMissileKindFromRack('${kind}',${mTier})" style="background:none;border:none;color:#f44;font:bold 11px monospace;cursor:pointer;padding:0 2px;line-height:1" title="Remove all">✕</button>
+      const slotUsed = (mk.slots*cnt).toFixed(1);
+      html += `<div style="display:flex;align-items:center;gap:3px;background:#0b1020;border:1px solid ${kc}55;border-radius:5px;padding:2px 7px;font:11px monospace">
+        <span style="color:${kc};font-weight:bold">×${cnt} ${mk.name}</span>
+        <span style="color:#444;font-size:9px">${slotUsed}sl</span>
+        <button onclick="rackRemoveOne('${kind}',${mTier})" title="Remove 1" style="background:none;border:none;color:#f88;cursor:pointer;font:bold 13px monospace;padding:0 1px;line-height:1">−</button>
+        <button onclick="rackRemoveAll('${kind}',${mTier})" title="Remove all" style="background:none;border:none;color:#f44;cursor:pointer;font:bold 11px monospace;padding:0 1px;line-height:1">✕</button>
       </div>`;
     }
     html += `</div>`;
-    html += `<button onclick="clearMissileRack()" style="width:auto;display:inline-block;font-size:10px;padding:2px 8px;opacity:0.6;margin-bottom:10px">Clear Rack</button>`;
+    html += `<button onclick="rackClear()" style="width:auto;font-size:10px;padding:1px 7px;opacity:0.55;margin-bottom:8px">Clear All</button>`;
   }
 
-  // Add section — only show kinds in inventory
-  html += `<div style="border-top:1px solid #1a2030;padding-top:10px">
-    <div style="color:#888;font:11px monospace;margin-bottom:7px">Add to rack (must own missiles):</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px">`;
+  // Load section
+  html += `<div style="border-top:1px solid #161e2e;padding-top:9px">
+    <div style="color:#666;font:10px monospace;margin-bottom:6px">Load from inventory (${tierLabel} missiles):</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px">`;
+
   for (const [kind, mk] of Object.entries(mkDefs)) {
-    const invKey = `missile_${kind}_${mTier}`;
-    const inInv = (typeof missileInventory!=="undefined"?missileInventory[invKey]||0:0);
-    const inRack = getRackCountByKind(kind, mTier);
-    const available = inInv - inRack; // not yet in rack
+    const inInv = availableInInv(kind, mTier) + countInRack(kind, mTier); // total owned
+    const notInRack = availableInInv(kind, mTier);
     const slotCost = mk.slots;
-    const maxQty = Math.min(available, Math.floor((freeSlots+0.01) / slotCost));
+    const maxCanLoad = slotCap > 0 ? Math.floor((freeSlots + 0.001) / slotCost) : 0;
+    const canLoad = notInRack > 0 && maxCanLoad >= 1;
+    const actualMax = Math.min(notInRack, maxCanLoad);
     const kc = kind==="nuke"?"#ff4400":kind==="emp"?"#44ffcc":kind==="micro"?"#ffcc44":kind==="cluster"?"#ff88ff":"#aaddff";
-    const canAdd = available > 0 && maxQty >= 1;
-    html += `<div style="background:#0a0e1a;border:1px solid ${canAdd?"#223":"#111"};border-radius:7px;padding:6px 8px;min-width:140px;opacity:${canAdd?1:0.5}">
-      <div style="color:${kc};font:bold 11px monospace;margin-bottom:1px">${mk.name} <span style="color:#555;font-weight:normal">(${slotCost}sl)</span></div>
-      <div style="color:#666;font:9px monospace;margin-bottom:4px;line-height:1.4">${mk.desc}</div>
-      <div style="color:${inInv>0?"#0af":"#555"};font:10px monospace;margin-bottom:5px">In inventory: ${inInv} | In rack: ${inRack}</div>
-      ${canAdd ? `<div style="display:flex;align-items:center;gap:4px">
-        <input type="number" id="mrQty_${kind}" min="1" max="${maxQty}" value="1"
-          style="width:42px;background:#111;border:1px solid #334;color:#eee;font:11px monospace;padding:2px;border-radius:4px;text-align:center">
-        <button onclick="addMissileToRack('${kind}',${mTier})"
-          style="width:auto;padding:2px 8px;font:bold 11px monospace;background:rgba(0,170,255,0.15);border:1px solid #0af;color:#0af;border-radius:5px;cursor:pointer">+ Add</button>
-      </div>` : `<div style="color:#444;font:9px monospace">${inInv===0?"No stock — buy from Shop":"No slots left"}</div>`}
-    </div>`;
+
+    html += `<div style="background:#0b1020;border:1px solid ${canLoad?"#223":"#141420"};border-radius:6px;padding:5px 8px;min-width:138px;${canLoad?"":"opacity:0.45"}">
+      <div style="color:${kc};font:bold 11px monospace">${mk.name} <span style="color:#444;font-weight:normal">${slotCost}sl each</span></div>
+      <div style="color:#555;font:9px monospace;line-height:1.4;margin-bottom:4px">${mk.desc}</div>
+      <div style="font:10px monospace;color:${inInv>0?"#888":"#444"};margin-bottom:4px">
+        Owned: <span style="color:${inInv>0?"#0af":"#444"}">${inInv}</span> &nbsp; In rack: <span style="color:#fa0">${countInRack(kind,mTier)}</span>
+      </div>`;
+    if (canLoad) {
+      html += `<div style="display:flex;align-items:center;gap:4px">
+        <input type="number" id="rqty_${kind}" min="1" max="${actualMax}" value="1"
+          style="width:38px;background:#111;border:1px solid #334;color:#eee;font:11px monospace;padding:1px 3px;border-radius:3px;text-align:center"
+          oninput="this.value=Math.min(${actualMax},Math.max(1,parseInt(this.value)||1))">
+        <button onclick="rackLoad('${kind}',${mTier})"
+          style="width:auto;padding:2px 8px;font:bold 11px monospace;background:rgba(0,170,255,0.14);border:1px solid #0af;color:#0af;border-radius:4px;cursor:pointer">Load</button>
+      </div>`;
+    } else {
+      html += `<div style="color:#333;font:9px monospace">${inInv===0?"Buy from Shop first":"No slots available"}</div>`;
+    }
+    html += `</div>`;
   }
   html += `</div></div></div>`;
   return html;
 }
 
-function addMissileToRack(kind, tier) {
-  const mk = (typeof MISSILE_KINDS!=="undefined"?MISSILE_KINDS[kind]:null)||{slots:1};
+function rackLoad(kind, tier) {
   const sName = playerLoadout.ship||"Starlight";
-  const sd = SHIPS[sName];
-  const maxSlots = sd?.missiles||0;
-  const qtyEl = document.getElementById("mrQty_"+kind);
+  const mk = (typeof MISSILE_KINDS!=="undefined"?MISSILE_KINDS[kind]:null)||{slots:1};
+  const slotCap = getMissileSlotCap(sName);
+  const qtyEl = document.getElementById("rqty_"+kind);
   const qty = Math.max(1, parseInt(qtyEl?.value)||1);
-  const invKey = `missile_${kind}_${tier}`;
-  const inInv = (typeof missileInventory!=="undefined"?missileInventory[invKey]||0:0);
-  const inRack = getRackCountByKind(kind, tier);
-  const available = inInv - inRack;
-  const actualQty = Math.min(qty, available, Math.floor((maxSlots - getMissileRackSlots() + 0.01)/mk.slots));
-  if(actualQty < 1) return;
-  if(!playerLoadout.missileRack) playerLoadout.missileRack=[];
-  for(let i=0;i<actualQty;i++) playerLoadout.missileRack.push({kind,tier});
-  if(typeof setPlayerShip==="function") setPlayerShip(sName);
+  const avail = availableInInv(kind, tier);
+  const free = slotCap - getRackSlotWeight();
+  const maxLoad = Math.min(qty, avail, Math.floor((free+0.001)/mk.slots));
+  if (maxLoad < 1) return;
+  if (!playerLoadout.missileRack) playerLoadout.missileRack = [];
+  for (let i=0; i<maxLoad; i++) playerLoadout.missileRack.push({kind, tier});
+  if (typeof setPlayerShip==="function") setPlayerShip(sName);
   renderLoadout();
 }
 
-function removeMissileKindFromRack(kind, tier) {
-  if(!playerLoadout.missileRack) return;
-  const idx = playerLoadout.missileRack.findLastIndex(e2=>e2.kind===kind&&e2.tier===tier);
-  if(idx>=0) playerLoadout.missileRack.splice(idx,1);
-  const sName=playerLoadout.ship||"Starlight";
-  if(typeof setPlayerShip==="function") setPlayerShip(sName);
+function rackRemoveOne(kind, tier) {
+  if (!playerLoadout.missileRack) return;
+  const idx = playerLoadout.missileRack.findLastIndex(e=>e.kind===kind&&e.tier===tier);
+  if (idx >= 0) playerLoadout.missileRack.splice(idx, 1);
+  const sName = playerLoadout.ship||"Starlight";
+  if (typeof setPlayerShip==="function") setPlayerShip(sName);
   renderLoadout();
 }
 
-function removeAllMissileKindFromRack(kind, tier) {
-  if(!playerLoadout.missileRack) return;
-  playerLoadout.missileRack = playerLoadout.missileRack.filter(e2=>!(e2.kind===kind&&e2.tier===tier));
-  const sName=playerLoadout.ship||"Starlight";
-  if(typeof setPlayerShip==="function") setPlayerShip(sName);
+function rackRemoveAll(kind, tier) {
+  if (!playerLoadout.missileRack) return;
+  playerLoadout.missileRack = playerLoadout.missileRack.filter(e=>!(e.kind===kind&&e.tier===tier));
+  const sName = playerLoadout.ship||"Starlight";
+  if (typeof setPlayerShip==="function") setPlayerShip(sName);
   renderLoadout();
 }
 
 function clearMissileRack() {
-  playerLoadout.missileRack=[];
-  const sName=playerLoadout.ship||"Starlight";
-  if(typeof setPlayerShip==="function") setPlayerShip(sName);
+  playerLoadout.missileRack = [];
+  const sName = playerLoadout.ship||"Starlight";
+  if (typeof setPlayerShip==="function") setPlayerShip(sName);
   renderLoadout();
 }
 
