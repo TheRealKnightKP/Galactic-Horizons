@@ -46,30 +46,30 @@ const ARMOR_UPGRADE_PRICES = { 2: 30000, 3: 120000 };
 
 
 // === PER-SHIP UPGRADE PRICES ===
+// Used for ALL upgrade types per ship. Replaces the old global SHIELD_TIER_PRICES/ARMOR_UPGRADE_PRICES/ENGINE_UPGRADE_PRICES.
 // Wave money reference: W1=1k W3=2.5k W5=5k W7=9k W10=22k W12=35k W15=55k W17=100k W20=500k
-// Each ship priced relative to when you'd realistically have it and what you've accumulated by then.
 const SHIP_UPGRADE_PRICES = {
-  // Light ships — available from wave 1, ~3–8k accumulated by time you'd upgrade
-  Starlight:  { shield:{ 2:500,   3:1800   }, armor:{ 2:500,   3:1800   }, engine:{ 2:600,   3:2000   }, weapon:{ 2:700,   3:2400   }, missile:{ 2:500,   3:1600   } },
-  Falcon:     { shield:{ 2:800,   3:2500   }, armor:{ 2:800,   3:2500   }, engine:{ 2:900,   3:3000   }, weapon:{ 2:1000,  3:3500   }, missile:{ 2:800,   3:2500   } },
-  // Medium — waves 3–6, ~10–20k accumulated
-  Rouge:      { shield:{ 2:1800,  3:5500   }, armor:{ 2:1800,  3:5500   }, engine:{ 2:2200,  3:6800   }, weapon:{ 2:2500,  3:7500   }, missile:{ 2:1800,  3:5500   } },
-  Marauder:   { shield:{ 2:2000,  3:6000   }, armor:{ 2:2200,  3:7000   }, engine:{ 2:2000,  3:6000   }, weapon:{ 2:2500,  3:7500   }, missile:{ 2:1800,  3:5800   } },
-  // Heavy — waves 6–9, ~30–50k accumulated
-  Wasp:       { shield:{ 2:4500,  3:14000  }, armor:{ 2:4500,  3:14000  }, engine:{ 2:5500,  3:17000  }, weapon:{ 2:6000,  3:18000  }, missile:{ 2:4500,  3:14000  } },
-  Supernova:  { shield:{ 2:5500,  3:17000  }, armor:{ 2:5500,  3:17000  }, engine:{ 2:5000,  3:15000  }, weapon:{ 2:7000,  3:22000  }, missile:{ 2:5500,  3:17000  } },
-  // Subcapital: Bulwark is cheap & early, Tempest is late-game (wave 13+, ~120k+)
-  Bulwark:    { shield:{ 2:3500,  3:11000  }, armor:{ 2:4000,  3:12500  }, engine:{ 2:3000,  3:9500   }, weapon:{ 2:0,     3:0      }, missile:{ 2:3000,  3:9500   }, turret:{ 2:5500, 3:17000 } },
-  Tempest:    { shield:{ 2:15000, 3:45000  }, armor:{ 2:17000, 3:52000  }, engine:{ 2:14000, 3:43000  }, weapon:{ 2:19000, 3:58000  }, missile:{ 2:15000, 3:46000  }, turret:{ 2:17000, 3:52000 } },
-  // Capital — waves 13–16, ~150–280k accumulated
-  Nemesis:    { shield:{ 2:14000, 3:43000  }, armor:{ 2:15000, 3:47000  }, engine:{ 2:13000, 3:40000  }, weapon:{ 2:19000, 3:58000  }, missile:{ 2:13000, 3:40000  } },
-  Prometheus: { shield:{ 2:26000, 3:78000  }, armor:{ 2:28000, 3:84000  }, engine:{ 2:24000, 3:72000  }, weapon:{ 2:32000, 3:96000  }, missile:{ 2:26000, 3:78000  }, turret:{ 2:30000, 3:90000 } },
-  // Super-capital — waves 16–19, ~350–600k accumulated
-  Leviathan:  { shield:{ 2:38000, 3:115000 }, armor:{ 2:38000, 3:115000 }, engine:{ 2:34000, 3:102000 }, weapon:{ 2:0,     3:0      }, missile:{ 2:36000, 3:108000 }, turret:{ 2:42000, 3:125000 } },
-  Dominion:   { shield:{ 2:52000, 3:155000 }, armor:{ 2:52000, 3:155000 }, engine:{ 2:47000, 3:140000 }, weapon:{ 2:60000, 3:180000 }, missile:{ 2:50000, 3:150000 }, turret:{ 2:56000, 3:168000 } },
-  // Secret ships — unlocked around wave 12, modest money at that point (~80–120k)
-  Comet:      { shield:{ 2:7000,  3:21000  }, armor:{ 2:7000,  3:21000  }, engine:{ 2:8000,  3:24000  }, weapon:{ 2:9000,  3:27000  }, missile:{ 2:7000,  3:21000  } },
-  Vengeance:  { shield:{ 2:9000,  3:27000  }, armor:{ 2:9000,  3:27000  }, engine:{ 2:10000, 3:30000  }, weapon:{ 2:0,     3:0      }, missile:{ 2:9000,  3:27000  } },
+  // ── SMALL (waves 1-4, ~3-8k accumulated) ─────────────────────────────────
+  Starlight: { shield:{2:600,  3:2000  }, armor:{2:600,  3:2000  }, engine:{2:700,  3:2200  }, weapon:{2:800,  3:2500  }, missile:{2:600,  3:1800  } },
+  Falcon:    { shield:{2:900,  3:2800  }, armor:{2:900,  3:2800  }, engine:{2:1000, 3:3200  }, weapon:{2:1100, 3:3500  }, missile:{2:900,  3:2800  } },
+  // ── MEDIUM (waves 3-7, ~10-20k accumulated) ───────────────────────────────
+  Rouge:     { shield:{2:2000, 3:6500  }, armor:{2:2000, 3:6500  }, engine:{2:2400, 3:7500  }, weapon:{2:2800, 3:8500  }, missile:{2:2000, 3:6500  }, turret:{2:3000, 3:9000  } },
+  Marauder:  { shield:{2:2200, 3:7000  }, armor:{2:2400, 3:7500  }, engine:{2:2200, 3:7000  }, weapon:{2:2800, 3:8500  }, missile:{2:2000, 3:6500  }, turret:{2:3200, 3:9500  } },
+  // ── HEAVY (waves 6-10, ~30-50k accumulated) ───────────────────────────────
+  Wasp:      { shield:{2:7000, 3:21000 }, armor:{2:7000, 3:21000 }, engine:{2:8500, 3:25000 }, weapon:{2:9500, 3:28000 }, missile:{2:7000, 3:21000 }, turret:{2:10000,3:30000 } },
+  Supernova: { shield:{2:8500, 3:25000 }, armor:{2:8500, 3:25000 }, engine:{2:8000, 3:23000 }, weapon:{2:11000,3:33000 }, missile:{2:8500, 3:25000 }, turret:{2:10000,3:30000 } },
+  // ── SUBCAPITAL (Bulwark early cheap; Tempest waves 13+, ~120k) ────────────
+  Bulwark:   { shield:{2:5000, 3:15000 }, armor:{2:6000, 3:18000 }, engine:{2:4500, 3:13500 }, weapon:{2:0,    3:0     }, missile:{2:4500, 3:13500 }, turret:{2:8000, 3:24000 } },
+  Tempest:   { shield:{2:22000,3:65000 }, armor:{2:25000,3:75000 }, engine:{2:20000,3:60000 }, weapon:{2:28000,3:85000 }, missile:{2:22000,3:65000 }, turret:{2:25000,3:75000 } },
+  // ── CAPITAL (waves 13-16, ~150-280k accumulated) ──────────────────────────
+  Nemesis:   { shield:{2:50000,3:100000}, armor:{2:55000,3:110000}, engine:{2:45000,3:90000 }, weapon:{2:60000,3:120000}, missile:{2:50000,3:100000}, turret:{2:55000,3:110000} },
+  Prometheus:{ shield:{2:60000,3:120000}, armor:{2:65000,3:130000}, engine:{2:55000,3:110000}, weapon:{2:75000,3:150000}, missile:{2:60000,3:120000}, turret:{2:70000,3:140000} },
+  // ── SUPER-CAPITAL (waves 16-19, ~350-600k accumulated) ────────────────────
+  Leviathan: { shield:{2:80000,3:200000}, armor:{2:80000,3:200000}, engine:{2:70000,3:175000}, weapon:{2:0,    3:0     }, missile:{2:75000,3:190000}, turret:{2:90000,3:225000} },
+  Dominion:  { shield:{2:90000,3:225000}, armor:{2:90000,3:225000}, engine:{2:80000,3:200000}, weapon:{2:100000,3:250000},missile:{2:85000,3:215000}, turret:{2:95000,3:240000} },
+  // ── SECRET (unlocked around wave 12, ~80-120k) ────────────────────────────
+  Comet:     { shield:{2:8000, 3:24000 }, armor:{2:8000, 3:24000 }, engine:{2:9500, 3:28000 }, weapon:{2:11000,3:33000 }, missile:{2:8000, 3:24000 } },
+  Vengeance: { shield:{2:10000,3:30000 }, armor:{2:10000,3:30000 }, engine:{2:12000,3:36000 }, weapon:{2:0,    3:0     }, missile:{2:10000,3:30000 }, turret:{2:13000,3:39000} },
 };
 
 // === MISSILE STORAGE UPGRADES ===
