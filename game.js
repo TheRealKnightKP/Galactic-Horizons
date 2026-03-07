@@ -372,7 +372,7 @@ function drawDeathEffects() {
 // ============================================================
 // GAME STATE
 // ============================================================
-let state="menu", money=0, currentWave=0, infiniteMode=false, currentShipName="Starlight";
+let state="menu", money=5000000, currentWave=0, infiniteMode=false, currentShipName="Starlight";
 let player={}, allies=[], enemies=[], playerBullets=[], enemyBullets=[];
 let missileTimer=0, ownedShips=[], shopOpenedFromMenu=false;
 let waveTransitionTimer=0, waveTransitionText="", beamFlashes=[];
@@ -960,7 +960,6 @@ function nextWave() {
 function startGame(infinite) {
   infiniteMode=infinite; currentWave=0;
   document.getElementById("mainMenu").style.display="none";
-  money=5000000;
   if(!ownedShips||ownedShips.length===0) ownedShips=["Starlight"];
   setPlayerShip(playerLoadout.ship||"Starlight");
   if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="none";}
@@ -990,7 +989,7 @@ function showWavesConfirm(infinite) {
   el.style.display="flex";
   el.querySelector("#wc_yes").onclick=()=>{
     el.style.display="none";
-    state="shop"; shopOpenedFromMenu=false; showShop();
+    nextWave();
   };
   el.querySelector("#wc_no").onclick=()=>{
     el.style.display="none";
@@ -1981,6 +1980,18 @@ function checkCollisions() {
           });
         }
         spawnDeathEffect({x:bx-30,y:by-30,w:60,h:60,type:"Raptor"});
+        // Nuke: big visual explosion across entire AOE
+        if(b.missileKind==="nuke"){
+          deathEffects.push({type:"death_shockwave",x:bx,y:by,maxR:b.aoeRadius,    life:30,maxLife:30});
+          deathEffects.push({type:"death_shockwave",x:bx,y:by,maxR:b.aoeRadius*0.6,life:22,maxLife:22});
+          deathEffects.push({type:"death_shockwave",x:bx,y:by,maxR:b.aoeRadius*0.3,life:16,maxLife:16});
+          for(let ni=0;ni<18;ni++){
+            const ang=Math.random()*Math.PI*2;
+            const dist=Math.random()*b.aoeRadius*0.85;
+            deathEffects.push({type:"death_exp",x:bx+Math.cos(ang)*dist,y:by+Math.sin(ang)*dist,life:28,maxLife:28,r:18+Math.random()*22});
+          }
+          playExplosion(16);
+        }
         return;
       }
       if(b.piercing){
