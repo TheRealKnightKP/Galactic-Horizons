@@ -4,8 +4,8 @@ const ctx = canvas.getContext("2d");
 
 let GAME_W = window.innerWidth;
 let GAME_H = window.innerHeight;
-const SIZE_SCALE = 0.67;
-let displayScale = 1.2;
+const SIZE_SCALE = 0.5;
+let displayScale = 1;
 
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1);
 
@@ -655,6 +655,7 @@ function respawnDeadAllies() {
 // ── SHADOW COMET WAVE ─────────────────────────────────────────
 function spawnShadowCometWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
+  if(window._packs) window._packs={};
   allies=[];
   // Bulwark and Leviathan get 1 manual turret against Shadow Comet
   const _scShip = playerLoadout.ship || currentShipName;
@@ -881,6 +882,7 @@ function fullUpgradeComet() {
 
 function spawnWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
+  if(window._packs) window._packs={};
   waveReinforceTimer=0; waveReinforceDone=false;
   shadowCometActive = false;
   pdcDisabledThisWave = false;
@@ -1795,41 +1797,58 @@ function updateEnemies() {
           }
         }
         if(mode==="packhunter"){
-          // Assign pack: this ship + 2 closest eligible overrides
-          if(!e.packAssigned){
-            e.packAssigned=true;
-            const candidates=smallList.filter(o=>o!==e&&!o.packLeader&&!o.packMember);
+          // ── Pack Hunter: 3-ship column toward player ──────────────────────
+          // Init: first time this enemy runs, grab 2 nearest unassigned small
+          // enemies, override their archetypes, and register in global _packs.
+          if(!window._packs) window._packs={};
+          if(!e.packGroupId){
+            const gid="pk_"+Date.now()+"_"+Math.random().toString(36).slice(2,6);
+            const candidates=smallList.filter(o=>o!==e&&!o.packGroupId);
             candidates.sort((a,b)=>Math.hypot(a.x-e.x,a.y-e.y)-Math.hypot(b.x-e.x,b.y-e.y));
-            const pack=[e,...candidates.slice(0,2)];
-            pack.forEach((m,idx)=>{
+            const members=[e,...candidates.slice(0,2)];
+            members.forEach((m,i)=>{
               m.archetype="packhunter";
-              m.packLeader=(idx===0);
-              m.packMember=true;
-              m.packGroup=e;
-              m.packPosition=idx;
+              m.packGroupId=gid;
+              m.packOrder=i; // 0=front(faces player), 1=mid, 2=back
             });
-            e.packList=pack;
+            window._packs[gid]={members,rotateCD:0};
           }
-          const pack=e.packList||[e];
-          // Rotate pack leadership if front ship shields drop below 30%
-          if(pack[0]&&pack[0].shields<pack[0].maxShields*0.30&&pack.length>1){
-            const fallen=pack.shift();
-            fallen.packPosition=pack.length;
-            pack.push(fallen);
-            pack.forEach((m,idx)=>{
-              m.packPosition=idx;
-              m.packLeader=(idx===0);
-            });
-            e.packList=pack;
+          const pd=window._packs[e.packGroupId];
+          if(pd){
+            // Remove dead members from pack list
+            pd.members=pd.members.filter(m=>!m.dead);
+            if(pd.members.length===0){delete window._packs[e.packGroupId];}
+            else{
+              // Cooldown tick (only once per group — the member with lowest packOrder does it)
+              const isGroupTick=pd.members.every(m=>m===e||m.packOrder>e.packOrder);
+              if(isGroupTick){
+                if(pd.rotateCD>0) pd.rotateCD--;
+                // Rotation: when front (order=0) shields drop below 25%, rotate orders
+                const front=pd.members.find(m=>m.packOrder===0);
+                if(front&&front.shields<front.maxShields*0.25&&pd.rotateCD<=0&&pd.members.length>1){
+                  // Shift orders: 0→last, everyone else moves up
+                  pd.members.sort((a,b)=>a.packOrder-b.packOrder);
+                  pd.members.push(pd.members.shift()); // move order-0 to end
+                  pd.members.forEach((m,i)=>m.packOrder=i);
+                  pd.rotateCD=240; // 4s before next rotation
+                }
+              }
+              // Formation: all ships form a column pointing from player outward
+              // Front (order 0) = 210px from player center
+              // Each subsequent ship = +130px behind the previous
+              const lineAngle=Math.atan2(ecy-pcy,ecx-pcx); // angle FROM player TO pack
+              const FRONT_DIST=210, SPACING=130;
+              const myDist=FRONT_DIST+e.packOrder*SPACING;
+              const formX=pcx+Math.cos(lineAngle)*myDist-e.w/2;
+              const formY=pcy+Math.sin(lineAngle)*myDist-e.h/2;
+              const fdx=formX-e.x,fdy=formY-e.y,fd=Math.hypot(fdx,fdy)||1;
+              // Strong pull to formation position
+              e.vx+=(fdx/fd)*accel*4.5;
+              e.vy+=(fdy/fd)*accel*4.5;
+              // All members face the player (rotate toward pcx,pcy)
+              e.rotation=Math.atan2(pcy-(e.y+e.h/2),pcx-(e.x+e.w/2));
+            }
           }
-          const lineAngle=Math.atan2(ty-ecy,tx-ecx);
-          const frontRange=280;
-          const myPos=e.packPosition||0;
-          const targetDist=frontRange+myPos*85;
-          const lineX=tx-Math.cos(lineAngle)*targetDist-e.w/2;
-          const lineY=ty-Math.sin(lineAngle)*targetDist-e.h/2;
-          const ld=Math.hypot(lineX-e.x,lineY-e.y)||1;
-          e.vx+=(lineX-e.x)/ld*accel*3;e.vy+=(lineY-e.y)/ld*accel*3;
         } else {
           const orbitAngle=e.surroundAngle+(Math.PI*2*myIdx/Math.max(totalSmall,1));
           const targetX=tx+Math.cos(orbitAngle)*orbitR-e.w/2;
@@ -2364,6 +2383,7 @@ function gameLoop() {
 function confirmLeaveGame() {
   if(confirm("Are you sure you want to leave? All progress will be lost.")) {
     enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
+  if(window._packs) window._packs={};
     shadowCometActive=false; pdcDisabledThisWave=false;
     state="menu";
     document.getElementById("mainMenu").style.display="block";
@@ -2374,4 +2394,3 @@ function confirmLeaveGame() {
 }
 
 gameLoop();
-
