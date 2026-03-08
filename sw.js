@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.5.1";
+const CACHE = "galactic-horizons-v1.5.2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -94,5 +94,6 @@ Versions:
 -V1.4.18 - Fixed missile cycle
 -V1.4.19 - Fixing missile cycle again
 -1.5.0 - Arena Evolution part 1 update: Extra waves to wave 30, Shadow Vengeance bossfight, Retribution, Dreadnaught hp phases, Anti wobble.
--1.5.1 - Fixed Waves 20-30, Shadow Vengeance bossfight fixed.
+-1.5.1 - Fixed Waves 20-30, Shadow Vengeance bossfight fixed. (3/8/2026)
+-1.5.2 - Fixed swarm wave and shadow vengeance not spawning bugs.
 */
