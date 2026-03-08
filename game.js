@@ -452,16 +452,16 @@ function initShieldFaces(obj) {
 }
 
 function getHitFace(bullet, target) {
-  // Use angle from bullet TO target center — this is the impact direction
-  // rel ≈ 0   → impact from front of ship → FRONT face
-  // rel ≈ ±π  → impact from behind → BACK face
-  // rel ≈ +π/2 → impact from ship's right → RIGHT face
-  // rel ≈ -π/2 → impact from ship's left  → LEFT face
+  // Angle from TARGET CENTER to BULLET — this tells us which face the bullet is on
+  // We add Math.PI + spriteAngleOffset so "front" correctly maps to the ship's visual nose
   const tcx = target.x + target.w/2;
   const tcy = target.y + target.h/2;
-  const impactAngle = Math.atan2(tcy - (bullet.y + (bullet.h||0)/2),
-                                  tcx - (bullet.x + (bullet.w||0)/2));
-  let rel = impactAngle - (target.rotation||0);
+  const impactAngle = Math.atan2(
+    (bullet.y + (bullet.h||0)/2) - tcy,
+    (bullet.x + (bullet.w||0)/2) - tcx
+  );
+  const facingAngle = Math.PI + (target.rotation||0) + (target.spriteAngleOffset||0);
+  let rel = impactAngle - facingAngle;
   while(rel >  Math.PI) rel -= Math.PI*2;
   while(rel < -Math.PI) rel += Math.PI*2;
   if(Math.abs(rel) < Math.PI*0.25) return "front";
@@ -517,11 +517,13 @@ function drawShieldFaces(obj) {
   const r = Math.max(obj.w, obj.h) * 0.55 + 4;
   const rotation = obj.rotation || 0;
 
+  // Visual nose direction = Math.PI + rotation + spriteAngleOffset (matches sprite rendering)
+  const visualNose = Math.PI + rotation + (obj.spriteAngleOffset||0);
   const faceAngles = {
-    front: rotation,
-    right: rotation + Math.PI/2,
-    back:  rotation + Math.PI,
-    left:  rotation - Math.PI/2,
+    front: visualNose,
+    right: visualNose + Math.PI/2,
+    back:  visualNose + Math.PI,
+    left:  visualNose - Math.PI/2,
   };
   const arcHalf = Math.PI * 0.3;
 
@@ -1166,6 +1168,49 @@ function fullUpgradeVengance() {
   }
 }
 
+function createEnemyObject(name, spawnX, spawnY) {
+  const d = ENEMIES[name];
+  if (!d) return null;
+  const sizeNum = d.size || 2;
+  const ew = Math.round((32 + sizeNum*18)*SIZE_SCALE);
+  const eh = Math.round((20 + sizeNum*10)*SIZE_SCALE);
+  const x = spawnX !== undefined ? spawnX : Math.floor(GAME_W*0.5 + Math.random()*GAME_W*0.45);
+  const y = spawnY !== undefined ? spawnY : Math.floor(40 + Math.random()*(GAME_H-80));
+  const e = {
+    type: name, x, y, w: ew, h: eh,
+    hp: d.hp, maxHp: d.hp,
+    shields: d.shields, maxShields: d.shields,
+    armor: d.armor||200, maxArmor: d.armor||200, armorType: d.armorType||"light",
+    speed: d.speed, fireRate: d.fireRate,
+    shootTimer: Math.floor(Math.random()*d.fireRate),
+    img: getImage(d.image), color: d.color, score: d.score,
+    spriteAngleOffset: (name==="Dominion"||name==="Dreadnaught") ? 0 : Math.PI,
+    stunTimer: 0, vx: 0, vy: 0,
+    surroundAngle: Math.random()*Math.PI*2,
+  };
+  const sizeFactor = sizeNum;
+  e.turnSpeed = sizeFactor<=2 ? 0.08 : sizeFactor<=4 ? 0.05 : sizeFactor<=6 ? 0.03 : 0.015;
+  e.turrets = [];
+  if (d.turrets) {
+    const sf = 1 + (sizeNum-1)*0.35;
+    d.turrets.forEach(t => e.turrets.push({
+      rx: t.rx||0, ry: t.ry||0,
+      fireRate: Math.max(6, Math.floor((t.fireRate||d.fireRate||60)*sf)),
+      shootTimer: Math.floor(Math.random()*60),
+      weaponStats: getWeaponStats(t.weaponType||"laser_repeater", t.weaponSize||2),
+    }));
+  }
+  if (name==="Dominion")   e.beamTimer = ENEMIES.Dominion.beamCooldownFrames || 600;
+  if (name==="Dreadnaught") { e.beamTimer = ENEMIES.Dreadnaught.beamCooldownFrames; e.beamWarningAngle = null; }
+  if (typeof ARCHETYPE_POOL!=="undefined" && ARCHETYPE_POOL[name]) {
+    const pool = ARCHETYPE_POOL[name];
+    e.archetype = pool[Math.floor(Math.random()*pool.length)];
+    e.archetypeTimer = 0;
+  }
+  initShieldFaces(e);
+  return e;
+}
+
 function spawnWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
   waveReinforceTimer=0; waveReinforceDone=false;
@@ -1197,46 +1242,13 @@ function spawnWave() {
   const wrd=waveData.reinforceDelay||0;
   if(wrd>0) waveReinforceTimer=wrd;
   waveData.enemies.forEach(name=>{
-    const d=ENEMIES[name];
+    const d=ENEMIES[name];if(!d)return;
     const sizeNum=d.size||2;
-    const ew=Math.round((32+sizeNum*18)*SIZE_SCALE), eh=Math.round((20+sizeNum*10)*SIZE_SCALE);
-    const spawnX=name==="Dreadnaught"?GAME_W-Math.round(ew*0.75):Math.floor(GAME_W*0.5+Math.random()*GAME_W*0.45);
-    const spawnY=name==="Dreadnaught"?GAME_H/2:Math.floor(40+Math.random()*(GAME_H-80));
-    const e={
-      type:name, x:spawnX, y:spawnY, w:ew, h:eh,
-      hp:d.hp, maxHp:d.hp, shields:d.shields, maxShields:d.shields,
-      armor:d.armor||200, maxArmor:d.armor||200, armorType:d.armorType||"light",
-      speed:d.speed, fireRate:d.fireRate, shootTimer:Math.floor(Math.random()*d.fireRate),
-      img:getImage(d.image), color:d.color, score:d.score,
-      spriteAngleOffset:(name==="Dominion"||name==="Dreadnaught")?0:Math.PI,
-      stunTimer:0, vx:0, vy:0,
-      surroundAngle:Math.random()*Math.PI*2,
-    };
-    e.turrets=[];
-    if(d.turrets){
-      const sf=1+((d.size||1)-1)*0.35;
-      d.turrets.forEach(t=>e.turrets.push({
-        rx:t.rx||0, ry:t.ry||0,
-        fireRate:Math.max(6,Math.floor((t.fireRate||d.fireRate||60)*sf)),
-        shootTimer:Math.floor(Math.random()*60),
-        weaponStats:getWeaponStats(t.weaponType||"laser_repeater",t.weaponSize||2),
-      }));
-    }
-    initShieldFaces(e);
-    if(name==="Dominion") e.beamTimer=ENEMIES.Dominion.beamCooldownFrames||600;
-    if(name==="Dreadnaught"){e.beamTimer=ENEMIES.Dreadnaught.beamCooldownFrames;e.beamWarningAngle=null;}
-    if(typeof ARCHETYPE_POOL!=="undefined"&&ARCHETYPE_POOL[name]){
-      const pool=ARCHETYPE_POOL[name];
-      e.archetype=pool[Math.floor(Math.random()*pool.length)];
-      e.archetypeTimer=0;
-    }
-    const sizeFactor = ENEMIES[name]?.size || 2;
-    e.turnSpeed = sizeFactor <= 2 ? 0.08
-                : sizeFactor <= 4 ? 0.05
-                : sizeFactor <= 6 ? 0.03
-                : 0.015;
-    initShieldFaces(e);
-    enemies.push(e);
+    const ew=Math.round((32+sizeNum*18)*SIZE_SCALE);
+    const spawnX=name==="Dreadnaught"?GAME_W-Math.round(ew*0.75):undefined;
+    const spawnY=name==="Dreadnaught"?GAME_H/2:undefined;
+    const e=createEnemyObject(name,spawnX,spawnY);
+    if(e) enemies.push(e);
   });
 }
 
@@ -1699,12 +1711,50 @@ function updateSpecial() {
     case"Prometheus":{
       player.specialSalvoTimer--;
       if(player.specialSalvoTimer<=0&&player.specialSalvoCount<player.specialSalvoTotal){
-        // Peek at rack type — do NOT consume missiles, this is a free salvo
+        // Free salvo — peek at rack type, do NOT consume missiles
         const _rackEntry=player.missileRack&&player.missileRack.length>0?player.missileRack[0]:{kind:"standard",tier:player.missileType||2};
-        const mt=MISSILE_TYPES[_rackEntry.tier||player.missileType||2];
-        playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
-          vx:Math.cos(player.rotation)*mt.speed,vy:Math.sin(player.rotation)*mt.speed,
-          w:18,h:8,damage:mt.damage,color:mt.color,missile:true,category:"missile",weaponSize:6});
+        const mKind=_rackEntry.kind||"standard";
+        const mTier=_rackEntry.tier||player.missileType||2;
+        const mkDef=(typeof MISSILE_KINDS!=="undefined"&&MISSILE_KINDS[mKind])||{aoe:0,lockOn:true,friendly:false,corrosion:false,damageMult:1};
+        const mt=MISSILE_TYPES[mTier]||MISSILE_TYPES[2];
+        const baseDmg=mt.damage*(mkDef.damageMult||1.0);
+        // Lock on to nearest enemy in front
+        let lockTarget=null;
+        if(mkDef.lockOn&&enemies.length>0){
+          const pcx2=player.x+player.w/2,pcy2=player.y+player.h/2;
+          const cos2=Math.cos(player.rotation),sin2=Math.sin(player.rotation);
+          let bestScore=1e9;
+          enemies.forEach(en=>{
+            const ex=en.x+en.w/2,ey=en.y+en.h/2;
+            const dt=(ex-pcx2)*cos2+(ey-pcy2)*sin2;
+            if(dt<0)return;
+            const perp=Math.abs((ey-pcy2)*cos2-(ex-pcx2)*sin2);
+            if(perp<bestScore){bestScore=perp;lockTarget=en;}
+          });
+        }
+        const aim=lockTarget
+          ?Math.atan2(lockTarget.y+lockTarget.h/2-player.y-player.h/2,lockTarget.x+lockTarget.w/2-player.x-player.w/2)
+          :player.rotation;
+        if(mKind==="cluster"){
+          for(let ci=0;ci<4;ci++){
+            const a=aim+(ci-1.5)*0.18;
+            playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
+              vx:Math.cos(a)*mt.speed*1.2,vy:Math.sin(a)*mt.speed*1.2,
+              w:10,h:5,damage:baseDmg*0.3,color:"#ffaa00",
+              missile:true,category:"missile",weaponSize:4,lockTarget:lockTarget||null});
+          }
+        } else {
+          const aoe=mkDef.aoe||0;
+          const mColor=mKind==="emp"?"#44ffcc":mKind==="nuke"?"#ff2200":mKind==="micro"?"#ffcc44":mt.color;
+          playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
+            vx:Math.cos(aim)*mt.speed,vy:Math.sin(aim)*mt.speed,
+            w:mKind==="nuke"?28:mKind==="micro"?10:18,
+            h:mKind==="nuke"?16:mKind==="micro"?5:8,
+            damage:baseDmg,color:mColor,
+            missile:true,category:"missile",weaponSize:mKind==="nuke"?8:6,
+            missileKind:mKind,aoeRadius:aoe,corrosion:mkDef.corrosion,
+            friendlyFire:mkDef.friendly,lockTarget:lockTarget||null});
+        }
         player.specialSalvoCount++;
         player.specialSalvoTimer=Math.ceil(sp.duration/Math.max(1,player.specialSalvoTotal));
       }
@@ -2153,19 +2203,10 @@ function updateEnemies() {
           dreadnaughtReinforceTriggered = true;
           const rList = _dwd.reinforceEnemies || [];
           rList.forEach(name=>{
-            const d=ENEMIES[name];if(!d)return;
-            const sn=d.size||2,ew2=Math.round((32+sn*18)*SIZE_SCALE),eh2=Math.round((20+sn*10)*SIZE_SCALE);
-            const re={type:name,x:GAME_W*0.5+Math.random()*GAME_W*0.4,y:40+Math.random()*(GAME_H-80),w:ew2,h:eh2,
-              hp:d.hp,maxHp:d.hp,shields:d.shields,maxShields:d.shields,
-              armor:d.armor||200,maxArmor:d.armor||200,armorType:d.armorType||"light",
-              speed:d.speed,fireRate:d.fireRate,shootTimer:Math.floor(Math.random()*d.fireRate),
-              img:getImage(d.image),color:d.color,score:d.score,
-              spriteAngleOffset:Math.PI,stunTimer:0,vx:0,vy:0,surroundAngle:Math.random()*Math.PI*2,
-              turnSpeed:(()=>{const sz=d.size||2;return sz<=2?0.08:sz<=4?0.05:sz<=6?0.03:0.015;})()};
-            re.turrets=[];if(d.turrets){const sf=1+((d.size||1)-1)*0.35;d.turrets.forEach(t=>re.turrets.push({rx:t.rx||0,ry:t.ry||0,fireRate:Math.max(6,Math.floor((t.fireRate||d.fireRate||60)*sf)),shootTimer:Math.floor(Math.random()*60),weaponStats:getWeaponStats(t.weaponType||"laser_repeater",t.weaponSize||2)}));}
-            if(typeof ARCHETYPE_POOL!=="undefined"&&ARCHETYPE_POOL[name]){const p=ARCHETYPE_POOL[name];re.archetype=p[Math.floor(Math.random()*p.length)];re.archetypeTimer=0;}
-            initShieldFaces(re);
-            enemies.push(re);
+            const spx = GAME_W*0.5+Math.random()*GAME_W*0.4;
+            const spy = 40+Math.random()*(GAME_H-80);
+            const re = createEnemyObject(name, spx, spy);
+            if(re) enemies.push(re);
           });
           showSpecialToast("⚠ DREADNAUGHT CALLS REINFORCEMENTS!");
         }
@@ -2763,19 +2804,8 @@ function gameLoop() {
       const wd=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
       if(wd&&wd.reinforceEnemies){
         wd.reinforceEnemies.forEach(name=>{
-          const d=ENEMIES[name];if(!d)return;
-          const sn=d.size||2,ew=Math.round((32+sn*18)*SIZE_SCALE),eh=Math.round((20+sn*10)*SIZE_SCALE);
-          const re={type:name,x:GAME_W,y:80+Math.random()*(GAME_H-160),w:ew,h:eh,
-            hp:d.hp,maxHp:d.hp,shields:d.shields,maxShields:d.shields,
-            armor:d.armor||200,maxArmor:d.armor||200,armorType:d.armorType||"light",
-            speed:d.speed,fireRate:d.fireRate,shootTimer:Math.floor(Math.random()*d.fireRate),
-            img:getImage(d.image),color:d.color,score:d.score,
-            spriteAngleOffset:Math.PI,stunTimer:0,vx:0,vy:0,surroundAngle:Math.random()*Math.PI*2,
-            turnSpeed:(()=>{const sz=d.size||2;return sz<=2?0.08:sz<=4?0.05:sz<=6?0.03:0.015;})()};
-          re.turrets=[];if(d.turrets){const sf=1+((d.size||1)-1)*0.35;d.turrets.forEach(t=>re.turrets.push({rx:t.rx||0,ry:t.ry||0,fireRate:Math.max(6,Math.floor((t.fireRate||d.fireRate||60)*sf)),shootTimer:Math.floor(Math.random()*60),weaponStats:getWeaponStats(t.weaponType||"laser_repeater",t.weaponSize||2)}));}
-          if(typeof ARCHETYPE_POOL!=="undefined"&&ARCHETYPE_POOL[name]){const p=ARCHETYPE_POOL[name];re.archetype=p[Math.floor(Math.random()*p.length)];re.archetypeTimer=0;}
-          initShieldFaces(re);
-          enemies.push(re);
+          const re=createEnemyObject(name, GAME_W, 80+Math.random()*(GAME_H-160));
+          if(re) enemies.push(re);
         });
         showSpecialToast("⚠ REINFORCEMENTS!");
       }
