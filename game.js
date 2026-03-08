@@ -1106,6 +1106,7 @@ function checkShadowVenganceDefeat() {
       if (shadowVenganceNoHitWave) {
         if (!ownedShips.includes("Retribution")) {
           ownedShips.push("Retribution");
+          retributionUnlocked = true;
           unlockMsg = "🔥 RETRIBUTION UNLOCKED — Fully upgraded + Perfect run!";
         } else {
           unlockMsg = "🔥 Already own the Retribution!";
@@ -2775,7 +2776,7 @@ function gameLoop() {
         showSpecialToast("⚠ REINFORCEMENTS!");
       }
     }}
-    if(enemies.length===0&&!shadowCometActive){
+    if(enemies.length===0&&!shadowCometActive&&!shadowVenganceActive){
       const reward=infiniteMode?generateInfiniteWave(currentWave).reward:(WAVES[currentWave-1]?.reward||0);
       money+=reward;
       player.shields=player.maxShields;player.armor=player.maxArmor;
