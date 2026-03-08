@@ -1699,8 +1699,8 @@ function updateSpecial() {
     case"Prometheus":{
       player.specialSalvoTimer--;
       if(player.specialSalvoTimer<=0&&player.specialSalvoCount<player.specialSalvoTotal){
-        const _rackEntry=player.missileRack&&player.missileRack.length>0?player.missileRack.shift():{kind:"standard",tier:player.missileType||2};
-        player.missiles=player.missileRack?player.missileRack.length:0;
+        // Peek at rack type — do NOT consume missiles, this is a free salvo
+        const _rackEntry=player.missileRack&&player.missileRack.length>0?player.missileRack[0]:{kind:"standard",tier:player.missileType||2};
         const mt=MISSILE_TYPES[_rackEntry.tier||player.missileType||2];
         playerBullets.push({x:player.x+player.w/2,y:player.y+player.h/2,
           vx:Math.cos(player.rotation)*mt.speed,vy:Math.sin(player.rotation)*mt.speed,
