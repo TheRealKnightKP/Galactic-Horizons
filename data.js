@@ -164,7 +164,7 @@ const SHIPS = {
   Leviathan:  { price: 750000,    hp: 7500,  shields: 7000,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "none",    weaponSize: 0,  bespoke: false, pdc: 8, pdcSizes: [7,5,5,5,4,4,4,4], image: "Kraken.png", color: "#88ff00", size: 8,  missileType: 3, armorType: "capital", extraAllySlots: 6 },
   Dominion:   { price: 1200000,   hp: 10000, shields: 8000, armor: 100, missiles: 32, speed: 0.45, weaponType: "ballistic_railgun", weaponSize: 10, bespoke: true,  pdc: 8,  pdcSizes: [6,6,5,5,4,4,3,3],        image: "Idris.jpg",            color: "#cc88ff", size: 10, missileType: 3, armorType: "capital",   extraAllySlots: 4 },
   // --- SECRET ---
-  Comet:      { price: null,      hp: 100,   shields: 90,   armor: 100, missiles: 30,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 6,  bespoke: true,  doubleShot: false, pdc: 0,  pdcSize: 0,                         image: "Meteor.png",           color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
+  Comet:      { price: null,      hp: 100,   shields: 90,   armor: 100, missiles: 30,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  doubleShot: true, pdc: 0,  pdcSize: 0,                         image: "Meteor.png",           color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
   Vengeance:  { price: null,      hp: 200,   shields: 400,  armor: 100, missiles: 20,  speed: 3.8,  weaponType: "vengeance_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: false, pdc: 1, pdcSize: 4,                         image: "Meteor.png",           color: "#ff0044", size: 2,  missileType: 2, armorType: "medium", secret: true, extraAllySlots: 1 },
   // ── SECRET: Retribution — unlocked via Shadow Vengeance fight ──
   Retribution:{ price: null,      hp: 600,   shields: 500,  armor: 100, missiles: 20,  speed: 3.0,  weaponType: "ballistic_cannon",  weaponSize: 10, bespoke: true,  doubleShot: false, burstFire: true, pdc: 3, pdcSize: 5,                image: "Meteor.png",           color: "#ff4400", size: 3,  missileType: 3, armorType: "heavy",  secret: true, extraAllySlots: 2 },
@@ -367,26 +367,26 @@ const WAVES = [
   // Wave 20: The Armada — largest non-boss fleet before the endgame
   { reinforceDelay:1800, reinforceEnemies:["Dominion","Bulwark","Bulwark"], enemies: ["Prometheus","Dominion","Healer","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair"], reward: 350000 },
   // ── WAVES 21-30: ARENA EVOLUTION ──────────────────────────────────────────────────────────────
-  // Wave 21: Raptor Swarm II — 26 Raptors with 8 in reinforcements
-  { reinforceDelay:2700, reinforceEnemies:["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 600000 },
+  // Wave 21: Corsair Onslaught — 18 Corsairs + Rouges with Corsair reinforcements
+  { reinforceDelay:2700, reinforceEnemies:["Corsair","Corsair","Corsair","Corsair","Corsair","Corsair"], enemies: ["Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Rouge","Rouge","Rouge","Rouge","Rouge","Rouge"], reward: 600000 },
   // Wave 22: Shadow Vengeance boss fight
   { shadowVenganceWave: true, reinforceDelay:0, reinforceEnemies:[], enemies: [], reward: 800000 },
-  // Wave 23: Healer Fortress — 3 Healers with heavy escort
-  { reinforceDelay:2100, reinforceEnemies:["Healer","Bulwark","Corsair"], enemies: ["Healer","Healer","Healer","Bulwark","Bulwark","Bulwark","Corsair","Corsair","Corsair","Rouge"], reward: 500000 },
+  // Wave 23: Healer Fortress — 3 Healers with heavy escort + small ships screening them
+  { reinforceDelay:2100, reinforceEnemies:["Healer","Corsair","Corsair","Rouge","Rouge"], enemies: ["Healer","Healer","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair","Rouge","Rouge","Rouge","Rouge","Raptor","Raptor","Raptor","Raptor"], reward: 500000 },
   // Wave 24: Capital Fleet
   { reinforceDelay:1950, reinforceEnemies:["Dominion","Bulwark","Corsair"], enemies: ["Prometheus","Prometheus","Dominion","Healer","Bulwark","Bulwark","Corsair","Corsair"], reward: 650000 },
-  // Wave 25: The Gauntlet
-  { reinforceDelay:1800, reinforceEnemies:["Prometheus","Dominion","Healer","Bulwark"], enemies: ["Prometheus","Dominion","Healer","Healer","Bulwark","Bulwark","Bulwark","Corsair","Corsair","Corsair","Rouge","Rouge"], reward: 800000 },
-  // Wave 26: Twin Dominions
-  { reinforceDelay:1800, reinforceEnemies:["Dominion","Bulwark","Bulwark","Corsair"], enemies: ["Dominion","Dominion","Healer","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair","Corsair"], reward: 950000 },
-  // Wave 27: The Harbinger — triple Prometheus, double Dominion
-  { reinforceDelay:1650, reinforceEnemies:["Prometheus","Dominion","Healer","Bulwark","Corsair"], enemies: ["Prometheus","Prometheus","Prometheus","Dominion","Dominion","Healer","Healer","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair"], reward: 1100000 },
+  // Wave 25: The Gauntlet — capitals + small ships everywhere
+  { reinforceDelay:1800, reinforceEnemies:["Prometheus","Dominion","Healer","Bulwark","Corsair","Corsair","Rouge","Rouge"], enemies: ["Prometheus","Dominion","Healer","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair","Corsair","Rouge","Rouge","Rouge","Rouge","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 800000 },
+  // Wave 26: Twin Dominions — their fleets screen with small ships
+  { reinforceDelay:1800, reinforceEnemies:["Dominion","Bulwark","Corsair","Corsair","Rouge","Raptor","Raptor"], enemies: ["Dominion","Dominion","Healer","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair","Corsair","Rouge","Rouge","Rouge","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 950000 },
+  // Wave 27: The Harbinger — capitals + massive small ship escort
+  { reinforceDelay:1650, reinforceEnemies:["Prometheus","Dominion","Healer","Bulwark","Corsair","Corsair","Rouge","Raptor","Raptor"], enemies: ["Prometheus","Prometheus","Prometheus","Dominion","Dominion","Healer","Healer","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair","Corsair","Rouge","Rouge","Rouge","Rouge","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 1100000 },
   // Wave 28: Raptor Ambush + Capitals — fast small ships mixed with heavies
   { reinforceDelay:1500, reinforceEnemies:["Dominion","Dominion","Healer","Bulwark","Bulwark"], enemies: ["Prometheus","Dominion","Dominion","Healer","Healer","Bulwark","Bulwark","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 1300000 },
   // Wave 29: Dreadnaught's Vanguard — final test before the boss
-  { reinforceDelay:1500, reinforceEnemies:["Dominion","Prometheus","Healer","Healer","Bulwark","Bulwark"], enemies: ["Prometheus","Prometheus","Dominion","Dominion","Healer","Healer","Healer","Bulwark","Bulwark","Bulwark","Corsair","Corsair","Corsair","Corsair","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 1500000 },
+  { reinforceDelay:1500, reinforceEnemies:["Dominion","Dominion","Prometheus","Healer","Healer","Corsair","Corsair","Corsair","Rouge","Rouge","Raptor","Raptor"], enemies: ["Prometheus","Prometheus","Dominion","Dominion","Healer","Healer","Healer","Bulwark","Bulwark","Bulwark","Corsair","Corsair","Corsair","Corsair","Rouge","Rouge","Rouge","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 1500000 },
   // Wave 30: DREADNAUGHT FINAL BOSS — reinforcements triggered at 50% HP, not timer
-  { dreadnaughtFinalWave: true, reinforceDelay:0, reinforceEnemies:["Bulwark","Bulwark","Corsair","Corsair","Corsair","Raptor","Raptor","Raptor"], enemies: ["Dreadnaught"], reward: 3000000 },
+  { dreadnaughtFinalWave: true, reinforceDelay:0, reinforceEnemies:["Prometheus","Prometheus","Dominion","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair","Rouge","Rouge","Raptor","Raptor","Raptor","Raptor"], enemies: ["Dreadnaught"], reward: 3000000 },
 ];
 
 
