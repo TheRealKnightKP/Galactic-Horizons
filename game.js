@@ -402,6 +402,16 @@ let shadowCometCutsceneTimer = 0;
 let pdcDisabledThisWave = false;
 let shadowCometTurretLimit = false;
 
+// Shadow Vengeance tracking
+let shadowVenganceActive = false;
+let shadowVenganceCutsceneState = "none";
+let shadowVenganceCutsceneTimer = 0;
+let shadowVenganceNoHitWave = false;
+
+// Dreadnaught final wave flags
+let dreadnaughtReinforceTriggered = false;
+let dreadnaughtEnraged = false;
+
 const imgCache={};
 function getImage(fn) {
   if (!imgCache[fn]) { const i=new Image(); i.src="assets/"+fn; imgCache[fn]=i; }
@@ -604,12 +614,13 @@ function setPlayerShip(name) {
   const engTier=ENGINE_UPGRADE_TIERS[playerLoadout.engineTier||1];
   const spriteOffset=(name==="Dominion")?0:Math.PI;
   const baseSpeed=d.speed*engTier.speedMult;
-  const isComet=name==="Comet"||name==="Vengeance";
+  const isComet=name==="Comet"||name==="Vengeance"||name==="Retribution";
   const boostDuration=Math.round((isComet?120:60)*engTier.boostDurMult);
   const boostCooldownMax=Math.round((isComet?120:180)*engTier.boostCDMult);
   const sizeNum=d.size||1;
   const baseDodgeBySize = sizeNum<=1?0.12 : sizeNum<=2?0.09 : sizeNum<=3?0.07 : sizeNum<=4?0.05 : sizeNum<=6?0.03 : 0.02;
-  const specialDodge=isComet?0.35:0;
+  const specialDodge=name==="Comet"||name==="Vengeance"?0.35:name==="Retribution"?0.15:0;
+  // Retribution Ultimate Power overrides dodge to 50% base / 95% boosted while active
   const dodgeBase=Math.min(0.90, specialDodge + baseDodgeBySize + engTier.dodgeBonus);
   const dodgeBoosted=Math.min(0.95, specialDodge + baseDodgeBySize*2 + engTier.dodgeBonus);
   player={
@@ -886,17 +897,296 @@ function fullUpgradeComet() {
   }
 }
 
+
+// ============================================================
+// SHADOW VENGEANCE WAVE (Wave 22)
+// ============================================================
+function spawnShadowVenganceWave() {
+  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
+  allies=[];
+  pdcDisabledThisWave = true; // Same as Shadow Comet — allies intercepted
+  shadowVenganceActive = true;
+  shadowVenganceNoHitWave = true;
+  shadowVenganceCutsceneState = "intercepted";
+  shadowVenganceCutsceneTimer = 180;
+
+  const d = ENEMIES.ShadowVengeance;
+  const sizeNum = d.size || 2;
+  const ew = Math.round((40 + sizeNum * 16) * SIZE_SCALE);
+  const eh = Math.round((24 + sizeNum * 8)  * SIZE_SCALE);
+  const sv = {
+    type: "ShadowVengeance",
+    x: GAME_W * 0.68,
+    y: GAME_H / 2 - eh / 2,
+    w: ew, h: eh,
+    hp: d.hp, maxHp: d.hp,
+    shields: d.shields, maxShields: d.shields,
+    armor: d.armor, maxArmor: d.armor, armorType: d.armorType,
+    speed: d.speed, fireRate: d.fireRate, shootTimer: 30,
+    img: getImage(d.image), color: d.color, score: 0,
+    spriteAngleOffset: Math.PI,
+    stunTimer: 0, vx: 0, vy: 0,
+    isShadowVengance: true,
+    dodgeTimer: 0, repositionTimer: 0, repositionTarget: null,
+    rotation: Math.PI, turnSpeed: 0.14,
+    turrets: [],
+    revengeActive: false, revengeTimer: 0,
+    burstState: 0, burstTimer: 0, // 0=ready, 1=fired1 wait for burst2, 2=cooldown
+  };
+  window._pendingShadowVengance = sv;
+  player.x = GAME_W * 0.25;
+  player.y = GAME_H / 2 - player.h / 2;
+  player.vx = 0; player.vy = 0;
+  const _svx = GAME_W * 0.68 + 20, _svy = GAME_H / 2;
+  player.rotation = Math.atan2(_svy - (player.y + player.h/2), _svx - (player.x + player.w/2));
+}
+
+function updateShadowVenganceCutscene() {
+  shadowVenganceCutsceneTimer--;
+  if (shadowVenganceCutsceneState === "intercepted" && shadowVenganceCutsceneTimer <= 0) {
+    shadowVenganceCutsceneState = "dialogue";
+    shadowVenganceCutsceneTimer = 200;
+  } else if (shadowVenganceCutsceneState === "dialogue" && shadowVenganceCutsceneTimer <= 0) {
+    shadowVenganceCutsceneState = "fighting";
+    if (window._pendingShadowVengance) {
+      enemies.push(window._pendingShadowVengance);
+      window._pendingShadowVengance = null;
+    }
+    state = "playing";
+  }
+}
+
+function drawShadowVenganceCutscene() {
+  ctx.fillStyle = "#110008"; ctx.fillRect(0,0,GAME_W,GAME_H);
+  for(let i=0;i<150;i++) {ctx.fillStyle="rgba(200,0,50,0.6)";ctx.fillRect((i*137)%GAME_W,(i*97)%GAME_H,1,1);}
+  drawEntity(player);
+  if (window._pendingShadowVengance) drawEntity(window._pendingShadowVengance);
+  ctx.textAlign = "center";
+  if (shadowVenganceCutsceneState === "intercepted") {
+    showSpecialToast("⚠ Allies were intercepted. Turrets disabled.");
+    if (window._pendingShadowVengance) {
+      const sv = window._pendingShadowVengance;
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(sv.x + sv.w/2 - 90, sv.y - 34, 180, 22);
+      ctx.fillStyle = "#cc0033"; ctx.font = "bold 13px monospace";
+      ctx.fillText("Shadow Vengeance", sv.x + sv.w/2, sv.y - 18);
+      ctx.restore();
+    }
+  } else if (shadowVenganceCutsceneState === "dialogue") {
+    showSpecialToast("⚠ Allies were intercepted. Turrets disabled.");
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.85)";
+    ctx.fillRect(GAME_W/2 - 300, GAME_H/2 - 50, 600, 76);
+    ctx.strokeStyle = "#cc0033"; ctx.lineWidth = 1.5;
+    ctx.strokeRect(GAME_W/2 - 300, GAME_H/2 - 50, 600, 76);
+    ctx.fillStyle = "#cc0033"; ctx.font = "bold 12px monospace";
+    ctx.fillText("Shadow Vengeance", GAME_W/2, GAME_H/2 - 32);
+    ctx.fillStyle = "#eee"; ctx.font = "15px monospace";
+    ctx.fillText("You thought this was over?! Im not done until I kill you!", GAME_W/2, GAME_H/2 - 8);
+    ctx.restore();
+    if (window._pendingShadowVengance) {
+      const sv = window._pendingShadowVengance;
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(sv.x + sv.w/2 - 90, sv.y - 34, 180, 22);
+      ctx.fillStyle = "#cc0033"; ctx.font = "bold 13px monospace";
+      ctx.fillText("Shadow Vengeance", sv.x + sv.w/2, sv.y - 18);
+      ctx.restore();
+    }
+  }
+  ctx.textAlign = "left";
+}
+
+function updateShadowVenganceAI(e) {
+  const pcx = player.x + player.w/2, pcy = player.y + player.h/2;
+  const ecx = e.x + e.w/2, ecy = e.y + e.h/2;
+  const targetRot = Math.atan2(pcy - ecy, pcx - ecx);
+  let rotDiff = targetRot - (e.rotation||0);
+  while(rotDiff > Math.PI) rotDiff -= Math.PI*2;
+  while(rotDiff < -Math.PI) rotDiff += Math.PI*2;
+  e.rotation = (e.rotation||0) + Math.sign(rotDiff) * Math.min(Math.abs(rotDiff), e.turnSpeed||0.14);
+
+  // Reposition timer — more aggressive than Shadow Comet
+  e.repositionTimer = (e.repositionTimer||0) - 1;
+  if (e.repositionTimer <= 0) {
+    e.repositionTimer = 30 + Math.floor(Math.random() * 50);
+    e.repositionTarget = {
+      x: GAME_W * (0.50 + Math.random() * 0.40),
+      y: 50 + Math.random() * (GAME_H - 100),
+    };
+  }
+  if (e.repositionTarget) {
+    const tdx = e.repositionTarget.x - e.x, tdy = e.repositionTarget.y - e.y;
+    const dist = Math.hypot(tdx, tdy) || 1;
+    e.vx += (tdx/dist) * e.speed * 0.4;
+    e.vy += (tdy/dist) * e.speed * 0.4;
+  }
+  e.dodgeTimer = (e.dodgeTimer||0) - 1;
+  if (e.dodgeTimer <= 0) {
+    e.dodgeTimer = 14 + Math.floor(Math.random() * 24);
+    const perpAngle = e.rotation + (Math.random() > 0.5 ? Math.PI/2 : -Math.PI/2);
+    e.vx += Math.cos(perpAngle) * e.speed * 1.4;
+    e.vy += Math.sin(perpAngle) * e.speed * 1.4;
+  }
+
+  // Revenge mode: activates below 50% HP
+  if (!e.revengeActive && e.hp < e.maxHp * 0.5) {
+    e.revengeActive = true;
+    e.speed *= 1.4;
+    e.dodgeChance = 0.62;
+  }
+
+  e.vx *= 0.87; e.vy *= 0.87;
+  const spd = Math.hypot(e.vx, e.vy);
+  if (spd > e.speed * 2.2) { e.vx *= (e.speed*2.2)/spd; e.vy *= (e.speed*2.2)/spd; }
+  e.x += e.vx; e.y += e.vy;
+  e.x = Math.max(10, Math.min(GAME_W - e.w - 10, e.x));
+  e.y = Math.max(10, Math.min(GAME_H - e.h - 10, e.y));
+
+  // Burst fire: fire first shot, short delay, fire second shot, then full cooldown
+  if (!e.burstState) e.burstState = 0;
+  if (!e.burstTimer) e.burstTimer = 0;
+  e.burstTimer--;
+  if (e.burstTimer <= 0) {
+    if (e.burstState === 0) {
+      // Fire first shot of burst
+      _svFire(e, ecx, ecy, pcx, pcy);
+      e.burstState = 1; e.burstTimer = 8; // short gap between burst shots
+    } else if (e.burstState === 1) {
+      // Fire second shot
+      _svFire(e, ecx, ecy, pcx, pcy);
+      e.burstState = 2; e.burstTimer = e.fireRate - 8; // full cooldown minus burst gap
+    } else {
+      e.burstState = 0; e.burstTimer = 0;
+    }
+  }
+}
+
+function _svFire(e, ecx, ecy, pcx, pcy) {
+  const wStats = getWeaponStats("vengeance_cannon", 8);
+  if (!wStats) return;
+  // Slower bullets so it's possible to dodge
+  const slowStats = { ...wStats, speed: wStats.speed * 0.65, damage: Math.round(wStats.damage * 0.8) };
+  const pred = predictPos(pcx, pcy, player.vx||0, player.vy||0, ecx, ecy, slowStats.speed);
+  const angle = Math.atan2(pred.y - ecy, pred.x - ecx);
+  const inaccuracy = (Math.random() - 0.5) * 0.18;
+  const bullets = fireBullets({x:ecx-e.w/2, y:ecy-e.h/2, w:e.w, h:e.h}, slowStats, angle+inaccuracy, false);
+  bullets.forEach(b => { b.color = "#cc0033"; b.shadowVenganceBullet = true; });
+  enemyBullets.push(...bullets);
+}
+
+function checkShadowVenganceDefeat() {
+  const reward = infiniteMode ? generateInfiniteWave(currentWave).reward : (WAVES[currentWave-1]?.reward || 800000);
+  money += reward;
+  shadowVenganceActive = false;
+  pdcDisabledThisWave = false;
+
+  // Determine unlock based on ship + upgrades + hitless
+  const _ship = playerLoadout.ship || currentShipName;
+  const _isComet = _ship === "Comet";
+  const _isVeng = _ship === "Vengeance";
+  const _isVengFull = isVenganceFullyUpgraded();
+  const _vengUpgrades = countVenganceUpgrades();
+  const _over50pct = _vengUpgrades.total / Math.max(1, _vengUpgrades.max) > 0.5;
+  let unlockMsg = "";
+
+  if (_isComet && isCometFullyUpgraded()) {
+    // Fully upgraded Comet → unlock Vengeance
+    if (!ownedShips.includes("Vengeance")) {
+      ownedShips.push("Vengeance");
+      unlockMsg = "⚔ VENGEANCE UNLOCKED — Fully upgraded Comet!";
+    } else {
+      unlockMsg = "⚔ Already own the Vengeance!";
+    }
+  } else if (_isVeng) {
+    if (_isVengFull || _over50pct) {
+      // ≥50% upgrades on Vengeance: max upgrades AND give Retribution if hitless
+      fullUpgradeVengance();
+      if (shadowVenganceNoHitWave) {
+        if (!ownedShips.includes("Retribution")) {
+          ownedShips.push("Retribution");
+          unlockMsg = "🔥 RETRIBUTION UNLOCKED — Fully upgraded + Perfect run!";
+        } else {
+          unlockMsg = "🔥 Already own the Retribution!";
+        }
+      } else {
+        unlockMsg = "⚡ VENGEANCE FULLY UPGRADED";
+      }
+    } else {
+      // ≤50% upgrades: just max upgrades
+      fullUpgradeVengance();
+      unlockMsg = "⚡ VENGEANCE FULLY UPGRADED";
+    }
+  } else {
+    // Other ship: no unlock, just reward
+    unlockMsg = "";
+  }
+
+  if (unlockMsg) {
+    const el = document.createElement("div");
+    el.textContent = unlockMsg;
+    el.style.cssText = "position:fixed;top:28%;left:50%;transform:translateX(-50%);background:#0a0a0a;color:#cc0033;font:bold 24px monospace;padding:20px 36px;border:2px solid #cc0033;z-index:9999;border-radius:8px;pointer-events:none;text-align:center";
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+
+  waveTransitionText = `Wave ${currentWave} Cleared!  +${reward} credits`;
+  waveTransitionTimer = 300; state = "waveTransition"; updateHUD();
+}
+
+function isVenganceFullyUpgraded() {
+  const ups = shipUpgrades["Vengeance"];
+  if (!ups) return false;
+  // Vengeance has: shield, armor, engine, missile, turret — 5 upgradeable cats (weapon is locked at 0)
+  return ups.shieldTier >= 3 && ups.armorTier >= 3 && ups.engineTier >= 3;
+}
+
+function countVenganceUpgrades() {
+  const ups = shipUpgrades["Vengeance"] || {};
+  // 5 upgrade categories, each goes 1→2→3 (so max is 5 tiers above baseline)
+  const cats = ["shieldTier","armorTier","engineTier","missileTier","turretTier"];
+  let total = 0, max = 0;
+  cats.forEach(k => { const v=(ups[k]||1); total += (v-1); max += 2; });
+  return { total, max }; // total/max upgrades bought
+}
+
+function fullUpgradeVengance() {
+  const ups = shipUpgrades["Vengeance"] || {};
+  ups.shieldTier = 3; ups.ownedShieldTiers = [1,2,3];
+  ups.armorTier  = 3; ups.ownedArmorTiers  = [1,2,3];
+  ups.engineTier = 3; ups.ownedEngineTiers = [1,2,3];
+  ups.missileTier= 3; ups.ownedMissileTiers= [1,2,3];
+  ups.turretTier = 3; ups.ownedTurretTiers = [1,2,3];
+  shipUpgrades["Vengeance"] = ups;
+  if (currentShipName === "Vengeance") {
+    loadShipUpgrades("Vengeance");
+    setPlayerShip("Vengeance");
+  }
+}
+
 function spawnWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
   waveReinforceTimer=0; waveReinforceDone=false;
   shadowCometActive = false;
+  shadowVenganceActive = false;
   pdcDisabledThisWave = false;
+  dreadnaughtReinforceTriggered = false;
+  dreadnaughtEnraged = false;
 
   const waveData=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
 
   if (waveData && waveData.shadowCometWave) {
     spawnShadowCometWave();
     state = "shadowCometCutscene";
+    document.getElementById("hud").style.display = "block";
+    document.getElementById("inGameBack").style.display = "block";
+    if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="block";}
+    return;
+  }
+  if (waveData && waveData.shadowVenganceWave) {
+    spawnShadowVenganceWave();
+    state = "shadowVenganceCutscene";
     document.getElementById("hud").style.display = "block";
     document.getElementById("inGameBack").style.display = "block";
     if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="block";}
@@ -909,7 +1199,7 @@ function spawnWave() {
     const d=ENEMIES[name];
     const sizeNum=d.size||2;
     const ew=Math.round((32+sizeNum*18)*SIZE_SCALE), eh=Math.round((20+sizeNum*10)*SIZE_SCALE);
-    const spawnX=name==="Dreadnaught"?GAME_W-ew/2:Math.floor(GAME_W*0.5+Math.random()*GAME_W*0.45);
+    const spawnX=name==="Dreadnaught"?GAME_W-Math.round(ew*0.75):Math.floor(GAME_W*0.5+Math.random()*GAME_W*0.45);
     const spawnY=name==="Dreadnaught"?GAME_H/2:Math.floor(40+Math.random()*(GAME_H-80));
     const e={
       type:name, x:spawnX, y:spawnY, w:ew, h:eh,
@@ -954,6 +1244,7 @@ function nextWave() {
   if(!infiniteMode&&currentWave>WAVES.length){endGame(true);return;}
   pdcDisabledThisWave = false;
   shadowCometActive = false;
+  shadowVenganceActive = false;
   shadowCometTurretLimit = false;
   respawnDeadAllies();
   spawnWave();
@@ -1028,11 +1319,13 @@ function applyDamage(target,bullet) {
   if(bullet.visualOnly)return;
 
   if (target===player && bullet.shadowCometBullet) shadowCometNoHitWave = false;
+  if (target===player && bullet.shadowVenganceBullet) shadowVenganceNoHitWave = false;
 
   if(target===player){
     if(player.specialActive&&(currentShipName==="Falcon"||currentShipName==="Comet"))return;
     if(player.specialActive&&currentShipName==="Starlight"&&Math.random()<0.5)return;
     if(currentShipName==="Vengeance"&&player.revengeActive&&Math.random()<0.90)return;
+    if(currentShipName==="Retribution"&&player.retributionSpeedBuff&&Math.random()<0.95)return;
     const dodge=player.boosting?player.dodgeBoosted:player.dodgeBase;
     if(dodge>0&&Math.random()<dodge)return;
     playerTookDamageThisWave=true;
@@ -1138,6 +1431,7 @@ function fireRailgun(origin,wStats,angle,isPlayer) {
         e.dead=true;
         money+=e.score;
         if(e.isShadowComet) checkShadowCometDefeat();
+        if(e.isShadowVengance) checkShadowVenganceDefeat();
       }
     });
     enemies=enemies.filter(e=>!e.dead);
@@ -1297,6 +1591,42 @@ function spawnWaspAlly() {
   });
 }
 
+function spawnRetributionAllies() {
+  // Spawn fully-upgraded Comet + Vengeance allies for 10s
+  const cometDef = ALLY_SHIP_DEFS.CometAlly || ALLY_SHIP_DEFS.Sprite;
+  const vengDef  = ALLY_SHIP_DEFS.VenganceAlly || ALLY_SHIP_DEFS.Sprite;
+  const cWStats = getWeaponStats("ballistic_cannon", 5);
+  const vWStats = getWeaponStats("vengeance_cannon", 8);
+  // Comet ally
+  allies.push({
+    type:"Comet", name:"[RETRIB] Comet",
+    x:player.x-60, y:player.y-50,
+    w:Math.round(cometDef.w*SIZE_SCALE), h:Math.round(cometDef.h*SIZE_SCALE),
+    hp:cometDef.hp*3, maxHp:cometDef.hp*3, shields:cometDef.shields*3, maxShields:cometDef.shields*3,
+    armor:100, maxArmor:100, armorType:"light",
+    img:getImage(cometDef.image), color:"#ff2200",
+    shootTimer:5, vx:0, vy:0, rotation:0, spriteAngleOffset:Math.PI,
+    weaponType:"ballistic_cannon", weaponSize:5, weaponStats:cWStats,
+    isAlly:true, dodge:0.55, speedMult:1.5,
+    retributionAlly:true, tempTimer:600,
+  });
+  // Vengeance ally
+  allies.push({
+    type:"Vengeance", name:"[RETRIB] Vengeance",
+    x:player.x-60, y:player.y+50,
+    w:Math.round(vengDef.w*SIZE_SCALE), h:Math.round(vengDef.h*SIZE_SCALE),
+    hp:vengDef.hp*3, maxHp:vengDef.hp*3, shields:vengDef.shields*3, maxShields:vengDef.shields*3,
+    armor:100, maxArmor:100, armorType:"medium",
+    img:getImage(vengDef.image), color:"#ff0044",
+    shootTimer:8, vx:0, vy:0, rotation:0, spriteAngleOffset:Math.PI,
+    weaponType:"vengeance_cannon", weaponSize:8, weaponStats:vWStats,
+    isAlly:true, dodge:0.45, speedMult:1.3,
+    retributionAlly:true, tempTimer:600,
+  });
+  // Retribution speed + dodge buff
+  player.retributionSpeedBuff = true;
+}
+
 function activateSpecial() {
   if(!player||state!=="playing")return;
   const sp=typeof SHIP_SPECIALS!=="undefined"?SHIP_SPECIALS[currentShipName]:null;
@@ -1334,6 +1664,7 @@ function activateSpecial() {
     case"Prometheus":{const n=Math.max(1,Math.floor((player.missileRack||[]).length/4));player.specialSalvoTotal=n;player.specialSalvoCount=0;player.specialSalvoTimer=0;break;}
     case"Wasp":spawnWaspAlly();break;
     case"Leviathan":allies.forEach(a=>{a.vanguardActive=true;a.vanguardRPM=true;});break;
+    case"Retribution":spawnRetributionAllies();break;
   }
   showSpecialToast("▶ "+sp.name);
 }
@@ -1391,6 +1722,10 @@ function updateSpecial() {
       }
     }
     if(currentShipName==="Leviathan") allies.forEach(a=>{a.vanguardActive=false;a.vanguardRPM=false;});
+    if(currentShipName==="Retribution"){
+      allies=allies.filter(a=>!a.retributionAlly);
+      player.retributionSpeedBuff = false;
+    }
     player.specialActive=false;
     player.specialCooldown=sp.cooldown;
   }
@@ -1463,11 +1798,12 @@ function drawSpecialHUD() {
 function updatePlayer() {
   if(player.specialCooldown>0)player.specialCooldown--;
 
-  if(state==="shadowCometCutscene") return;
+  if(state==="shadowCometCutscene"||state==="shadowVenganceCutscene") return;
 
   const nemMult=(player.specialActive&&currentShipName==="Nemesis")?2.0
              :(player.specialActive&&currentShipName==="Starlight")?1.5
-             :(currentShipName==="Vengeance"&&player.revengeActive)?2.0:1.0;
+             :(currentShipName==="Vengeance"&&player.revengeActive)?2.0
+             :(currentShipName==="Retribution"&&player.retributionSpeedBuff)?1.5:1.0;
 
   if(player.boosting){
     player.boostTimer--;
@@ -1526,7 +1862,12 @@ function updatePlayer() {
         if(cne)player.rotation=Math.atan2(cne.y+cne.h/2-player.y-player.h/2,cne.x+cne.w/2-player.x-player.w/2);
       }
       let finalBullets;
-      if(player.doubleShot) finalBullets=fireDoubleShot(player,player.weaponStats,player.rotation,true);
+      if(SHIPS[currentShipName]?.burstFire) {
+        // Retribution burst: fire two shots in quick succession
+        finalBullets=fireBullets(player,player.weaponStats,player.rotation,true);
+        // Schedule second burst shot in ~8 frames
+        player._burstPending = 8;
+      } else if(player.doubleShot) finalBullets=fireDoubleShot(player,player.weaponStats,player.rotation,true);
       else finalBullets=fireBullets(player,player.weaponStats,player.rotation,true);
       if(currentShipName==="Vengeance"){
         finalBullets.forEach(b=>{ b.vengeanceShot=true; });
@@ -1609,6 +1950,15 @@ function updatePlayer() {
     missileTimer=mKind==="micro"?20:mKind==="nuke"?70:40;
   }
 
+  // Retribution burst: fire second shot after short delay
+  if(player._burstPending>0){
+    player._burstPending--;
+    if(player._burstPending===0&&player.weaponStats){
+      const burst2=fireBullets(player,player.weaponStats,player.rotation,true);
+      playerBullets.push(...burst2);
+    }
+  }
+
   if (!pdcDisabledThisWave) {
     player.turrets&&player.turrets.forEach(t=>{
       t.shootTimer--;
@@ -1639,7 +1989,7 @@ function updateAllies() {
   const cos=Math.cos(player.rotation),sin=Math.sin(player.rotation);
   const pcx=player.x+player.w/2, pcy=player.y+player.h/2;
   allies.forEach((a,i)=>{
-    if(a.tempAlly){a.tempTimer=(a.tempTimer||0)-1;if(a.tempTimer<=0){a.hp=-1;return;}}
+    if(a.tempAlly||a.retributionAlly){a.tempTimer=(a.tempTimer||0)-1;if(a.tempTimer<=0){a.hp=-1;return;}}
     a.vx=a.vx||0;a.vy=a.vy||0;
     let fx,fy;
     if(a.isHealer){
@@ -1739,8 +2089,14 @@ function updateEnemies() {
       regenShieldFaces(e, 0.01);
       return;
     }
+    if(e.isShadowVengance){
+      updateShadowVenganceAI(e);
+      regenShieldFaces(e, 0.008);
+      return;
+    }
     if(e.type==="Dreadnaught"){
-      e.x=GAME_W-e.w/2;e.y+=e.vy;
+      // Lock X: only 25% of body extends off right edge
+      e.x=GAME_W-Math.round(e.w*0.75);e.y+=e.vy;
       if(e.y<=0){e.y=0;e.vy=Math.abs(e.vy);}
       if(e.y+e.h>=GAME_H){e.y=GAME_H-e.h;e.vy=-Math.abs(e.vy);}
       if(Math.abs(e.vy)<e.speed*0.8)e.vy=e.speed*(e.vy>=0?1:-1);
@@ -1785,6 +2141,43 @@ function updateEnemies() {
           beamFlashes.push({x1:ecx,y1:ecy,x2:ep.x,y2:ep.y,life:45,maxLife:45,color:"#ff2200",width:14});
         });
         e.beamTimer=vkDef.beamCooldownFrames;e.beamWarningAngles=null;
+        // Enrage self-damage: each beam shot costs 2.5% max HP
+        if(dreadnaughtEnraged) e.hp -= e.maxHp * 0.025;
+      }
+      // ── HP phase triggers (only on wave 30 final wave) ──
+      const _dwd = !infiniteMode ? WAVES[currentWave-1] : null;
+      if(_dwd && _dwd.dreadnaughtFinalWave) {
+        // 50% HP → spawn reinforcements (once)
+        if(!dreadnaughtReinforceTriggered && e.hp <= e.maxHp * 0.5) {
+          dreadnaughtReinforceTriggered = true;
+          const rList = _dwd.reinforceEnemies || [];
+          rList.forEach(name=>{
+            const d=ENEMIES[name];if(!d)return;
+            const sn=d.size||2,ew2=Math.round((32+sn*18)*SIZE_SCALE),eh2=Math.round((20+sn*10)*SIZE_SCALE);
+            const re={type:name,x:GAME_W*0.5+Math.random()*GAME_W*0.4,y:40+Math.random()*(GAME_H-80),w:ew2,h:eh2,
+              hp:d.hp,maxHp:d.hp,shields:d.shields,maxShields:d.shields,
+              armor:d.armor||200,maxArmor:d.armor||200,armorType:d.armorType||"light",
+              speed:d.speed,fireRate:d.fireRate,shootTimer:Math.floor(Math.random()*d.fireRate),
+              img:getImage(d.image),color:d.color,score:d.score,
+              spriteAngleOffset:Math.PI,stunTimer:0,vx:0,vy:0,surroundAngle:Math.random()*Math.PI*2,
+              turnSpeed:(()=>{const sz=d.size||2;return sz<=2?0.08:sz<=4?0.05:sz<=6?0.03:0.015;})()};
+            re.turrets=[];if(d.turrets){const sf=1+((d.size||1)-1)*0.35;d.turrets.forEach(t=>re.turrets.push({rx:t.rx||0,ry:t.ry||0,fireRate:Math.max(6,Math.floor((t.fireRate||d.fireRate||60)*sf)),shootTimer:Math.floor(Math.random()*60),weaponStats:getWeaponStats(t.weaponType||"laser_repeater",t.weaponSize||2)}));}
+            if(typeof ARCHETYPE_POOL!=="undefined"&&ARCHETYPE_POOL[name]){const p=ARCHETYPE_POOL[name];re.archetype=p[Math.floor(Math.random()*p.length)];re.archetypeTimer=0;}
+            initShieldFaces(re);
+            enemies.push(re);
+          });
+          showSpecialToast("⚠ DREADNAUGHT CALLS REINFORCEMENTS!");
+        }
+        // 25% HP → ENRAGE (once)
+        if(!dreadnaughtEnraged && e.hp <= e.maxHp * 0.25) {
+          dreadnaughtEnraged = true;
+          e.beamTimer = Math.min(e.beamTimer, 90); // snap beam sooner
+          showSpecialToast("💀 DREADNAUGHT ENRAGED!");
+        }
+        // Enraged: faster beam cycle
+        if(dreadnaughtEnraged) {
+          e._enragedBeamCD = 360; // override cooldown when enraged
+        }
       }
       return;
     }
@@ -1837,11 +2230,14 @@ function updateEnemies() {
         });
       } else {
         const TARGET_RANGE=430,FLEE_RANGE=260;
+        const eSize=ENEMIES[e.type]?.size||2;
+        // Large ships get slower strafe to prevent wobble
+        const strafeMult=eSize>=6?0.6:eSize>=4?0.85:1.0;
         const strafeSign=(enemies.indexOf(e)%2===0)?1:-1;
         if(dist<FLEE_RANGE){e.vx-=ndx*accel*4;e.vy-=ndy*accel*4;}
         else if(dist>TARGET_RANGE+100){e.vx+=ndx*accel*1.5;e.vy+=ndy*accel*1.5;}
         else{
-          e.vx+=(-ndy*strafeSign)*accel*1.8;e.vy+=(ndx*strafeSign)*accel*1.8;
+          e.vx+=(-ndy*strafeSign)*accel*1.8*strafeMult;e.vy+=(ndx*strafeSign)*accel*1.8*strafeMult;
           const re=dist-TARGET_RANGE;
           e.vx+=ndx*(re/TARGET_RANGE)*accel*0.8;e.vy+=ndy*(re/TARGET_RANGE)*accel*0.8;
         }
@@ -2014,6 +2410,7 @@ function checkCollisions() {
         e.dead=true;
         money+=e.score;
         if(e.isShadowComet) checkShadowCometDefeat();
+        if(e.isShadowVengance) checkShadowVenganceDefeat();
       }
     });
   });
@@ -2280,7 +2677,7 @@ function cycleMissileKind() {
 }
 
 function updateHUD() {
-  const inGame = state==="playing"||state==="waveTransition"||state==="shadowCometCutscene";
+  const inGame = state==="playing"||state==="waveTransition"||state==="shadowCometCutscene"||state==="shadowVenganceCutscene";
   document.getElementById("hud").style.display = inGame ? "block" : "none";
   document.getElementById("inGameBack").style.display = inGame ? "block" : "none";
   document.getElementById("health").textContent   = Math.max(0,Math.floor(player.hp||0));
@@ -2340,6 +2737,14 @@ function gameLoop() {
   frameCount++;
   if(state==="shadowCometCutscene"){
     updateShadowCometCutscene();
+    updateDeathEffects();
+    render();
+    updateHUD();
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+  if(state==="shadowVenganceCutscene"){
+    updateShadowVenganceCutscene();
     updateDeathEffects();
     render();
     updateHUD();
