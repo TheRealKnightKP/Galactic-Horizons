@@ -159,7 +159,7 @@ const SHIPS = {
   Tempest:    { price: 380000,    hp: 2000,  shields: 2200, armor: 100, missiles: 32, speed: 0.70, weaponType: "laser_repeater",    weaponSize: 5,  bespoke: false, doubleShot: true, pdc: 4, pdcSizes: [5,5,4,4], image: "StarlancerTAC.png",  color: "#00ffcc", size: 7,  missileType: 1, armorType: "subcapital", extraAllySlots: 1 },
   // --- CAPITAL ---
   Nemesis:    { price: 280000,    hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Nemesis.png",          color: "#ffff44", size: 6,  missileType: 3, armorType: "capital"                    },
-  Prometheus: { price: 500000,    hp: 5000,  shields: 4000, armor: 100, missiles: 20, speed: 0.6,  weaponType: "ballistic_cannon",  weaponSize: 6,  bespoke: true,  pdc: 6,  pdcSize: 4,                         image: "Polaris.png",          color: "#ff44ff", size: 7,  missileType: 3, armorType: "capital",   extraAllySlots: 2 },
+  Prometheus: { price: 500000,    hp: 5000,  shields: 4000, armor: 100, missiles: 50, speed: 0.6,  weaponType: "ballistic_gatling",  weaponSize: 7,  bespoke: true,  pdc: 6,  pdcSize: 4,                         image: "Polaris.png",          color: "#ff44ff", size: 7,  missileType: 3, armorType: "capital",   extraAllySlots: 2 },
   // --- SUPER CAPITAL ---
   Leviathan:  { price: 750000,    hp: 7500,  shields: 7000,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "none",    weaponSize: 0,  bespoke: false, pdc: 8, pdcSizes: [7,5,5,5,4,4,4,4], image: "Kraken.png", color: "#88ff00", size: 8,  missileType: 3, armorType: "capital", extraAllySlots: 6 },
   Dominion:   { price: 1200000,   hp: 10000, shields: 8000, armor: 100, missiles: 32, speed: 0.45, weaponType: "ballistic_railgun", weaponSize: 10, bespoke: true,  pdc: 8,  pdcSizes: [6,6,5,5,4,4,3,3],        image: "Idris.jpg",            color: "#cc88ff", size: 10, missileType: 3, armorType: "capital",   extraAllySlots: 4 },
@@ -476,3 +476,4 @@ function getShadowCometStats(killCount) {
     damage: scaleMult, // multiplier applied to weapon damage in game.js
   };
 }
+
