@@ -414,7 +414,7 @@ function renderShopWeapons(container) {
         <label style="color:#888;font:11px monospace">Size:</label>
         <select style="background:#111;border:1px solid #445;color:#eee;font:12px monospace;padding:2px 4px;border-radius:4px"
           onchange="window._wpSizes=window._wpSizes||{};window._wpSizes['${type}']=parseInt(this.value);renderShopTab()">
-          ${Array.from({length:8},(_,i)=>i+1).map(sz=>`<option value="${sz}" ${sz===selSize?"selected":""}">S${sz} — ${(()=>{const p=wPrice(type,sz);return p>=1000000?(p/1000000).toFixed(1)+"M":p>=1000?Math.round(p/1000)+"k":p;})()}/ea</option>`).join("")}
+          ${Array.from({length:8},(_,i)=>i+1).map(sz=>`<option value="${sz}" ${sz===selSize?"selected":""}>S${sz} — ${(()=>{const p=wPrice(type,sz);return p>=1000000?(p/1000000).toFixed(1)+"M":p>=1000?Math.round(p/1000)+"k":p;})()}/ea</option>`).join("")}
         </select>
         <label style="color:#888;font:11px monospace">Qty:</label>
         <input type="number" min="1" max="99" value="${selQty}" style="width:52px;background:#111;border:1px solid #445;color:#eee;font:12px monospace;padding:2px 4px;border-radius:4px;text-align:center"
@@ -552,7 +552,9 @@ function renderInventoryPanel(container) {
     html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
     for (const [k,qty] of Object.entries(weaponInventory)) {
       if (!qty) continue;
-      const [type,, sizeStr] = k.split("_s");
+      const lastS = k.lastIndexOf("_s");
+      const type = k.substring(0, lastS);
+      const sizeStr = k.substring(lastS + 2);
       const def = WEAPON_DEFS[type];
       if (!def) continue;
       const equipped = wEquipped(k);
