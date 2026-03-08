@@ -367,8 +367,8 @@ const WAVES = [
   // Wave 20: The Armada — largest non-boss fleet before the endgame
   { reinforceDelay:1800, reinforceEnemies:["Dominion","Bulwark","Bulwark"], enemies: ["Prometheus","Dominion","Healer","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair"], reward: 350000 },
   // ── WAVES 21-30: ARENA EVOLUTION ──────────────────────────────────────────────────────────────
-  // Wave 21: Corsair Onslaught — 18 Corsairs + Rouges with Corsair reinforcements
-  { reinforceDelay:2700, reinforceEnemies:["Corsair","Corsair","Corsair","Corsair","Corsair","Corsair"], enemies: ["Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Rouge","Rouge","Rouge","Rouge","Rouge","Rouge"], reward: 600000 },
+  // Wave 21: Corsair Onslaught — massive swarm, 30 Corsairs + 12 Rouges + 8 Raptors with heavy reinforcements
+  { reinforceDelay:2700, reinforceEnemies:["Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Rouge","Rouge","Rouge","Rouge","Raptor","Raptor","Raptor","Raptor"], enemies: ["Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Corsair","Rouge","Rouge","Rouge","Rouge","Rouge","Rouge","Rouge","Rouge","Rouge","Rouge","Rouge","Rouge","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 600000 },
   // Wave 22: Shadow Vengeance boss fight
   { shadowVenganceWave: true, reinforceDelay:0, reinforceEnemies:[], enemies: [], reward: 800000 },
   // Wave 23: Healer Fortress — 3 Healers with heavy escort + small ships screening them
