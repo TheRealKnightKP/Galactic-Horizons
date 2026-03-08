@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.4.19";
+const CACHE = "galactic-horizons-v1.5.0";
 const ASSETS = [
   "./",
   "./index.html",
@@ -89,8 +89,9 @@ Versions:
 -V1.4.13 - reverted changes in 1.4.11 because it broke everything.
 -V1.4.14 - Fixed money, nukes, missile choosing, ship upgrade prices, removed shop when entering waves, for real this time.
 -V1.4.15 - Fixed missile equipping, upgrade prices, pack huners.
--V1.4.16 - Fixed missile equipping again, removed pack hunters.
+-V1.4.16 - Fixed missile equipping again, removed pack hunters. (7/3/2026)
 -V1.4.17 - Fixed missile restock and added option to cycle missile types
 -V1.4.18 - Fixed missile cycle
 -V1.4.19 - Fixing missile cycle again
+-1.5.0 - Arena Evolution part 1 update: Extra waves to wave 30, Shadow Vengeance bossfight, Retribution, Dreadnaught hp phases, Anti wobble.
 */
