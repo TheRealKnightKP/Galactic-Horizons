@@ -69,7 +69,8 @@ const SHIP_UPGRADE_PRICES = {
   Dominion:  { shield:{2:90000,3:225000}, armor:{2:90000,3:225000}, engine:{2:80000,3:200000}, weapon:{2:100000,3:250000},missile:{2:85000,3:215000}, turret:{2:95000,3:240000} },
   // ── SECRET (unlocked around wave 12, ~80-120k) ────────────────────────────
   Comet:     { shield:{2:8000, 3:24000 }, armor:{2:8000, 3:24000 }, engine:{2:9500, 3:28000 }, weapon:{2:11000,3:33000 }, missile:{2:8000, 3:24000 } },
-  Vengeance: { shield:{2:10000,3:30000 }, armor:{2:10000,3:30000 }, engine:{2:12000,3:36000 }, weapon:{2:0,    3:0     }, missile:{2:10000,3:30000 }, turret:{2:13000,3:39000} },
+  Vengeance:   { shield:{2:10000,3:30000 }, armor:{2:10000,3:30000 }, engine:{2:12000,3:36000 }, weapon:{2:0,    3:0     }, missile:{2:10000,3:30000 }, turret:{2:13000,3:39000} },
+  Retribution: { shield:{2:15000,3:45000 }, armor:{2:18000,3:54000 }, engine:{2:16000,3:48000 }, weapon:{2:0,    3:0     }, missile:{2:15000,3:45000 }, turret:{2:20000,3:60000 } },
 };
 
 // === MISSILE STORAGE UPGRADES ===
@@ -115,6 +116,9 @@ const ALLY_SHIP_DEFS = {
   Wasp:      { price: 40000,  weaponSize: 4, hp: 500, shields: 560,  armorType: "medium",  image: "Hornet.png",        color: "#aaffaa", w: 80, h: 48 },
   Supernova: { price: 60000,  weaponSize: 5, hp: 600, shields: 680,  armorType: "heavy",   image: "Constellation.png", color: "#44ffcc", w: 92, h: 56 },
   Medic:     { price: 50000,  weaponSize: 0, hp: 450, shields: 500,  armorType: "medium",  image: "Hornet.png",        color: "#44ffee", w: 80, h: 48, isHealer:true },
+  // Secret ship allies — spawned by Retribution Ultimate Power
+  CometAlly:    { price: 999999, weaponSize: 5, hp: 100,  shields: 90,   armorType: "light",   image: "Meteor.png",        color: "#ff2200", w: 52,  h: 32 },
+  VenganceAlly: { price: 999999, weaponSize: 8, hp: 200,  shields: 400,  armorType: "medium",  image: "Meteor.png",        color: "#ff0044", w: 72,  h: 44 },
 };
 const ALLY_SHIP_ORDER = ["Sprite","Raptor","Rouge","Wasp","Supernova","Medic"];
 
@@ -133,11 +137,12 @@ const SHIP_DESCRIPTIONS = {
   Leviathan:  "Super-capital carrier. Slow, but fields 8 ally slots. Built to command an army, it can make its allies invicible for a short time.",
   Dominion:   "The ultimate warship. Its railgun penetrates entire formations in a single shot. Nothing can stand in its way.",
   Comet:      "A ghost ship found drifting at the edge of the system. Unnaturally agile — and lucky. Seems like an elite would use this.",
+  Retribution:"The Retribution was born from one pilot's refusal to die. A heavy ship that defies its class with blistering speed. Its S10 cannon fires in bursts that tear through capital armor. 'Ultimate Power' summons its fallen rivals to fight beside it.",
   Vengeance:  "A ship born from revenge. Bespoke high-velocity cannon hits like a capital ship. 'Revenge' mode pushes it beyond its limits — at a cost.",
 };
 
 // Ships that DO NOT get shield faces or directional armor (too small / no point)
-const NO_SHIELD_FACES = new Set(["Starlight","Falcon","Comet","Vengeance","Raptor","Rouge","Sprite","ShadowComet"]);
+const NO_SHIELD_FACES = new Set(["Starlight","Falcon","Comet","Vengeance","Retribution","Raptor","Rouge","Sprite","ShadowComet","ShadowVengeance"]);
 
 const SHIPS = {
   // --- LIGHT ---
@@ -159,8 +164,10 @@ const SHIPS = {
   Leviathan:  { price: 750000,    hp: 7500,  shields: 7000,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "none",    weaponSize: 0,  bespoke: false, pdc: 8, pdcSizes: [7,5,5,5,4,4,4,4], image: "Kraken.png", color: "#88ff00", size: 8,  missileType: 3, armorType: "capital", extraAllySlots: 6 },
   Dominion:   { price: 1200000,   hp: 10000, shields: 8000, armor: 100, missiles: 32, speed: 0.45, weaponType: "ballistic_railgun", weaponSize: 10, bespoke: true,  pdc: 8,  pdcSizes: [6,6,5,5,4,4,3,3],        image: "Idris.jpg",            color: "#cc88ff", size: 10, missileType: 3, armorType: "capital",   extraAllySlots: 4 },
   // --- SECRET ---
-  Comet:      { price: null,      hp: 100,   shields: 90,   armor: 100, missiles: 30,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 7,  bespoke: true,  doubleShot: false, pdc: 0,  pdcSize: 0,                         image: "Meteor.png",           color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
+  Comet:      { price: null,      hp: 100,   shields: 90,   armor: 100, missiles: 30,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 6,  bespoke: true,  doubleShot: false, pdc: 0,  pdcSize: 0,                         image: "Meteor.png",           color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
   Vengeance:  { price: null,      hp: 200,   shields: 400,  armor: 100, missiles: 20,  speed: 3.8,  weaponType: "vengeance_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: false, pdc: 1, pdcSize: 4,                         image: "Meteor.png",           color: "#ff0044", size: 2,  missileType: 2, armorType: "medium", secret: true, extraAllySlots: 1 },
+  // ── SECRET: Retribution — unlocked via Shadow Vengeance fight ──
+  Retribution:{ price: null,      hp: 600,   shields: 500,  armor: 100, missiles: 20,  speed: 3.0,  weaponType: "ballistic_cannon",  weaponSize: 10, bespoke: true,  doubleShot: false, burstFire: true, pdc: 3, pdcSize: 5,                image: "Meteor.png",           color: "#ff4400", size: 3,  missileType: 3, armorType: "heavy",  secret: true, extraAllySlots: 2 },
 };
 
 const ENEMIES = {
@@ -303,6 +310,17 @@ ENEMIES.Dreadnaught.beamDamage         = 999999;
 ENEMIES.Dreadnaught.beamCount          = 3;
 ENEMIES.Dreadnaught.beamSpread         = 0.28;
 
+ENEMIES.ShadowVengeance = {
+  hp: 1500, shields: 800, armor: 300, speed: 5.0, score: 0,
+  fireRate: 22, weaponType: "vengeance_cannon", weaponSize: 8,
+  armorType: "medium", image: "Meteor.png", color: "#cc0033",
+};
+ENEMIES.ShadowVengeance.size = 2;
+ENEMIES.ShadowVengeance.turrets = [];
+ENEMIES.ShadowVengeance.dodgeChance = 0.45;
+ENEMIES.ShadowVengeance.isShadowVengance = true;
+ENEMIES.ShadowVengeance.revengeChance = 0.0; // fills during fight
+
 // Shadow Comet stats (fully upgraded Comet equivalent)
 ENEMIES.ShadowComet.size = 1;
 ENEMIES.ShadowComet.turrets = [];
@@ -346,7 +364,29 @@ const WAVES = [
   { reinforceDelay:2100, reinforceEnemies:["Corsair","Corsair","Corsair"], enemies: ["Dominion","Corsair","Corsair","Corsair","Rouge","Rouge"],                                                             reward: 100000 },
   { reinforceDelay:2100, reinforceEnemies:["Bulwark","Bulwark","Corsair"], enemies: ["Dominion","Bulwark","Bulwark","Corsair","Rouge","Rouge","Rouge"],                                                     reward: 130000 },
   { reinforceDelay:1950, reinforceEnemies:["Bulwark","Corsair","Corsair"], enemies: ["Prometheus","Dominion","Bulwark","Corsair","Corsair","Corsair","Corsair"],                                            reward: 160000 },
-  { reinforceDelay:1800, reinforceEnemies:["Dominion","Bulwark","Corsair","Corsair"], enemies: ["Dreadnaught","Bulwark","Bulwark","Corsair","Corsair","Corsair"],                                                     reward: 500000 },
+  // Wave 20: The Armada — largest non-boss fleet before the endgame
+  { reinforceDelay:1800, reinforceEnemies:["Dominion","Bulwark","Bulwark"], enemies: ["Prometheus","Dominion","Healer","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair"], reward: 350000 },
+  // ── WAVES 21-30: ARENA EVOLUTION ──────────────────────────────────────────────────────────────
+  // Wave 21: Raptor Swarm II — 26 Raptors with 8 in reinforcements
+  { reinforceDelay:2700, reinforceEnemies:["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], enemies: ["Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 600000 },
+  // Wave 22: Shadow Vengeance boss fight
+  { shadowVenganceWave: true, reinforceDelay:0, reinforceEnemies:[], enemies: [], reward: 800000 },
+  // Wave 23: Healer Fortress — 3 Healers with heavy escort
+  { reinforceDelay:2100, reinforceEnemies:["Healer","Bulwark","Corsair"], enemies: ["Healer","Healer","Healer","Bulwark","Bulwark","Bulwark","Corsair","Corsair","Corsair","Rouge"], reward: 500000 },
+  // Wave 24: Capital Fleet
+  { reinforceDelay:1950, reinforceEnemies:["Dominion","Bulwark","Corsair"], enemies: ["Prometheus","Prometheus","Dominion","Healer","Bulwark","Bulwark","Corsair","Corsair"], reward: 650000 },
+  // Wave 25: The Gauntlet
+  { reinforceDelay:1800, reinforceEnemies:["Prometheus","Dominion","Healer","Bulwark"], enemies: ["Prometheus","Dominion","Healer","Healer","Bulwark","Bulwark","Bulwark","Corsair","Corsair","Corsair","Rouge","Rouge"], reward: 800000 },
+  // Wave 26: Twin Dominions
+  { reinforceDelay:1800, reinforceEnemies:["Dominion","Bulwark","Bulwark","Corsair"], enemies: ["Dominion","Dominion","Healer","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair","Corsair"], reward: 950000 },
+  // Wave 27: The Harbinger — triple Prometheus, double Dominion
+  { reinforceDelay:1650, reinforceEnemies:["Prometheus","Dominion","Healer","Bulwark","Corsair"], enemies: ["Prometheus","Prometheus","Prometheus","Dominion","Dominion","Healer","Healer","Healer","Bulwark","Bulwark","Corsair","Corsair","Corsair"], reward: 1100000 },
+  // Wave 28: Raptor Ambush + Capitals — fast small ships mixed with heavies
+  { reinforceDelay:1500, reinforceEnemies:["Dominion","Dominion","Healer","Bulwark","Bulwark"], enemies: ["Prometheus","Dominion","Dominion","Healer","Healer","Bulwark","Bulwark","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 1300000 },
+  // Wave 29: Dreadnaught's Vanguard — final test before the boss
+  { reinforceDelay:1500, reinforceEnemies:["Dominion","Prometheus","Healer","Healer","Bulwark","Bulwark"], enemies: ["Prometheus","Prometheus","Dominion","Dominion","Healer","Healer","Healer","Bulwark","Bulwark","Bulwark","Corsair","Corsair","Corsair","Corsair","Raptor","Raptor","Raptor","Raptor","Raptor","Raptor"], reward: 1500000 },
+  // Wave 30: DREADNAUGHT FINAL BOSS — reinforcements triggered at 50% HP, not timer
+  { dreadnaughtFinalWave: true, reinforceDelay:0, reinforceEnemies:["Bulwark","Bulwark","Corsair","Corsair","Corsair","Raptor","Raptor","Raptor"], enemies: ["Dreadnaught"], reward: 3000000 },
 ];
 
 
@@ -364,6 +404,7 @@ const SHIP_SPECIALS = {
   Leviathan:  { name:"Fleet Vanguard",   cooldown:1800, duration:240, desc:"All allies: invincible + 2× RPM + 50% damage for 4s." },
   Dominion:   { name:"Overcharge",       cooldown:2700, duration:1,   desc:"Next railgun: instant, 3× damage, full pen. 45s cooldown." },
   Comet:      { name:"Ghost Mode",       cooldown:480,  duration:300, desc:"3× RPM, guns auto-aim, 100% dodge for 5s." },
+  Retribution:{ name:"Ultimate Power", cooldown:1800, duration:600, desc:"Summon fully-upgraded Comet+Vengeance allies for 10s. +50% speed, base 50% dodge, 95% boosted dodge." },
   Vengeance:  { name:"Revenge",          cooldown:300,  duration:-1,  desc:"90% dodge, 2× dmg & speed. Costs 5hp/s. Toggle off to deactivate." },
 };
 
@@ -400,7 +441,9 @@ const ARCHETYPE_COLOR = {
 };
 
 function generateInfiniteWave(waveNum) {
-  // Check if this is a Shadow Comet wave (every X2: 12, 22, 32, ...)
+  // Wave 22: Shadow Vengeance
+  if (waveNum === 22) { return { shadowVenganceWave: true, enemies: [], reward: 800000 }; }
+  // Shadow Comet every 10 waves after 12 (except 22)
   if (waveNum >= 12 && waveNum % 10 === 2) {
     return { shadowCometWave: true, enemies: [], reward: waveNum * 2000 };
   }
