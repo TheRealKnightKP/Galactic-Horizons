@@ -30,6 +30,7 @@ const KONAMI = ["ArrowUp","ArrowUp","ArrowDown","ArrowDown","ArrowLeft","ArrowRi
 let konamiProgress = 0;
 let cometUnlocked = false;
 let vengeanaceUnlocked = false;
+let retributionUnlocked = false;
 document.addEventListener("keydown", e => {
   if (e.code === KONAMI[konamiProgress]) {
     konamiProgress++;
@@ -251,6 +252,10 @@ function showMobileKonamiUI() {
 // ============================
 function showShop() {
   _shopTab = "ships";
+  // Sync unlock flags from ownedShips (handles page reload / persistent state)
+  if (ownedShips && ownedShips.includes("Comet"))       cometUnlocked = true;
+  if (ownedShips && ownedShips.includes("Vengeance"))   vengeanaceUnlocked = true;
+  if (ownedShips && ownedShips.includes("Retribution")) retributionUnlocked = true;
   document.getElementById("shopMenu").style.display = "block";
   document.getElementById("shopMoney").textContent = "Credits: " + money;
   const backBtn = document.getElementById("shopBackBtn");
@@ -298,6 +303,7 @@ function renderShopShips(container) {
   for (const [name, ship] of Object.entries(SHIPS)) {
     if (ship.secret && !cometUnlocked && name === "Comet") continue;
     if (ship.secret && !vengeanaceUnlocked && name === "Vengeance") continue;
+    if (ship.secret && !retributionUnlocked && name === "Retribution") continue;
     const isSpecial = ship.secret;
     const canAfford = ship.price !== null && money >= ship.price;
     const owned = ownedShips && ownedShips.includes(name);
