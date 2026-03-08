@@ -1249,7 +1249,7 @@ function nextWave() {
   shadowCometTurretLimit = false;
   respawnDeadAllies();
   spawnWave();
-  if (state !== "shadowCometCutscene") {
+  if (state !== "shadowCometCutscene" && state !== "shadowVenganceCutscene") {
     state="playing";
     document.getElementById("hud").style.display="block";
     document.getElementById("inGameBack").style.display="block";
@@ -2588,6 +2588,10 @@ function render() {
 
   if(state==="shadowCometCutscene"){
     drawShadowCometCutscene();
+    return;
+  }
+  if(state==="shadowVenganceCutscene"){
+    drawShadowVenganceCutscene();
     return;
   }
 
