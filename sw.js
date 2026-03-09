@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.5.4";
+const CACHE = "galactic-horizons-v1.5.5";
 const ASSETS = [
   "./",
   "./index.html",
@@ -98,4 +98,5 @@ Versions:
 -V1.5.2 - Fixed swarm wave and shadow vengeance not spawning bugs.
 -V1.5.3 - Fixed weapon buying and Prometheus ability.
 -V1.5.4 - Fixed Prometheus ability, reinforcements, and shields
+-V1.5.5 - Added some extra ally stuff and fixed retribution gaining.
 */
