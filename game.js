@@ -410,6 +410,11 @@ let deployedShipAvail = true;    // false after deployed ship dies until next wa
 let capitalNoRespawn  = 0;       // waves remaining where allies don't respawn (penalty)
 let capitalDestroyed  = false;   // capital was destroyed this wave
 let playerTookDamageThisWave = false;
+// Enemy capital AI state
+let _enemyCapFormation = "default"; // current enemy capital formation response
+let _enemyCapTimer     = 0;         // frames until next formation re-evaluation
+let _enemyCapRegen     = 1.0;       // regen multiplier for enemy capitals
+let _playerYHistory    = [];        // rolling 120-frame player Y for pincer detection
 const MAX_HIT_EFFECTS = 80;
 const MAX_DEATH_EFFECTS = 40;
 let pingTarget = null;
@@ -1370,6 +1375,7 @@ function createEnemyObject(name, spawnX, spawnY) {
 function spawnWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
   waveReinforceTimer=0; waveReinforceDone=false;
+  _enemyCapFormation="default"; _enemyCapTimer=0; _enemyCapRegen=1.0; _playerYHistory=[];
   shadowCometActive = false;
   shadowVenganceActive = false;
   pdcDisabledThisWave = false;
@@ -2282,6 +2288,50 @@ function drawCapitalStatusHUD() {
   ctx.fillText("SH " + Math.ceil(cap.shields||0), px+6, py+52);
 }
 
+function drawEnemyCapFormationHUD() {
+  // Only show when there are enemy capitals on the field
+  const hasEnemyCap = enemies.some(e => !e.dead && (ENEMIES[e.type]?.size||0) >= 6 && e.type !== "Dreadnaught");
+  if (!hasEnemyCap) return;
+  const LABELS = {
+    vanguard:   "⚔ VANGUARD",
+    rearguard:  "🛡 REARGUARD",
+    surround:   "⬡ SURROUND",
+    hunt:       "🎯 HUNT CAPITAL",
+    intercept:  "✂ INTERCEPT",
+    pincer:     "⇅ PINCER",
+    standalone: "⚡ 1v1 SPLIT",
+    siege:      "◎ SIEGE",
+    wolfpack:   "🐺 WOLF PACK",
+  };
+  const COLORS = {
+    vanguard:   "#ff4444",
+    rearguard:  "#4488ff",
+    surround:   "#ff8800",
+    hunt:       "#ff44ff",
+    intercept:  "#ff8800",
+    pincer:     "#ffff00",
+    standalone: "#ffff44",
+    siege:      "#00aaff",
+    wolfpack:   "#ff2200",
+  };
+  const label = LABELS[_enemyCapFormation] || "▶ HOLDING";
+  const color = COLORS[_enemyCapFormation] || "#666";
+  const panelW = 148, panelH = 28;
+  const px = GAME_W - panelW - 8;
+  const py = isDeployed ? 72 : 8; // below capital status panel if deployed
+  ctx.fillStyle = "rgba(0,0,0,0.72)";
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.fillRect(px, py, panelW, panelH);
+  ctx.strokeRect(px, py, panelW, panelH);
+  ctx.fillStyle = "#555";
+  ctx.font = "8px monospace";
+  ctx.fillText("ENEMY TACTIC", px+5, py+10);
+  ctx.fillStyle = color;
+  ctx.font = "bold 10px monospace";
+  ctx.fillText(label, px+5, py+22);
+}
+
 // ============================================================
 // UPDATE PLAYER
 // ============================================================
@@ -2638,6 +2688,182 @@ function updateAllies() {
 // ============================================================
 // UPDATE ENEMIES
 // ============================================================
+// ============================================================
+// PLAYER OBSERVATION + ENEMY CAPITAL AI
+// ============================================================
+function observePlayer() {
+  if (!player) return;
+  _playerYHistory.push(player.y + player.h/2);
+  if (_playerYHistory.length > 120) _playerYHistory.shift();
+}
+
+function updateEnemyCapitalAI() {
+  if (!player) return;
+  const capEnemies = enemies.filter(e => !e.dead && (ENEMIES[e.type]?.size||0) >= 6 && e.type !== "Dreadnaught");
+  if (capEnemies.length === 0) { _enemyCapRegen = 1.0; return; }
+
+  const pcx = player.x + player.w/2, pcy = player.y + player.h/2;
+  const spd = Math.hypot(player.vx||0, player.vy||0);
+  const liveAllies = allies.filter(a => !a.dead);
+
+  // ── Assign small enemies to nearest capital (tiebreak: fewest already assigned) ──
+  const smallEnemies = enemies.filter(e => !e.dead && isSmallEnemy(e.type));
+  const capAssign = new Map();
+  capEnemies.forEach(c => { capAssign.set(c, 0); c._assignedCount = 0; });
+  smallEnemies.forEach(s => {
+    let bestCap = null, bestDist = Infinity;
+    capEnemies.forEach(c => {
+      const d = Math.hypot(s.x+s.w/2 - c.x-c.w/2, s.y+s.h/2 - c.y-c.h/2);
+      const tiebreak = capAssign.get(c) * 10;
+      if (d + tiebreak < bestDist) { bestDist = d + tiebreak; bestCap = c; }
+    });
+    if (bestCap) {
+      const n = capAssign.get(bestCap);
+      capAssign.set(bestCap, n+1);
+      bestCap._assignedCount = n+1;
+      s._assignedCap = bestCap;
+      s._ecSmallIdx  = n; // 0-based index within this capital's wing
+    } else {
+      s._assignedCap = null;
+    }
+  });
+
+  // ── Re-evaluate formation every 3 seconds ──
+  _enemyCapTimer--;
+  if (_enemyCapTimer <= 0) {
+    _enemyCapTimer = 180;
+
+    // Battlefield reads
+    const capHpFrac    = Math.min(...capEnemies.map(c => c.hp/c.maxHp));
+    const hasPlayerCap = isDeployed && capitalShipObj && !capitalDestroyed;
+    const weakestAlly  = liveAllies.length > 0
+      ? liveAllies.reduce((w,a) => (!w || a.hp/a.maxHp < w.hp/w.maxHp) ? a : w, null)
+      : null;
+    const weakestHpFrac = weakestAlly ? weakestAlly.hp/weakestAlly.maxHp : 1.0;
+
+    // Player behavior reads
+    const ecx = capEnemies.reduce((s,c)=>s+c.x+c.w/2,0)/capEnemies.length;
+    const ecy = capEnemies.reduce((s,c)=>s+c.y+c.h/2,0)/capEnemies.length;
+    const toDist = Math.hypot(ecx-pcx, ecy-pcy)||1;
+    const velDot = ((player.vx||0)*(ecx-pcx)/toDist + (player.vy||0)*(ecy-pcy)/toDist);
+    const isRushing = velDot > 1.5 && spd > 2.0;
+    const isPassive = spd < 0.8;
+
+    // Pincer detection: low Y variance over last 2s = player camping a lane
+    let isCamping = false;
+    if (_playerYHistory.length >= 60) {
+      const mean = _playerYHistory.reduce((s,y)=>s+y,0)/_playerYHistory.length;
+      const variance = _playerYHistory.reduce((s,y)=>s+(y-mean)**2,0)/_playerYHistory.length;
+      isCamping = variance < 900; // std dev < 30px
+    }
+
+    _enemyCapRegen = 1.0;
+    // Priority-ordered reactive formation selection
+    if      (liveAllies.length>0 && weakestHpFrac<0.25) { _enemyCapFormation="wolfpack";   }
+    else if (capHpFrac<0.35)                             { _enemyCapFormation="siege";      _enemyCapRegen=2.5; }
+    else if (hasPlayerCap)                               { _enemyCapFormation="hunt";       }
+    else if (liveAllies.length>=3)                       { _enemyCapFormation="intercept";  }
+    else if (isCamping)                                  { _enemyCapFormation="pincer";     }
+    else if (allyFormation==="standalone")               { _enemyCapFormation="standalone"; }
+    else if (isRushing)                                  { _enemyCapFormation="rearguard";  }
+    else if (isPassive)                                  { _enemyCapFormation="vanguard";   }
+    else                                                 { _enemyCapFormation="surround";   }
+  }
+
+  // Wolf pack target (weakest live ally) — recomputed each tick
+  const _wpTarget = liveAllies.length>0
+    ? liveAllies.reduce((w,a) => (!w || a.hp/a.maxHp < w.hp/w.maxHp) ? a : w, null)
+    : null;
+
+  // ── Pre-compute per-small movement targets ──
+  smallEnemies.forEach(s => {
+    if (!s._assignedCap || s._assignedCap.dead) { s._ecFormation=null; return; }
+    const cap = s._assignedCap;
+    const ccx = cap.x+cap.w/2, ccy = cap.y+cap.h/2;
+    const toPCx = pcx-ccx, toPCy = pcy-ccy;
+    const toPCDist = Math.hypot(toPCx,toPCy)||1;
+    const toPCNx = toPCx/toPCDist, toPCNy = toPCy/toPCDist;
+    const gi = s._ecSmallIdx || 0;
+    const isTopGroup = gi%2===0;
+
+    s._ecFormation = _enemyCapFormation;
+    s._ecFireMult  = 1.0;
+
+    switch (_enemyCapFormation) {
+      case "vanguard":
+        // Smalls push ahead of capital toward player
+        s._ecTx = ccx + toPCNx*220;
+        s._ecTy = ccy + toPCNy*220;
+        s._ecOrbitR = 75;
+        s._ecFireMult = 0.80;
+        break;
+      case "rearguard":
+        // Defensive screen behind capital
+        s._ecTx = ccx - toPCNx*200;
+        s._ecTy = ccy - toPCNy*200;
+        s._ecOrbitR = 90;
+        break;
+      case "surround":
+        // Smalls orbit their own capital
+        s._ecTx = ccx;
+        s._ecTy = ccy;
+        s._ecOrbitR = 150 + (cap._assignedCount||0)*6;
+        break;
+      case "hunt":
+        // Rush the player's undefended autopilot capital
+        s._ecTx = capitalShipObj ? capitalShipObj.x+capitalShipObj.w/2 : pcx;
+        s._ecTy = capitalShipObj ? capitalShipObj.y+capitalShipObj.h/2 : pcy;
+        s._ecOrbitR = 90;
+        s._ecFireMult = 0.85;
+        break;
+      case "intercept": {
+        // Each small targets a different ally — strip escort
+        const la = allies.filter(a=>!a.dead);
+        const tgt = la.length>0 ? la[gi%la.length] : null;
+        s._ecTx = tgt ? tgt.x+tgt.w/2 : pcx;
+        s._ecTy = tgt ? tgt.y+tgt.h/2 : pcy;
+        s._ecOrbitR = 75;
+        break;
+      }
+      case "pincer":
+        // Top/bottom split converging on player
+        s._ecTx = pcx;
+        s._ecTy = isTopGroup ? Math.max(55, pcy-280) : Math.min(GAME_H-55, pcy+280);
+        s._ecOrbitR = 50;
+        break;
+      case "standalone": {
+        // Each small picks a unique ally or player
+        const la = allies.filter(a=>!a.dead);
+        const tgt = la.length>0 ? la[gi%la.length] : null;
+        s._ecTx = tgt ? tgt.x+tgt.w/2 : pcx;
+        s._ecTy = tgt ? tgt.y+tgt.h/2 : pcy;
+        s._ecOrbitR = 85;
+        break;
+      }
+      case "siege":
+        // Extreme range suppression — don't close
+        s._ecTx = pcx;
+        s._ecTy = pcy;
+        s._ecOrbitR = 620;
+        break;
+      case "wolfpack":
+        // Swarm the most wounded ally
+        s._ecTx = _wpTarget ? _wpTarget.x+_wpTarget.w/2 : pcx;
+        s._ecTy = _wpTarget ? _wpTarget.y+_wpTarget.h/2 : pcy;
+        s._ecOrbitR = 55;
+        s._ecFireMult = 0.75;
+        break;
+      default:
+        s._ecTx = pcx; s._ecTy = pcy; s._ecOrbitR = 360;
+        break;
+    }
+  });
+
+  // Capital bonus regen during siege
+  capEnemies.forEach(cap => {
+    if (_enemyCapRegen>1.0) regenShieldFaces(cap, 0.015*(_enemyCapRegen-1.0));
+  });
+}
 function updateEnemies() {
   const pcx=player.x+player.w/2,pcy=player.y+player.h/2;
   const smallList=enemies.filter(e=>isSmallEnemy(e.type)&&!e.dead);
@@ -2745,7 +2971,7 @@ function updateEnemies() {
           e.archetypeTimer=120+Math.floor(Math.random()*180);
         }
         const mode=e.archetypeMode||e.archetype||"skirmisher";
-        const orbitR = mode==="skirmisher"||mode==="suppressor"
+        let orbitR = mode==="skirmisher"||mode==="suppressor"
           ? (mode==="suppressor"?600:360)
           : mode==="bruiser"||mode==="interceptor" ? 120 : 260;
         let tx=pcx,ty=pcy;
@@ -2753,6 +2979,10 @@ function updateEnemies() {
           let closestA=allies[0],cad=1e9;
           allies.forEach(a=>{const d=Math.hypot(a.x+a.w/2-ecx,a.y+a.h/2-ecy);if(d<cad){cad=d;closestA=a;}});
           tx=closestA.x+closestA.w/2; ty=closestA.y+closestA.h/2;
+        }
+        // ── Enemy Capital Formation override — replaces tx/ty/orbitR ──
+        if (e._ecFormation && e._ecTx !== undefined) {
+          tx=e._ecTx; ty=e._ecTy; orbitR=e._ecOrbitR;
         }
         const myIdx=smallList.indexOf(e);
         // Capital command aura: fire faster when a capital is nearby
@@ -2889,7 +3119,7 @@ function updateEnemies() {
         } else {
           enemyBullets.push(...fireBullets({x:tx-1,y:ty-1,w:2,h:2},t.weaponStats,aimAngle,false));
         }
-        t.shootTimer=t.fireRate*frMult*sideMult;
+        t.shootTimer=Math.round(t.fireRate*frMult*sideMult*(e._ecFireMult||1.0));
       }
     });
     if(e.type==="Dominion"){
@@ -3254,6 +3484,7 @@ function render() {
   drawBoostHUD();
   drawSpecialHUD();
   drawCapitalStatusHUD();
+  drawEnemyCapFormationHUD();
   ctx.fillStyle="rgba(255,255,255,0.4)";ctx.font="18px monospace";
   ctx.fillText(infiniteMode?`Wave ${currentWave} (Infinite)`:`Wave ${currentWave} / ${WAVES.length}`,10,GAME_H-12);
   if(player.hp<player.maxHp*0.25){ctx.fillStyle="rgba(255,0,0,0.12)";ctx.fillRect(0,0,GAME_W,GAME_H);}
@@ -3397,6 +3628,8 @@ function gameLoop() {
   }
   if(state==="playing"){
     updatePlayerDodgeTracking();
+    observePlayer();
+    updateEnemyCapitalAI();
     updateCapitalAutopilot();
     updatePlayer();updateAllies();updateEnemies();updateBullets();checkCollisions();updateSpecial();
     if(waveReinforceTimer>0){waveReinforceTimer--;if(waveReinforceTimer<=0&&!waveReinforceDone){
