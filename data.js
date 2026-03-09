@@ -110,17 +110,22 @@ const ENGINE_UPGRADE_TIERS = {
 const ENGINE_UPGRADE_PRICES = { 2: 25000, 3: 100000 };
 
 const ALLY_SHIP_DEFS = {
-  Sprite:    { price: 0,      weaponSize: 1, hp: 60,  shields: 70,   armorType: "light",   image: "Merlin.png",        color: "#88ff88", w: 52, h: 32 },
-  Raptor:    { price: 5000,   weaponSize: 2, hp: 120, shields: 130,  armorType: "light",   image: "Gladius.png",       color: "#aaffaa", w: 52, h: 32 },
-  Rouge:     { price: 15000,  weaponSize: 3, hp: 300, shields: 320,  armorType: "medium",  image: "Cutlass.png",       color: "#aaffaa", w: 72, h: 44 },
-  Wasp:      { price: 40000,  weaponSize: 4, hp: 500, shields: 560,  armorType: "medium",  image: "Hornet.png",        color: "#aaffaa", w: 80, h: 48 },
-  Supernova: { price: 60000,  weaponSize: 5, hp: 600, shields: 680,  armorType: "heavy",   image: "Constellation.png", color: "#44ffcc", w: 92, h: 56 },
-  Medic:     { price: 50000,  weaponSize: 0, hp: 450, shields: 500,  armorType: "medium",  image: "Hornet.png",        color: "#44ffee", w: 80, h: 48, isHealer:true },
+  Sprite:    { price: 0,       weaponSize: 1, hp: 60,   shields: 70,   armorType: "light",      image: "Merlin.png",        color: "#88ff88", w: 52,  h: 32 },
+  Raptor:    { price: 5000,    weaponSize: 2, hp: 120,  shields: 130,  armorType: "light",      image: "Gladius.png",       color: "#aaffaa", w: 52,  h: 32 },
+  Rouge:     { price: 15000,   weaponSize: 3, hp: 300,  shields: 320,  armorType: "medium",     image: "Cutlass.png",       color: "#aaffaa", w: 72,  h: 44 },
+  Wasp:      { price: 40000,   weaponSize: 4, hp: 500,  shields: 560,  armorType: "medium",     image: "Hornet.png",        color: "#aaffaa", w: 80,  h: 48 },
+  Supernova: { price: 60000,   weaponSize: 5, hp: 600,  shields: 680,  armorType: "heavy",      image: "Constellation.png", color: "#44ffcc", w: 92,  h: 56 },
+  Medic:     { price: 50000,   weaponSize: 0, hp: 450,  shields: 500,  armorType: "medium",     image: "Hornet.png",        color: "#44ffee", w: 80,  h: 48, isHealer:true },
+  // ── Heavy allies — cost 2 slots each ──
+  AllyTempest: { price: 280000, weaponSize: 5, hp: 2000, shields: 2200, armorType: "subcapital", image: "StarlancerTAC.png", color: "#00ffcc", w: 110, h: 60, slotCost: 2, doubleShot: true, pdc: 2, pdcSize: 5 },
+  AllyBulwark: { price: 220000, weaponSize: 0, hp: 1750, shields: 1200, armorType: "subcapital", image: "HammerHead.png",    color: "#4488ff", w: 110, h: 60, slotCost: 2, pdc: 6, pdcSize: 4, isHeavyAlly: true },
+  // ── Capital ally — costs 3 slots ──
+  AllyNemesis: { price: 800000, weaponSize: 8, hp: 2000, shields: 2500, armorType: "capital",    image: "Nemesis.png",       color: "#ffff44", w: 130, h: 68, slotCost: 3, doubleShot: true, pdc: 3, pdcSize: 3 },
   // Secret ship allies — spawned by Retribution Ultimate Power
   CometAlly:    { price: 999999, weaponSize: 5, hp: 100,  shields: 90,   armorType: "light",   image: "Meteor.png",        color: "#ff2200", w: 52,  h: 32 },
   VenganceAlly: { price: 999999, weaponSize: 8, hp: 200,  shields: 400,  armorType: "medium",  image: "Meteor.png",        color: "#ff0044", w: 72,  h: 44 },
 };
-const ALLY_SHIP_ORDER = ["Sprite","Raptor","Rouge","Wasp","Supernova","Medic"];
+const ALLY_SHIP_ORDER = ["Sprite","Raptor","Rouge","Wasp","Supernova","Medic","AllyTempest","AllyBulwark","AllyNemesis"];
 
 // === SHIP DESCRIPTIONS ===
 const SHIP_DESCRIPTIONS = {
@@ -155,14 +160,14 @@ const SHIPS = {
   Wasp:       { price: 140000,    hp: 500,   shields: 560,  armor: 100, missiles: 12, speed: 3.2,  weaponType: "laser_repeater",    weaponSize: 4,  bespoke: false, pdc: 1,  pdcSize: 4,                         image: "Hornet.png",           color: "#0099ff", size: 3,  missileType: 2, armorType: "medium"                     },
   Supernova:  { price: 160000,    hp: 1000,  shields: 900,  armor: 100, missiles: 52, speed: 1.0,  weaponType: "laser_repeater",    weaponSize: 5,  bespoke: false, doubleShot: true, pdc: 3,  pdcSize: 3,                         image: "Constellation.png",   color: "#44ff88", size: 4,  missileType: 1, armorType: "heavy",    extraAllySlots: 1 },
   // --- SUBCAPITAL ---
-  Bulwark:    { price: 30000,     hp: 1750,  shields: 1200, armor: 100, missiles: 16, speed: 0.75, weaponType: "none",              weaponSize: 0,  bespoke: true,  pdc: 10, pdcSize: 4,                         image: "HammerHead.png",       color: "#4488ff", size: 6,  missileType: 3, armorType: "subcapital"                 },
-  Tempest:    { price: 380000,    hp: 2000,  shields: 2200, armor: 100, missiles: 32, speed: 0.70, weaponType: "laser_repeater",    weaponSize: 5,  bespoke: false, doubleShot: true, pdc: 4, pdcSizes: [5,5,4,4], image: "StarlancerTAC.png",  color: "#00ffcc", size: 7,  missileType: 1, armorType: "subcapital", extraAllySlots: 1 },
+  Bulwark:    { price: 30000,     hp: 1750,  shields: 1200, armor: 100, missiles: 16, speed: 0.75, weaponType: "none",              weaponSize: 0,  bespoke: true,  pdc: 10, pdcSize: 4,                         image: "HammerHead.png",       color: "#4488ff", size: 6,  missileType: 3, armorType: "subcapital", extraAllySlots: 3 },
+  Tempest:    { price: 380000,    hp: 2000,  shields: 2200, armor: 100, missiles: 32, speed: 0.70, weaponType: "laser_repeater",    weaponSize: 5,  bespoke: false, doubleShot: true, pdc: 4, pdcSizes: [5,5,4,4], image: "StarlancerTAC.png",  color: "#00ffcc", size: 7,  missileType: 1, armorType: "subcapital", extraAllySlots: 4 },
   // --- CAPITAL ---
-  Nemesis:    { price: 280000,    hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Nemesis.png",          color: "#ffff44", size: 6,  missileType: 3, armorType: "capital"                    },
-  Prometheus: { price: 500000,    hp: 5000,  shields: 4000, armor: 100, missiles: 30, speed: 0.6,  weaponType: "ballistic_gatling",  weaponSize: 7,  bespoke: true,  pdc: 6,  pdcSize: 4,                         image: "Polaris.png",          color: "#ff44ff", size: 7,  missileType: 3, armorType: "capital",   extraAllySlots: 2 },
+  Nemesis:    { price: 280000,    hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Nemesis.png",          color: "#ffff44", size: 6,  missileType: 3, armorType: "capital",    extraAllySlots: 3 },
+  Prometheus: { price: 500000,    hp: 5000,  shields: 4000, armor: 100, missiles: 30, speed: 0.6,  weaponType: "gatling",           weaponSize: 7,  bespoke: true,  pdc: 6,  pdcSize: 4,                         image: "Polaris.png",          color: "#ff44ff", size: 7,  missileType: 3, armorType: "capital",   extraAllySlots: 5 },
   // --- SUPER CAPITAL ---
-  Leviathan:  { price: 750000,    hp: 7500,  shields: 7000,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "none",    weaponSize: 0,  bespoke: false, pdc: 8, pdcSizes: [7,5,5,5,4,4,4,4], image: "Kraken.png", color: "#88ff00", size: 8,  missileType: 3, armorType: "capital", extraAllySlots: 6 },
-  Dominion:   { price: 1200000,   hp: 10000, shields: 8000, armor: 100, missiles: 32, speed: 0.45, weaponType: "ballistic_railgun", weaponSize: 10, bespoke: true,  pdc: 8,  pdcSizes: [6,6,5,5,4,4,3,3],        image: "Idris.jpg",            color: "#cc88ff", size: 10, missileType: 3, armorType: "capital",   extraAllySlots: 4 },
+  Leviathan:  { price: 750000,    hp: 7500,  shields: 7000,  armor: 100, missiles: 24, speed: 0.5,  weaponType: "none",    weaponSize: 0,  bespoke: false, pdc: 8, pdcSizes: [7,5,5,5,4,4,4,4], image: "Kraken.png", color: "#88ff00", size: 8,  missileType: 3, armorType: "capital", extraAllySlots: 9 },
+  Dominion:   { price: 1200000,   hp: 10000, shields: 8000, armor: 100, missiles: 32, speed: 0.45, weaponType: "ballistic_railgun", weaponSize: 10, bespoke: true,  pdc: 8,  pdcSizes: [6,6,5,5,4,4,3,3],        image: "Idris.jpg",            color: "#cc88ff", size: 10, missileType: 3, armorType: "capital",   extraAllySlots: 7 },
   // --- SECRET ---
   Comet:      { price: null,      hp: 100,   shields: 90,   armor: 100, missiles: 30,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  doubleShot: true, pdc: 0,  pdcSize: 0,                         image: "Meteor.png",           color: "#ff2200", size: 1,  missileType: 2, armorType: "light",  secret: true       },
   Vengeance:  { price: null,      hp: 200,   shields: 400,  armor: 100, missiles: 20,  speed: 3.8,  weaponType: "vengeance_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: false, pdc: 1, pdcSize: 4,                         image: "Meteor.png",           color: "#ff0044", size: 2,  missileType: 2, armorType: "medium", secret: true, extraAllySlots: 1 },
@@ -476,5 +481,3 @@ function getShadowCometStats(killCount) {
     damage: scaleMult, // multiplier applied to weapon damage in game.js
   };
 }
-
-
