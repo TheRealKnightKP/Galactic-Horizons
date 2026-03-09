@@ -342,6 +342,18 @@ ENEMIES.Healer.healRadius = 280;
 ENEMIES.Healer.healPerFrame = 8;
 
 
+// Capital ships eligible for deploy mechanic
+const CAPITAL_SHIPS = new Set(["Bulwark","Tempest","Nemesis","Prometheus","Leviathan","Dominion","Retribution"]);
+
+// Max deployable ship size per capital (size<=N allowed, plus secrets regardless of size)
+const CAPITAL_DEPLOY_LIMITS = {
+  Nemesis:    { maxSize: 1 },
+  Prometheus: { maxSize: 3 },
+  Dominion:   { maxSize: 3 },
+  Leviathan:  { maxSize: 4 },
+  Retribution:{ maxSize: 1, onlyComet: true }, // Retribution can only deploy Comet
+};
+
 const MISSILE_TYPES = {
   1: { name: "Type 1 (Fast Strike)", speed: 8, damage: 400,  color: "#ff8800" },
   2: { name: "Type 2 (Standard)",    speed: 6, damage: 600,  color: "#ffaa44" },
