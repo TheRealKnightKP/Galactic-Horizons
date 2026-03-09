@@ -702,7 +702,7 @@ function buildAlly(i,totalSlots) {
   const sName=slot.ship;
   const aDef=ALLY_SHIP_DEFS[sName]||ALLY_SHIP_DEFS.Sprite;
   const shieldMult=SHIELD_TIERS[slot.shieldTier||1].mult;
-  const wType=resolveWType(slot.weapon,"laser_repeater");
+  const wType = aDef.bespoke ? aDef.weaponType : resolveWType(slot.weapon, "laser_repeater");
   const _AB=typeof ALLY_BEHAVIORS!=="undefined"?ALLY_BEHAVIORS:{0:{name:"Balanced",speedMult:1,dmgMult:1,dodgeMult:1,shieldMult:1,rpmMult:1}};
   const beh=_AB[slot.behavior||0]||_AB[0];
   const armorMult2=ARMOR_UPGRADE_TIERS[slot.armorTier||1].mult;
