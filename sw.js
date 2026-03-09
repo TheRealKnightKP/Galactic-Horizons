@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.5.6";
+const CACHE = "galactic-horizons-v1.5.7";
 const ASSETS = [
   "./",
   "./index.html",
@@ -100,4 +100,5 @@ Versions:
 -V1.5.4 - Fixed Prometheus ability, reinforcements, and shields
 -V1.5.5 - Added some extra ally stuff and fixed retribution gaining.
 -V1.5.6 - Fixed Ally tab on shop
+-V1.5.7 - Arena Evolution part 2 update: Capital ship gameplay
 */
