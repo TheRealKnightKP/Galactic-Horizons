@@ -2067,7 +2067,8 @@ function deployFromCapital() {
   capitalShipObj._isCapitalAutopilot = true;
   capitalShipObj._capitalDriftDir = 1;
   capitalShipObj._capitalDriftTimer = 0;
-  capitalShipObj._capitalTurretNerfMult = 1.25; // 20% slower RPM in autopilot
+  capitalShipObj._capitalTurretNerfMult = 1.25;
+  capitalShipObj._deployGraceCleared = false; // must fly away before recall is possible
 
   // Build the deployed ship at capital's position
   const spriteOffset = (deployKey==="Dominion") ? 0 : Math.PI;
@@ -2197,9 +2198,12 @@ function updateCapitalAutopilot() {
   regenShieldFaces(cap, 0.008);
 
   // Check auto-enter: deployed ship within 80px of capital
+  // Only eligible after the player has flown at least 100px away first (grace distance)
   const ddx=player.x+player.w/2-(cap.x+cap.w/2);
   const ddy=player.y+player.h/2-(cap.y+cap.h/2);
-  if (Math.hypot(ddx,ddy) < 80) recallToCapital();
+  const distFromCapital = Math.hypot(ddx,ddy);
+  if (!cap._deployGraceCleared && distFromCapital > 100) cap._deployGraceCleared = true;
+  if (cap._deployGraceCleared && distFromCapital < 80) recallToCapital();
 
   // Check capital death
   if (cap.hp <= 0) {
@@ -3308,7 +3312,7 @@ function updateHUD() {
   // Show/hide mobile deploy button
   const dBtn = document.getElementById("deployBtn");
   if (dBtn) {
-    const showDeploy = isCapitalShip();
+    const showDeploy = isCapitalShip() || isDeployed; // keep visible while deployed for RECALL
     dBtn.style.display = showDeploy ? "block" : "none";
     dBtn.textContent = isDeployed ? "⚓ RECALL" : "⚓ DEPLOY";
     dBtn.style.opacity = (!isDeployed && !deployedShipAvail) ? "0.4" : "1";
@@ -3392,6 +3396,11 @@ function gameLoop() {
       money+=reward;
       player.shields=player.maxShields;player.armor=player.maxArmor;
       if(player.shieldFaces) initShieldFaces(player);
+      // Also heal capital if player is deployed
+      if(isDeployed && capitalShipObj) {
+        capitalShipObj.shields=capitalShipObj.maxShields; capitalShipObj.armor=capitalShipObj.maxArmor;
+        if(capitalShipObj.shieldFaces) initShieldFaces(capitalShipObj);
+      }
       allies.forEach(a=>{
         a.shields=a.maxShields;a.armor=a.maxArmor;
         if(a.shieldFaces) initShieldFaces(a);
