@@ -403,6 +403,7 @@ let allyFormation = "behind";
 
 // ── Capital gameplay state ────────────────────────────────────
 let isDeployed        = false;   // player is controlling deployed small ship
+let _gKeyPrev         = false;   // debounce for G deploy key
 let capitalShipObj    = null;    // the capital object when player is deployed
 let deployedShipKey   = null;    // which ship key player deployed from capital
 let deployedShipAvail = true;    // false after deployed ship dies until next wave
@@ -2009,7 +2010,7 @@ function isCurrentShipCapital() {
 }
 
 function getDeployableShips() {
-  // Returns list of ship keys the player owns that fit this capital's deploy limit
+  // Returns list of ship keys the player can deploy
   if (!isCurrentShipCapital()) return [];
   const limits = typeof CAPITAL_DEPLOY_LIMITS !== "undefined" ? CAPITAL_DEPLOY_LIMITS[currentShipName] : null;
   if (!limits) return [];
@@ -2017,12 +2018,14 @@ function getDeployableShips() {
   const onlyComet = limits.onlyComet || false;
   const result = [];
   const allShips = typeof SHIPS !== "undefined" ? SHIPS : {};
+  // Treat playerLoadout.ship's old value (Starlight) as always implicitly owned
+  const effectiveOwned = [...ownedShips];
+  if (!effectiveOwned.includes("Starlight")) effectiveOwned.push("Starlight");
   for (const key of Object.keys(allShips)) {
-    if (!ownedShips.includes(key)) continue;
+    if (!effectiveOwned.includes(key)) continue;
     const sz = allShips[key].size || 1;
     if (onlyComet && key !== "Comet") continue;
     if (!onlyComet && sz > maxSize) continue;
-    // Don't allow deploying a capital from a capital
     if (typeof CAPITAL_SHIPS !== "undefined" && CAPITAL_SHIPS.has(key)) continue;
     result.push(key);
   }
@@ -2031,8 +2034,31 @@ function getDeployableShips() {
 
 function deployFromCapital() {
   if (!isCurrentShipCapital() || isDeployed || !deployedShipAvail) return;
-  const deployKey = playerLoadout.deployShip;
-  if (!deployKey || !ownedShips.includes(deployKey)) return;
+  
+  // Find a valid deploy ship — use selected one first, fallback to first valid owned ship
+  let deployKey = playerLoadout.deployShip;
+  const validShips = getDeployableShips();
+  // Also count the player's starting ship as implicitly available even if not in ownedShips
+  const _allOwnable = validShips.length > 0 ? validShips : 
+    getDeployableShips().concat(Object.keys(SHIPS||{}).filter(k => {
+      const d = (SHIPS||{})[k]; if(!d) return false;
+      const lim = (typeof CAPITAL_DEPLOY_LIMITS!=="undefined" && CAPITAL_DEPLOY_LIMITS[currentShipName]);
+      if(!lim) return false;
+      return (d.size||1) <= lim.maxSize && !(typeof CAPITAL_SHIPS!=="undefined" && CAPITAL_SHIPS.has(k));
+    }));
+
+  // Check if selected deploy key is valid
+  if (!deployKey || (!ownedShips.includes(deployKey) && deployKey !== playerLoadout.ship)) {
+    // Auto-select first valid ship from owned ships or any valid one
+    deployKey = validShips[0] || null;
+    // Last resort: use the player's equipped ship's default deploy candidate
+    if (!deployKey) {
+      const lim = typeof CAPITAL_DEPLOY_LIMITS !== "undefined" ? CAPITAL_DEPLOY_LIMITS[currentShipName] : null;
+      if (lim) deployKey = "Starlight"; // absolute fallback
+    }
+  }
+  if (!deployKey) return;
+  
   const deployDef = SHIPS[deployKey];
   if (!deployDef) return;
 
@@ -2247,11 +2273,11 @@ function updatePlayer() {
   if(state==="shadowCometCutscene"||state==="shadowVenganceCutscene") return;
 
   // ── Capital deploy key (G) ──
-  if(!player._gKeyPrev && keys["KeyG"]) {
+  if(!_gKeyPrev && keys["KeyG"]) {
     if (isDeployed) recallToCapital();
     else if (isCurrentShipCapital() && deployedShipAvail) deployFromCapital();
   }
-  player._gKeyPrev = !!keys["KeyG"];
+  _gKeyPrev = !!keys["KeyG"];
 
   const nemMult=(player.specialActive&&currentShipName==="Nemesis")?2.0
              :(player.specialActive&&currentShipName==="Starlight")?1.5
