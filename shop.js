@@ -47,6 +47,11 @@ document.addEventListener("keydown", e => {
         if (!ownedShips.includes("Vengeance")) ownedShips.push("Vengeance");
         msg += (msg ? " + " : "") + "⚔ VENGEANCE";
       }
+      if (!retributionUnlocked) {
+        retributionUnlocked = true;
+        if (!ownedShips.includes("Retribution")) ownedShips.push("Retribution");
+        msg += (msg ? " + " : "") + "🔥 RETRIBUTION";
+      }
       if (msg) {
         const el = document.createElement("div");
         el.textContent = "🔓 SECRET SHIPS UNLOCKED: " + msg;
@@ -71,7 +76,7 @@ let playerLoadout = {
   ownedArmorTiers: [1],
   engineTier: 1,
   ownedEngineTiers: [1],
-  allies: [null, null],
+  allies: [null, null, null, null],
   unlockedAllyShips: [],
   missileKind: "standard",
   missileRack: [],  // [{kind, tier}, ...] — ordered list of missiles to cycle through
@@ -213,7 +218,12 @@ function buildMobileKonamiUI() {
           if (!vengeanaceUnlocked) {
             vengeanaceUnlocked = true;
             if (!ownedShips.includes("Vengeance")) ownedShips.push("Vengeance");
-            msg += "VENGEANCE";
+            msg += "VENGEANCE ";
+          }
+          if (!retributionUnlocked) {
+            retributionUnlocked = true;
+            if (!ownedShips.includes("Retribution")) ownedShips.push("Retribution");
+            msg += "RETRIBUTION";
           }
           progress.textContent = msg ? ("✅ UNLOCKED: " + msg) : "✅ Already unlocked!";
           progress.style.color = "#0f0";
@@ -377,6 +387,7 @@ function renderShopAllies(container) {
       </div>
       <div style="color:${canAfford?"#0f0":"#f44"};font:12px monospace;margin:6px 0">${sn==="Sprite"?"Free":aDef.price.toLocaleString()+" cr"}</div>
       <button style="width:100%;${canAfford?"":"opacity:0.4"}" onclick="buyAllyShipFromShop('${sn}')" ${canAfford?"":"disabled"}>
+        ${slotCost > 1 ? `<span style="color:#ff8800;font-size:10px">⚠ ${slotCost} SLOTS</span><br>` : ""}
         Buy ${sn} #${(allyPurchaseCount[sn]||0)+1}
       </button>
     </div>`;
@@ -525,7 +536,7 @@ function closeShop() {
 // ============================
 function ensureAllySlots() {
   const d = SHIPS[playerLoadout.ship || "Starlight"];
-  const n = 2 + (d.extraAllySlots || 0);
+  const n = 4 + (d.extraAllySlots || 0);
   while (playerLoadout.allies.length < n)
     playerLoadout.allies.push(null);
 }
@@ -812,11 +823,17 @@ function renderShipLoadoutPanel(container) {
 function renderAllyLoadoutPanel(container) {
   ensureAllySlots();
   const sd = SHIPS[playerLoadout.ship || "Starlight"];
-  const totalSlots = 2 + (sd.extraAllySlots || 0);
+  const totalSlots = 4 + (sd.extraAllySlots || 0);
   let html = `<p style="color:#aaa;margin:4px 0 8px">Ally slots: ${totalSlots} &nbsp;<span style="color:#666;font-size:11px">Buy allies in Shop → Allies tab</span></p>`;
   for (let i = 0; i < totalSlots; i++) {
     const slot = playerLoadout.allies[i];
     if (!slot) {
+      // Skip slots marked as occupied by a multi-slot ally
+      if (playerLoadout.allies[i] && playerLoadout.allies[i]._occupied) {
+        html += `<div class="ally-slot" style="background:#060610;border:1px dashed #222;border-radius:6px;padding:6px 8px;margin-bottom:8px;color:#333;font:11px monospace;font-style:italic">
+          Slot ${i+1}: <span style="color:#333">occupied by multi-slot ally above</span></div>`;
+        continue;
+      }
       html += `<div class="ally-slot" style="background:#0a0a14;border:1px dashed #334;border-radius:6px;padding:8px;margin-bottom:8px;color:#555;font:12px monospace">
         <b style="color:#444">Slot ${i+1} — Empty</b><br>
         <div style="margin-top:6px">`;
