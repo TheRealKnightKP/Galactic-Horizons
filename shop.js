@@ -373,6 +373,8 @@ function renderShopAllies(container) {
     <div style="display:flex;flex-wrap:wrap;gap:12px">`;
   for (const sn of ALLY_SHIP_ORDER) {
     const aDef = ALLY_SHIP_DEFS[sn];
+    if (!aDef || aDef.price === undefined || aDef.price >= 999990) continue;
+    const slotCost = aDef.slotCost || 1;
     const owned = allyOwned(sn);
     const equipped = allyEquipped(sn);
     const available = owned - equipped;
