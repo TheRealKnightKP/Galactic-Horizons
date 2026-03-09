@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.5.11";
+const CACHE = "galactic-horizons-v1.5.12";
 const ASSETS = [
   "./",
   "./index.html",
@@ -105,4 +105,5 @@ Versions:
 -V1.5.9 - Fixed capital deployments again
 -V1.5.10 - Fixing ally issues 
 -V1.5.11 - Fixed ally and capship issues
+-V1.5.12 - Reworked ally slots
 */
