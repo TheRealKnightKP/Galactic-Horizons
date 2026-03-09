@@ -628,7 +628,7 @@ function renderDeployPanel(container) {
     if (onlyComet && key !== "Comet") continue;
     if (!onlyComet && sz > maxSize) continue;
 
-    const owned = ownedShips.includes(key);
+    const owned = ownedShips.includes(key) || key === "Starlight"; // Starlight is always available as fallback
     const selected = (playerLoadout.deployShip === key);
     const borderCol = selected ? "#ffaa00" : (owned ? "#334" : "#1a1a1a");
     const opacity = owned ? "1" : "0.35";
