@@ -77,6 +77,7 @@ let playerLoadout = {
   engineTier: 1,
   ownedEngineTiers: [1],
   allies: [null, null, null, null],
+  deployShip: "Starlight",
   unlockedAllyShips: [],
   missileKind: "standard",
   missileRack: [],  // [{kind, tier}, ...] — ordered list of missiles to cycle through
@@ -603,6 +604,59 @@ function renderInventoryPanel(container) {
   container.innerHTML = html;
 }
 
+function renderDeployPanel(container) {
+  const capKey = playerLoadout.ship;
+  const limits = typeof CAPITAL_DEPLOY_LIMITS !== "undefined" ? CAPITAL_DEPLOY_LIMITS[capKey] : null;
+  if (!limits) { container.innerHTML = "<p style='color:#555;padding:10px;font:12px monospace'>No deploy slot for this ship.</p>"; return; }
+  const maxSize = limits.maxSize || 1;
+  const onlyComet = limits.onlyComet || false;
+
+  let html = `<div style="padding:10px;color:#aaa;font:12px monospace">
+    <p style="color:#ffaa00;font:bold 14px monospace;margin-bottom:4px">⚓ Deploy Ship</p>
+    <p style="color:#666;font:11px monospace;margin-bottom:12px">Press <b style="color:#eee">G</b> in-game to deploy / recall. Fly back to capital to auto-recall.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px">`;
+
+  const allShips = typeof SHIPS !== "undefined" ? SHIPS : {};
+  const SHIP_ORDER = typeof SHIP_DISPLAY_ORDER !== "undefined" ? SHIP_DISPLAY_ORDER :
+    Object.keys(allShips).filter(k => !(typeof CAPITAL_SHIPS !== "undefined" && CAPITAL_SHIPS.has(k)));
+
+  for (const key of SHIP_ORDER) {
+    const def = allShips[key];
+    if (!def) continue;
+    if (typeof CAPITAL_SHIPS !== "undefined" && CAPITAL_SHIPS.has(key)) continue;
+    const sz = def.size || 1;
+    if (onlyComet && key !== "Comet") continue;
+    if (!onlyComet && sz > maxSize) continue;
+
+    const owned = ownedShips.includes(key);
+    const selected = (playerLoadout.deployShip === key);
+    const borderCol = selected ? "#ffaa00" : (owned ? "#334" : "#1a1a1a");
+    const opacity = owned ? "1" : "0.35";
+    const labelCol = selected ? "#ffaa00" : (owned ? "#eee" : "#555");
+
+    html += `<div onclick="${owned ? `selectDeployShip('${key}')` : ''}" style="
+      background:${selected?"rgba(255,170,0,0.12)":"#0a0e1a"};
+      border:2px solid ${borderCol};border-radius:8px;width:130px;padding:8px;
+      cursor:${owned?"pointer":"default"};opacity:${opacity};position:relative">
+      <img src="assets/${def.image}" style="width:100%;height:50px;object-fit:contain;image-rendering:pixelated" onerror="this.style.display='none'">
+      <div style="color:${labelCol};font:bold 11px monospace;margin-top:4px">${key}</div>
+      <div style="color:#666;font:10px monospace">Size ${sz} | ${def.armorType}</div>
+      ${!owned ? `<div style="color:#444;font:9px monospace;font-style:italic">Not owned</div>` : ""}
+      ${selected ? `<div style="color:#ffaa00;font:bold 10px monospace">✓ SELECTED</div>` : ""}
+    </div>`;
+  }
+
+  html += `</div></div>`;
+  container.innerHTML = html;
+}
+
+function selectDeployShip(key) {
+  playerLoadout.deployShip = key;
+  // Default it also in game.js if accessible
+  if (typeof window !== "undefined") window._deployShipKey = key;
+  renderLoadout();
+}
+
 function renderLoadout() {
   document.getElementById("loadoutMoney").textContent = "Credits: " + money;
   document.getElementById("tabShip").style.borderBottom     = _loadoutTab === "ship"      ? "2px solid #0af" : "none";
@@ -619,6 +673,27 @@ function renderLoadout() {
     if (tabAllies && tabAllies.parentNode) tabAllies.parentNode.insertBefore(tabInv, tabAllies.nextSibling);
   }
   tabInv.style.borderBottom = _loadoutTab === "inventory" ? "2px solid #ff8800" : "none";
+
+  // Deploy tab — only visible when flying a capital or Retribution
+  const _isCapital = typeof CAPITAL_SHIPS !== "undefined" && CAPITAL_SHIPS.has(playerLoadout.ship);
+  let tabDeploy = document.getElementById("tabDeploy");
+  if (_isCapital) {
+    if (!tabDeploy) {
+      tabDeploy = document.createElement("button");
+      tabDeploy.id = "tabDeploy";
+      tabDeploy.textContent = "⚓ Deploy";
+      tabDeploy.style.cssText = "width:auto;display:inline-block;margin:2px;color:#ffaa00";
+      tabDeploy.onclick = () => loadoutTab("deploy");
+      const tabInvEl = document.getElementById("tabInventory");
+      if (tabInvEl && tabInvEl.parentNode) tabInvEl.parentNode.insertBefore(tabDeploy, tabInvEl.nextSibling);
+    }
+    tabDeploy.style.display = "inline-block";
+    tabDeploy.style.borderBottom = _loadoutTab === "deploy" ? "2px solid #ffaa00" : "none";
+  } else if (tabDeploy) {
+    tabDeploy.style.display = "none";
+    if (_loadoutTab === "deploy") { _loadoutTab = "ship"; }
+  }
+
   const sp = document.getElementById("loadoutShipPanel");
   const ap = document.getElementById("loadoutAlliesPanel");
   if (_loadoutTab === "ship") {
@@ -627,6 +702,9 @@ function renderLoadout() {
   } else if (_loadoutTab === "inventory") {
     sp.style.display = "none"; ap.style.display = "block";
     renderInventoryPanel(ap);
+  } else if (_loadoutTab === "deploy") {
+    sp.style.display = "none"; ap.style.display = "block";
+    renderDeployPanel(ap);
   } else {
     sp.style.display = "none"; ap.style.display = "block";
     renderAllyLoadoutPanel(ap);
