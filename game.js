@@ -195,6 +195,18 @@ function buildMobileControls() {
   formationBtn.addEventListener("touchstart", e => { e.preventDefault(); cycleFormation(); }, { passive: false });
   ui.appendChild(formationBtn);
 
+  // Mobile deploy button (only shown when capital ship equipped)
+  const deployBtn = document.createElement("div");
+  deployBtn.id = "deployBtn";
+  deployBtn.textContent = "⚓ DEPLOY";
+  deployBtn.style.cssText = "position:absolute;bottom:70px;left:50%;transform:translateX(-50%);padding:7px 18px;background:rgba(255,170,0,0.18);border:2px solid rgba(255,170,0,0.7);border-radius:14px;color:#ffaa00;font:bold 14px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10;display:none";
+  deployBtn.addEventListener("touchstart", e => {
+    e.preventDefault();
+    if (isDeployed) recallToCapital();
+    else if (isCurrentShipCapital && isCurrentShipCapital() && deployedShipAvail) deployFromCapital();
+  }, { passive: false });
+  ui.appendChild(deployBtn);
+
   const specialMobileBtn = document.createElement("div");
   specialMobileBtn.id = "mobileSpecialBtn";
   specialMobileBtn.textContent = "SPECIAL";
@@ -388,6 +400,14 @@ let frameCount = 0;
 let playerDodgeHistory = []; // last 8 dodge events: {preVx,preVy,postVx,postVy}
 let _prevPlayerVx = 0, _prevPlayerVy = 0; // last frame velocity for dodge detection
 let allyFormation = "behind";
+
+// ── Capital gameplay state ────────────────────────────────────
+let isDeployed        = false;   // player is controlling deployed small ship
+let capitalShipObj    = null;    // the capital object when player is deployed
+let deployedShipKey   = null;    // which ship key player deployed from capital
+let deployedShipAvail = true;    // false after deployed ship dies until next wave
+let capitalNoRespawn  = 0;       // waves remaining where allies don't respawn (penalty)
+let capitalDestroyed  = false;   // capital was destroyed this wave
 let playerTookDamageThisWave = false;
 const MAX_HIT_EFFECTS = 80;
 const MAX_DEATH_EFFECTS = 40;
@@ -766,6 +786,10 @@ function setPlayerShip(name) {
   initShieldFaces(player);
   player.turrets=[];
   const pdcSizes=d.pdcSizes||null;
+  // Capital nerf: turrets fire 20% slower when capital is in autopilot (handled in updateCapitalAI)
+  // Additionally Leviathan and Dominion have no boost
+  const _isNerfedCapital = (name==="Leviathan"||name==="Dominion");
+  if (_isNerfedCapital) { player.boostDuration = 0; player.boostCooldownMax = 99999; }
   for (let ti=0;ti<(d.pdc||0);ti++) {
     const tSize=pdcSizes?pdcSizes[ti]:(d.pdcSize||1);
     const pdcWk=playerLoadout.pdcWeapons&&playerLoadout.pdcWeapons[ti];
@@ -792,6 +816,7 @@ function setPlayerShip(name) {
 }
 
 function respawnDeadAllies() {
+  if (capitalNoRespawn > 0) return; // ally respawn penalty active
   const d=SHIPS[currentShipName];
   const totalSlots=4+(d.extraAllySlots||0);
   allies=[];
@@ -1383,6 +1408,13 @@ function nextWave() {
   shadowCometActive = false;
   shadowVenganceActive = false;
   shadowCometTurretLimit = false;
+  // ── Capital gameplay reset ──
+  if (isDeployed && capitalShipObj) recallToCapital();
+  isDeployed = false;
+  capitalShipObj = null;
+  deployedShipAvail = true;
+  capitalDestroyed = false;
+  if (capitalNoRespawn > 0) capitalNoRespawn--;
   respawnDeadAllies();
   spawnWave();
   if (state !== "shadowCometCutscene" && state !== "shadowVenganceCutscene") {
@@ -1967,6 +1999,245 @@ function drawSpecialHUD() {
   }
 }
 
+
+// ============================================================
+// CAPITAL SHIP GAMEPLAY
+// ============================================================
+
+function isCurrentShipCapital() {
+  return typeof CAPITAL_SHIPS !== "undefined" && CAPITAL_SHIPS.has(currentShipName);
+}
+
+function getDeployableShips() {
+  // Returns list of ship keys the player owns that fit this capital's deploy limit
+  if (!isCurrentShipCapital()) return [];
+  const limits = typeof CAPITAL_DEPLOY_LIMITS !== "undefined" ? CAPITAL_DEPLOY_LIMITS[currentShipName] : null;
+  if (!limits) return [];
+  const maxSize = limits.maxSize || 1;
+  const onlyComet = limits.onlyComet || false;
+  const result = [];
+  const allShips = typeof SHIPS !== "undefined" ? SHIPS : {};
+  for (const key of Object.keys(allShips)) {
+    if (!ownedShips.includes(key)) continue;
+    const sz = allShips[key].size || 1;
+    if (onlyComet && key !== "Comet") continue;
+    if (!onlyComet && sz > maxSize) continue;
+    // Don't allow deploying a capital from a capital
+    if (typeof CAPITAL_SHIPS !== "undefined" && CAPITAL_SHIPS.has(key)) continue;
+    result.push(key);
+  }
+  return result;
+}
+
+function deployFromCapital() {
+  if (!isCurrentShipCapital() || isDeployed || !deployedShipAvail) return;
+  const deployKey = playerLoadout.deployShip;
+  if (!deployKey || !ownedShips.includes(deployKey)) return;
+  const deployDef = SHIPS[deployKey];
+  if (!deployDef) return;
+
+  // Save current player as capital object
+  capitalShipObj = player;
+  capitalShipObj._isCapitalAutopilot = true;
+  capitalShipObj._capitalDriftDir = 1;
+  capitalShipObj._capitalDriftTimer = 0;
+  capitalShipObj._capitalTurretNerfMult = 1.25; // 20% slower RPM in autopilot
+
+  // Build the deployed ship at capital's position
+  const spriteOffset = (deployKey==="Dominion") ? 0 : Math.PI;
+  const engTier = ENGINE_UPGRADE_TIERS[playerLoadout.engineTier||1];
+  const sn = deployKey;
+  const dDef = SHIPS[sn];
+  const shieldMult = SHIELD_TIERS[playerLoadout.shieldTier||1].mult;
+  const armorMult  = ARMOR_UPGRADE_TIERS[playerLoadout.armorTier||1].mult;
+  const sizeNum = dDef.size||1;
+  const dw = Math.round((40+sizeNum*16)*SIZE_SCALE);
+  const dh = Math.round((24+sizeNum*8)*SIZE_SCALE);
+  const deployedObj = {
+    x: capitalShipObj.x + capitalShipObj.w/2 - dw/2,
+    y: capitalShipObj.y + capitalShipObj.h/2 - dh/2,
+    w: dw, h: dh,
+    hp: Math.round(dDef.hp*armorMult), maxHp: Math.round(dDef.hp*armorMult),
+    shields: Math.round(dDef.shields*shieldMult), maxShields: Math.round(dDef.shields*shieldMult),
+    armor: Math.round(dDef.armor*armorMult), maxArmor: Math.round(dDef.armor*armorMult),
+    armorType: dDef.armorType||"light",
+    speed: dDef.speed*engTier.speedMult, maxSpeed: dDef.speed*engTier.speedMult,
+    accel: dDef.speed*engTier.speedMult*0.20,
+    weaponType: dDef.weaponType, weaponSize: dDef.weaponSize,
+    weaponStats: dDef.bespoke||dDef.weaponType==="none" ? (dDef.weaponType!=="none"?getWeaponStats(dDef.weaponType,dDef.weaponSize):null) : getWeaponStats(dDef.weaponType,dDef.weaponSize),
+    bespoke: dDef.bespoke, doubleShot: dDef.doubleShot||false,
+    missiles: capitalShipObj.missiles, maxMissiles: capitalShipObj.maxMissiles,
+    missileRack: [...(capitalShipObj.missileRack||[])],
+    missileActiveKind: capitalShipObj.missileActiveKind,
+    missileType: dDef.missileType||2,
+    img: getImage(dDef.image), color: dDef.color,
+    rotation: 0, spriteAngleOffset: spriteOffset,
+    vx: 0, vy: 0, shootTimer: 0,
+    boosting: false, boostTimer: 0, boostCooldown: 0,
+    boostDuration: Math.round((sn==="Comet"||sn==="Vengeance"||sn==="Retribution"?120:60)*engTier.boostDurMult),
+    boostCooldownMax: Math.round((sn==="Comet"||sn==="Vengeance"||sn==="Retribution"?120:180)*engTier.boostCDMult),
+    dodgeBase: 0.09, dodgeBoosted: 0.18,
+    specialCooldown: 0, specialActive: false, specialTimer: 0,
+    railgunCharge: 0, railgunCharging: false,
+    turrets: [],
+    shipName: sn, _isDeployedShip: true,
+  };
+  initShieldFaces(deployedObj);
+
+  deployedShipKey = deployKey;
+  isDeployed = true;
+  player = deployedObj;
+  currentShipName = deployKey;
+  updateHUD();
+  showNotification("⚓ DEPLOYED — fly back to capital to re-enter", "#0af");
+}
+
+function recallToCapital() {
+  if (!isDeployed || !capitalShipObj) return;
+  // Give capital back any remaining missiles from deployed ship
+  capitalShipObj.missileRack = [...(player.missileRack||[])];
+  capitalShipObj.missiles = capitalShipObj.missileRack.length;
+  // Resume controlling capital
+  player = capitalShipObj;
+  capitalShipObj._isCapitalAutopilot = false;
+  capitalShipObj = null;
+  isDeployed = false;
+  currentShipName = playerLoadout.ship;
+  updateHUD();
+  showNotification("⚓ RETURNED TO CAPITAL", "#0af");
+}
+
+function updateCapitalAutopilot() {
+  if (!isDeployed || !capitalShipObj) return;
+  const cap = capitalShipObj;
+  // Passive drift up/down
+  cap._capitalDriftTimer = (cap._capitalDriftTimer||0) + 1;
+  if (cap._capitalDriftTimer > 180) { cap._capitalDriftDir *= -1; cap._capitalDriftTimer = 0; }
+  cap.vy = (cap.vy||0) * 0.92 + cap._capitalDriftDir * cap.speed * 0.3;
+  cap.y = Math.max(20, Math.min(GAME_H - cap.h - 20, cap.y + cap.vy));
+  cap.vx = (cap.vx||0) * 0.92;
+  cap.x = Math.max(0, Math.min(GAME_W*0.35, cap.x + cap.vx));
+
+  // Face nearest enemy
+  if (enemies.length > 0) {
+    const ccx=cap.x+cap.w/2, ccy=cap.y+cap.h/2;
+    let closest=null, cd=1e9;
+    enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-ccx,e.y+e.h/2-ccy);if(d<cd){cd=d;closest=e;}});
+    if (closest) {
+      const targetRot = Math.atan2(closest.y+closest.h/2-ccy, closest.x+closest.w/2-ccx);
+      let rd = targetRot - (cap.rotation||0);
+      while(rd>Math.PI)rd-=Math.PI*2; while(rd<-Math.PI)rd+=Math.PI*2;
+      cap.rotation = (cap.rotation||0) + Math.sign(rd)*Math.min(Math.abs(rd), cap.turnSpeed||0.015);
+    }
+  }
+
+  // Fire turrets (20% slower RPM penalty)
+  const pcx=player.x+player.w/2, pcy=player.y+player.h/2;
+  cap.turrets && cap.turrets.forEach(t => {
+    t.shootTimer--;
+    if (t.shootTimer <= 0 && t.weaponStats) {
+      const tx=cap.x+t.rx, ty=cap.y+t.ry;
+      const nearestE = enemies.reduce((best,e)=>{
+        const d=Math.hypot(e.x+e.w/2-tx,e.y+e.h/2-ty);
+        return (!best||d<best.d)?{e,d}:best;
+      }, null);
+      if (nearestE) {
+        const pred = predictPos(nearestE.e.x+nearestE.e.w/2, nearestE.e.y+nearestE.e.h/2, nearestE.e.vx||0, nearestE.e.vy||0, tx, ty, t.weaponStats.speed||8);
+        const angle = Math.atan2(pred.y-ty, pred.x-tx);
+        playerBullets.push(...fireBullets({x:tx-1,y:ty-1,w:2,h:2}, t.weaponStats, angle, true));
+      }
+      t.shootTimer = Math.round(t.fireRate * 1.25); // 20% slower in autopilot
+    }
+  });
+
+  // Fire main weapon at largest nearby enemy
+  if (cap.weaponStats && cap.weaponType && cap.weaponType !== "none") {
+    cap.shootTimer = (cap.shootTimer||0) - 1;
+    if (cap.shootTimer <= 0 && enemies.length > 0) {
+      const ccx=cap.x+cap.w/2, ccy=cap.y+cap.h/2;
+      const target = enemies.reduce((best,e)=>{const sz=ENEMIES[e.type]?.size||1;return(!best||sz>(ENEMIES[best.type]?.size||1))?e:best;}, null);
+      if (target) {
+        const pred = predictPos(target.x+target.w/2, target.y+target.h/2, target.vx||0, target.vy||0, ccx, ccy, cap.weaponStats.speed||8);
+        const angle = Math.atan2(pred.y-ccy, pred.x-ccx);
+        const bullets = fireBullets(cap, cap.weaponStats, angle, true);
+        bullets.forEach(b=>{b.color="#88ddff";});
+        playerBullets.push(...bullets);
+        cap.shootTimer = cap.weaponStats.fireInterval || 30;
+      }
+    }
+  }
+
+  // Shield regen
+  regenShieldFaces(cap, 0.008);
+
+  // Check auto-enter: deployed ship within 80px of capital
+  const ddx=player.x+player.w/2-(cap.x+cap.w/2);
+  const ddy=player.y+player.h/2-(cap.y+cap.h/2);
+  if (Math.hypot(ddx,ddy) < 80) recallToCapital();
+
+  // Check capital death
+  if (cap.hp <= 0) {
+    capitalDestroyed = true;
+    capitalNoRespawn = 2;
+    capitalShipObj = null;
+    isDeployed = false;
+    spawnDeathEffect(cap);
+    playExplosion(8);
+    showSpecialToast("💀 CAPITAL DESTROYED — Ejected! Allies won't respawn for 2 waves.");
+  }
+}
+
+function handleDeployedShipDeath() {
+  // Called when deployed ship dies — respawn controlling capital
+  if (!capitalShipObj || capitalShipObj.hp <= 0) {
+    endGame(false); return;
+  }
+  player = capitalShipObj;
+  capitalShipObj._isCapitalAutopilot = false;
+  capitalShipObj = null;
+  isDeployed = false;
+  deployedShipAvail = false; // no more deploying this wave
+  currentShipName = playerLoadout.ship;
+  player.hp = Math.min(player.maxHp, player.hp); // keep whatever HP capital had
+  updateHUD();
+  showSpecialToast("⚓ DEPLOYED SHIP LOST — Controlling capital. No re-deploy this wave.");
+}
+
+function drawCapitalStatusHUD() {
+  if (!isDeployed || !capitalShipObj) return;
+  const cap = capitalShipObj;
+  const panelW = 160, panelH = 56;
+  const px = GAME_W - panelW - 8, py = 8;
+  ctx.fillStyle = "rgba(0,8,20,0.82)";
+  ctx.strokeStyle = capitalDestroyed ? "#f44" : "#0af";
+  ctx.lineWidth = 1.5;
+  ctx.fillRect(px, py, panelW, panelH);
+  ctx.strokeRect(px, py, panelW, panelH);
+  ctx.fillStyle = capitalDestroyed ? "#f44" : "#0af";
+  ctx.font = "bold 10px monospace";
+  ctx.fillText("⚓ CAPITAL", px+6, py+13);
+  if (capitalDestroyed) {
+    ctx.fillStyle = "#f44";
+    ctx.font = "bold 11px monospace";
+    ctx.fillText("DESTROYED", px+6, py+30);
+    return;
+  }
+  // HP bar
+  const hpFrac = Math.max(0, cap.hp/cap.maxHp);
+  ctx.fillStyle = "#333"; ctx.fillRect(px+6, py+18, panelW-12, 7);
+  ctx.fillStyle = hpFrac > 0.5 ? "#0f0" : hpFrac > 0.25 ? "#ff8800" : "#f44";
+  ctx.fillRect(px+6, py+18, (panelW-12)*hpFrac, 7);
+  ctx.fillStyle = "#aaa"; ctx.font = "9px monospace";
+  ctx.fillText("HP " + Math.ceil(cap.hp), px+6, py+35);
+  // Shield bar
+  const shFrac = Math.max(0, (cap.shields||0)/Math.max(1,cap.maxShields));
+  ctx.fillStyle = "#333"; ctx.fillRect(px+6, py+38, panelW-12, 6);
+  ctx.fillStyle = "#0af";
+  ctx.fillRect(px+6, py+38, (panelW-12)*shFrac, 6);
+  ctx.fillStyle = "#aaa"; ctx.font = "9px monospace";
+  ctx.fillText("SH " + Math.ceil(cap.shields||0), px+6, py+52);
+}
+
 // ============================================================
 // UPDATE PLAYER
 // ============================================================
@@ -1974,6 +2245,13 @@ function updatePlayer() {
   if(player.specialCooldown>0)player.specialCooldown--;
 
   if(state==="shadowCometCutscene"||state==="shadowVenganceCutscene") return;
+
+  // ── Capital deploy key (G) ──
+  if(!player._gKeyPrev && keys["KeyG"]) {
+    if (isDeployed) recallToCapital();
+    else if (isCurrentShipCapital() && deployedShipAvail) deployFromCapital();
+  }
+  player._gKeyPrev = !!keys["KeyG"];
 
   const nemMult=(player.specialActive&&currentShipName==="Nemesis")?2.0
              :(player.specialActive&&currentShipName==="Starlight")?1.5
@@ -2190,7 +2468,27 @@ function updateAllies() {
       a.shootTimer=999;
       return;
     }
-    if(pingTarget&&!pingTarget.dead){
+    // ── Formation positioning ──
+    const _capitalObj = isDeployed && capitalShipObj ? capitalShipObj : null;
+    const _deployedObj = isDeployed ? player : null;
+    if(allyFormation==="standalone") {
+      // Standalone: skip position forcing — ally moves itself (handled in 1v1 block below)
+      fx = a.x; fy = a.y;
+    } else if(allyFormation==="defend_capital" && _capitalObj) {
+      // Surround the capital ship
+      const ccx=_capitalObj.x+_capitalObj.w/2, ccy=_capitalObj.y+_capitalObj.h/2;
+      const n=Math.max(1,allies.length);
+      const angle=(Math.PI*2*i/n)+frameCount*0.008;
+      const r=Math.max(_capitalObj.w,_capitalObj.h)*0.7+40+n*8;
+      fx=ccx+Math.cos(angle)*r-a.w/2; fy=ccy+Math.sin(angle)*r-a.h/2;
+    } else if(allyFormation==="defend_deployed" && _deployedObj) {
+      // Surround the deployed ship
+      const dcx=_deployedObj.x+_deployedObj.w/2, dcy=_deployedObj.y+_deployedObj.h/2;
+      const n=Math.max(1,allies.length);
+      const angle=(Math.PI*2*i/n)+frameCount*0.01;
+      const r=55+n*10;
+      fx=dcx+Math.cos(angle)*r-a.w/2; fy=dcy+Math.sin(angle)*r-a.h/2;
+    } else if(pingTarget&&!pingTarget.dead){
       const ptcx=pingTarget.x+pingTarget.w/2,ptcy=pingTarget.y+pingTarget.h/2;
       const n=Math.max(1,allies.length);
       const angle=(Math.PI*2*i/n);
@@ -2231,9 +2529,32 @@ function updateAllies() {
     if(pingTarget&&!pingTarget.dead){closest=pingTarget;}
     else enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-a.x-a.w/2,e.y+e.h/2-a.y-a.h/2);if(d<closestD){closestD=d;closest=e;}});
 
-    // ── Standalone 1v1: if a small/medium enemy is close, break formation and engage it ──
+    // ── Standalone / 1v1 targeting ──
     const _acx=a.x+a.w/2,_acy=a.y+a.h/2;
-    const _engageTarget = closest && !closest.dead && closestD < 320 && !pingTarget && isSmallEnemy(closest.type) ? closest : null;
+    const _inStandalone = allyFormation === "standalone";
+    // In standalone: each ally picks an enemy to 1v1; gang up if uneven
+    if(_inStandalone && enemies.length > 0) {
+      // Assign targets: spread allies evenly across enemies
+      const liveEnemies = enemies.filter(e=>!e.dead);
+      const targetIdx = Math.min(i, liveEnemies.length-1);
+      const _standaloneTarget = liveEnemies[targetIdx] || liveEnemies[0];
+      if(_standaloneTarget) {
+        const tdx=_standaloneTarget.x+_standaloneTarget.w/2-_acx;
+        const tdy=_standaloneTarget.y+_standaloneTarget.h/2-_acy;
+        const tdist=Math.hypot(tdx,tdy)||1;
+        a._orbitAngle=(a._orbitAngle||0)+0.04;
+        const orbitR=100+_standaloneTarget.w*0.3;
+        const targetX=_standaloneTarget.x+_standaloneTarget.w/2+Math.cos(a._orbitAngle)*orbitR-a.w/2;
+        const targetY=_standaloneTarget.y+_standaloneTarget.h/2+Math.sin(a._orbitAngle)*orbitR-a.h/2;
+        const odx=targetX-a.x,ody=targetY-a.y,od=Math.hypot(odx,ody)||1;
+        a.vx+=(odx/od)*2.5; a.vy+=(ody/od)*2.5;
+        const _as=Math.hypot(a.vx,a.vy);if(_as>20){a.vx*=20/_as;a.vy*=20/_as;}
+        a.vx*=0.84;a.vy*=0.84;a.x+=a.vx;a.y+=a.vy;
+        closest = _standaloneTarget;
+      }
+    }
+    // Break-formation 1v1 for small enemies when NOT standalone
+    const _engageTarget = !_inStandalone && closest && !closest.dead && closestD < 320 && !pingTarget && isSmallEnemy(closest.type) ? closest : null;
     if(_engageTarget) {
       // Orbit the target at close range — independent dogfight
       a._orbitAngle = (a._orbitAngle||0) + 0.045;
@@ -2631,6 +2952,26 @@ function checkCollisions() {
       }
     });
   });
+  // Capital autopilot takes damage from enemy bullets when deployed
+  if(isDeployed && capitalShipObj && !capitalDestroyed) {
+    enemyBullets.forEach(b=>{
+      if(b.dead||b.visualOnly)return;
+      if(overlaps(b,capitalShipObj)){
+        if(Math.random()<(capitalShipObj.dodgeBase||0)) return;
+        applyDamage(capitalShipObj, b);
+        b.dead=true;
+        if(capitalShipObj.hp<=0) {
+          capitalDestroyed=true;
+          capitalNoRespawn=2;
+          spawnDeathEffect(capitalShipObj);
+          playExplosion(8);
+          capitalShipObj=null;
+          isDeployed=false;
+          showSpecialToast("💀 CAPITAL DESTROYED — Ejected! Allies won't respawn for 2 waves.");
+        }
+      }
+    });
+  }
   enemyBullets.forEach(b=>{
     if(b.dead)return;
     if(overlaps(b,player)){b.dead=true;applyDamage(player,b);}
@@ -2851,6 +3192,7 @@ function render() {
 
   enemies.forEach(drawEntity);
   allies.forEach(drawEntity);
+  if(isDeployed && capitalShipObj && !capitalDestroyed) drawEntity(capitalShipObj);
   drawEntity(player);
   drawRailgunCharge();
   drawAimArrow();
@@ -2862,6 +3204,7 @@ function render() {
   drawBeamWarnings();
   drawBoostHUD();
   drawSpecialHUD();
+  drawCapitalStatusHUD();
   ctx.fillStyle="rgba(255,255,255,0.4)";ctx.font="18px monospace";
   ctx.fillText(infiniteMode?`Wave ${currentWave} (Infinite)`:`Wave ${currentWave} / ${WAVES.length}`,10,GAME_H-12);
   if(player.hp<player.maxHp*0.25){ctx.fillStyle="rgba(255,0,0,0.12)";ctx.fillRect(0,0,GAME_W,GAME_H);}
@@ -2936,30 +3279,51 @@ function updateHUD() {
     const el = document.getElementById("missiles");
     if (el) el.textContent = rack.length > 0 ? ("Current: " + curName + "  |  " + countStr) : "0";
   }
+  // Show/hide mobile deploy button
+  const dBtn = document.getElementById("deployBtn");
+  if (dBtn) {
+    const showDeploy = isCapitalShip();
+    dBtn.style.display = showDeploy ? "block" : "none";
+    dBtn.textContent = isDeployed ? "⚓ RECALL" : "⚓ DEPLOY";
+    dBtn.style.opacity = (!isDeployed && !deployedShipAvail) ? "0.4" : "1";
+  }
 }
 
 function setPlayerMissileKind(k) {
   if(player) player.missileKind=k;
 }
 
+function isCapitalShip() {
+  return typeof CAPITAL_SHIPS !== "undefined" && CAPITAL_SHIPS.has(currentShipName);
+}
+
 function cycleFormation() {
-  const modes=["behind","front","surround"];
-  const idx=modes.indexOf(allyFormation);
-  allyFormation=modes[(idx+1)%modes.length];
-  const labels={behind:"◀ BEHIND",front:"▶ FRONT",surround:"⬟ SURROUND"};
-  const btn=document.getElementById("formationBtn");
-  if(btn) btn.textContent=labels[allyFormation];
-  let toast=document.getElementById("formationToast");
+  // Base formations always available
+  // Capital-only formations: defend_capital, defend_deployed (only when deployed)
+  // standalone: always available
+  const base = ["behind","front","surround","standalone"];
+  const capitalExtra = isCapitalShip() ? ["defend_capital"] : [];
+  const deployedExtra = (isCapitalShip() && isDeployed) ? ["defend_deployed"] : [];
+  const modes = [...base, ...capitalExtra, ...deployedExtra];
+  const idx = modes.indexOf(allyFormation);
+  allyFormation = modes[(idx+1) % modes.length];
+  const labels = {
+    behind:"◀ BEHIND", front:"▶ FRONT", surround:"⬟ SURROUND",
+    standalone:"⚔ STANDALONE", defend_capital:"🛡 DEF. CAPITAL", defend_deployed:"🎯 DEF. DEPLOYED"
+  };
+  const btn = document.getElementById("formationBtn");
+  if(btn) btn.textContent = labels[allyFormation] || allyFormation;
+  let toast = document.getElementById("formationToast");
   if(!toast){
-    toast=document.createElement("div");
-    toast.id="formationToast";
-    toast.style.cssText="position:fixed;top:50px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#0af;font:bold 16px monospace;padding:6px 18px;border:1px solid #0af;border-radius:4px;z-index:9999;pointer-events:none;transition:opacity 0.4s";
+    toast = document.createElement("div");
+    toast.id = "formationToast";
+    toast.style.cssText = "position:fixed;top:50px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#0af;font:bold 16px monospace;padding:6px 18px;border:1px solid #0af;border-radius:4px;z-index:9999;pointer-events:none;transition:opacity 0.4s";
     document.body.appendChild(toast);
   }
-  toast.textContent=labels[allyFormation];
-  toast.style.opacity="1";
+  toast.textContent = labels[allyFormation] || allyFormation;
+  toast.style.opacity = "1";
   clearTimeout(toast._t);
-  toast._t=setTimeout(()=>toast.style.opacity="0",1500);
+  toast._t = setTimeout(() => toast.style.opacity = "0", 1500);
 }
 
 function checkMeteorUnlock() {}
@@ -2984,6 +3348,7 @@ function gameLoop() {
   }
   if(state==="playing"){
     updatePlayerDodgeTracking();
+    updateCapitalAutopilot();
     updatePlayer();updateAllies();updateEnemies();updateBullets();checkCollisions();updateSpecial();
     if(waveReinforceTimer>0){waveReinforceTimer--;if(waveReinforceTimer<=0&&!waveReinforceDone){
       waveReinforceDone=true;
@@ -3008,7 +3373,11 @@ function gameLoop() {
       waveTransitionText=`Wave ${currentWave} Cleared!  +${reward} credits`;
       waveTransitionTimer=300;state="waveTransition";updateHUD();
     }
-    if(player.hp<=0)endGame(false);
+    if(player.hp<=0){
+      if(isDeployed) handleDeployedShipDeath();
+      else if(capitalShipObj) { /* shouldn't happen */ endGame(false); }
+      else endGame(false);
+    }
     updateHUD();
   }
   if(state==="waveTransition"){
