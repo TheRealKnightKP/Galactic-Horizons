@@ -730,7 +730,7 @@ function buildAlly(i,totalSlots) {
     img:getImage(aDef.image), color:aDef.color,
     shootTimer:Math.floor(Math.random()*30), vx:0, vy:0, rotation:0, spriteAngleOffset:Math.PI,
     weaponType:wType, weaponSize:aDef.weaponSize, weaponStats:wStats, isAlly:true,
-    isHealer:aDef.isHealer||false,
+    isHealer:aDef.isHealer||false, doubleShot:aDef.doubleShot||false,
     dodge, speedMult:beh.speedMult,
   };
   initShieldFaces(a);
@@ -738,6 +738,12 @@ function buildAlly(i,totalSlots) {
 }
 
 function setPlayerShip(name) {
+  // Clean up any active deploy state before switching ships
+  if (typeof isDeployed !== "undefined" && isDeployed && typeof capitalShipObj !== "undefined" && capitalShipObj) {
+    capitalShipObj._isCapitalAutopilot = false;
+    capitalShipObj = null;
+    isDeployed = false;
+  }
   currentShipName=name; playerLoadout.ship=name;
   const d=SHIPS[name];
   let wType;
@@ -2186,10 +2192,18 @@ function updateCapitalAutopilot() {
       if (target) {
         const pred = predictPos(target.x+target.w/2, target.y+target.h/2, target.vx||0, target.vy||0, ccx, ccy, cap.weaponStats.speed||8);
         const angle = Math.atan2(pred.y-ccy, pred.x-ccx);
-        const bullets = fireBullets(cap, cap.weaponStats, angle, true);
-        bullets.forEach(b=>{b.color="#88ddff";});
-        playerBullets.push(...bullets);
-        cap.shootTimer = cap.weaponStats.fireInterval || 30;
+        if (cap.weaponStats.hitscan) {
+          fireRailgun(cap, cap.weaponStats, angle, true);
+        } else if (cap.doubleShot) {
+          const bullets = fireDoubleShot(cap, cap.weaponStats, angle, true);
+          bullets.forEach(b=>{b.color="#88ddff";});
+          playerBullets.push(...bullets);
+        } else {
+          const bullets = fireBullets(cap, cap.weaponStats, angle, true);
+          bullets.forEach(b=>{b.color="#88ddff";});
+          playerBullets.push(...bullets);
+        }
+        cap.shootTimer = Math.round((cap.weaponStats.fireInterval || 30) * 1.25); // 20% slower in autopilot
       }
     }
   }
@@ -2606,13 +2620,17 @@ function updateAllies() {
       const vgMult=a.vanguardActive?1.5:1.0;
       if(a.weaponStats.hitscan){
         fireRailgun(a,a.weaponStats,aimAngle,true);
+      } else if(a.doubleShot){
+        const bullets=fireDoubleShot(a,a.weaponStats,aimAngle,true);
+        bullets.forEach(b=>{b.color="#aaffaa";b.damage=(b.damage||0)*fmtMult*vgMult;});
+        playerBullets.push(...bullets);
       } else {
         const bullets=fireBullets(a,a.weaponStats,aimAngle,true);
         bullets.forEach(b=>{b.color="#aaffaa";b.damage=(b.damage||0)*fmtMult*vgMult;});
         playerBullets.push(...bullets);
       }
       const pingMult=(pingTarget&&!pingTarget.dead)?0.9:1.0;
-      a.shootTimer=(a.weaponStats.fireInterval||28)*2*pingMult;
+      a.shootTimer=Math.round((a.weaponStats.fireInterval||28)*pingMult);
     }
   });
 }
@@ -3043,7 +3061,8 @@ function drawEntity(obj) {
 
   const isPlayer=obj===player, isAlly=obj.isAlly;
   const isShadow=obj.isShadowComet;
-  const frameColor=isPlayer?"#4488ff":isAlly?"#44ff88":isShadow?"#ff2200":"#ff4444";
+  const isCapitalAuto=obj._isCapitalAutopilot;
+  const frameColor=isCapitalAuto?"#ffaa00":isPlayer?"#4488ff":isAlly?"#44ff88":isShadow?"#ff2200":"#ff4444";
   const hw=obj.w/2, hh=obj.h/2, cs=Math.min(hw,hh)*0.35, lw=2.5;
   ctx.strokeStyle=frameColor; ctx.lineWidth=lw;
   ctx.shadowColor=frameColor; ctx.shadowBlur=6;
