@@ -340,7 +340,7 @@ function renderShopShips(container) {
           <div>Speed: <span style="color:#ff0">${ship.speed}</span></div>
           <div>Missiles: <span style="color:#f80">${ship.missiles}</span></div>
           ${ship.pdc > 0 ? `<div>PDC: <span style="color:#88f">${ship.pdc} turrets</span></div>` : ""}
-          ${ship.extraAllySlots ? `<div>Ally slots: <span style="color:#0af">+${ship.extraAllySlots}</span></div>` : ""}
+          ${ship.allySlots ? `<div>Ally slots: <span style="color:#0af">${ship.allySlots.length}</span> <span style="color:#555;font-size:10px">(${[...new Set(ship.allySlots)].map(s=>(typeof ALLY_SLOT_LABEL!=="undefined"?ALLY_SLOT_LABEL[s]:s)||s).join("/")})</span></div>` : ""}
           <div style="margin-top:4px;color:#555;cursor:pointer" onclick="toggleShipInfo('${name}')">[close]</div>
         </div>
       </div>
@@ -539,9 +539,10 @@ function closeShop() {
 // ============================
 function ensureAllySlots() {
   const d = SHIPS[playerLoadout.ship || "Starlight"];
-  const n = 4 + (d.extraAllySlots || 0);
-  while (playerLoadout.allies.length < n)
-    playerLoadout.allies.push(null);
+  const n = (d.allySlots || []).length || 4;
+  // Clean up legacy _occupied markers — no longer needed
+  playerLoadout.allies = playerLoadout.allies.map(a => (a && a._occupied) ? null : a);
+  while (playerLoadout.allies.length < n) playerLoadout.allies.push(null);
 }
 
 function openLoadout() {
@@ -903,28 +904,32 @@ function renderShipLoadoutPanel(container) {
 function renderAllyLoadoutPanel(container) {
   ensureAllySlots();
   const sd = SHIPS[playerLoadout.ship || "Starlight"];
-  const totalSlots = 4 + (sd.extraAllySlots || 0);
+  const slotDefs = sd.allySlots || Array(4).fill("small");
+  const totalSlots = slotDefs.length;
   let html = `<p style="color:#aaa;margin:4px 0 8px">Ally slots: ${totalSlots} &nbsp;<span style="color:#666;font-size:11px">Buy allies in Shop → Allies tab</span></p>`;
   for (let i = 0; i < totalSlots; i++) {
     const slot = playerLoadout.allies[i];
-    // _occupied is a truthy object — must check BEFORE the !slot branch
-    if (slot && slot._occupied) {
-      html += `<div class="ally-slot" style="background:#060610;border:1px dashed #222;border-radius:6px;padding:6px 8px;margin-bottom:8px;color:#333;font:11px monospace;font-style:italic">
-        Slot ${i+1}: <span style="color:#333">occupied by multi-slot ally above</span></div>`;
-      continue;
-    }
+    const slotType = slotDefs[i] || "small";
+    const slotRank = (typeof ALLY_SLOT_RANK!=="undefined"?ALLY_SLOT_RANK:{})[slotType]||0;
+    const slotLabel = (typeof ALLY_SLOT_LABEL!=="undefined"?ALLY_SLOT_LABEL:{})[slotType]||slotType;
+    const slotColor = (typeof ALLY_SLOT_COLOR!=="undefined"?ALLY_SLOT_COLOR:{})[slotType]||"#888";
+    const slotTag = `<span style="color:${slotColor};font:bold 10px monospace;background:rgba(0,0,0,0.4);padding:1px 5px;border-radius:3px;border:1px solid ${slotColor}44">${slotLabel.toUpperCase()}</span>`;
     if (!slot) {
       html += `<div class="ally-slot" style="background:#0a0a14;border:1px dashed #334;border-radius:6px;padding:8px;margin-bottom:8px;color:#555;font:12px monospace">
-        <b style="color:#444">Slot ${i+1} — Empty</b><br>
-        <div style="margin-top:6px">`;
-      const available = ALLY_SHIP_ORDER.filter(sn => allyAvailable(sn, i) > 0);
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="color:#444">Slot ${i+1} — Empty</b> ${slotTag}</div><div>`;
+      const available = ALLY_SHIP_ORDER.filter(sn => {
+        if (allyAvailable(sn, i) <= 0) return false;
+        const aRank = (typeof ALLY_SLOT_RANK!=="undefined"?ALLY_SLOT_RANK:{})[ALLY_SHIP_DEFS[sn]?.slotSize||"small"]||0;
+        return aRank <= slotRank;
+      });
       if (available.length > 0) {
         html += `Assign: `;
         available.forEach(sn => {
           html += `<button style="width:auto;display:inline-block;font-size:11px;margin:2px" onclick="assignAllyToSlot(${i},'${sn}')">+ ${sn} (${allyAvailable(sn,i)} avail)</button>`;
         });
       } else {
-        html += `<span style="color:#444">No allies available — buy some in Shop → Allies</span>`;
+        const hasAny = ALLY_SHIP_ORDER.some(sn => allyAvailable(sn, i) > 0);
+        html += `<span style="color:#444">${hasAny ? `No ${slotLabel}-class allies owned — buy from Allies tab` : "No allies available — buy from Shop → Allies"}</span>`;
       }
       html += `</div></div>`;
     } else {
@@ -932,7 +937,7 @@ function renderAllyLoadoutPanel(container) {
       const beh = ALLY_BEHAVIORS[slot.behavior||0];
       html += `<div class="ally-slot" style="background:#0a0e1a;border:1px solid #334;border-radius:6px;padding:8px;margin-bottom:8px">`;
       html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">`;
-      html += `<b style="color:#0af">Slot ${i+1}: <span id="allyNameDisplay_${i}">${slot.name||slot.ship}</span></b>`;
+      html += `<span><b style="color:#0af">Slot ${i+1}: <span id="allyNameDisplay_${i}">${slot.name||slot.ship}</span></b> &nbsp;${slotTag}</span>`;
       html += `<button style="width:auto;font-size:10px;padding:2px 7px;background:rgba(255,50,50,0.15);border-color:#f44;color:#f44" onclick="removeAllyFromSlot(${i})">Remove</button>`;
       html += `</div>`;
       html += `<div style="margin:4px 0">Name: <input id="allyNameInput_${i}" value="${slot.name||slot.ship}" style="background:#111;border:1px solid #445;color:#eee;font:11px monospace;padding:2px 5px;width:130px" onchange="setAllyName(${i},this.value)"></div>`;
@@ -1177,8 +1182,22 @@ function setPlayerArmorTier(tier)    { if ((playerLoadout.ownedArmorTiers||[1]).
 function setPlayerEngineTier(tier)   { if ((playerLoadout.ownedEngineTiers||[1]).includes(tier)) { playerLoadout.engineTier = tier; setPlayerShip(currentShipName); renderLoadout(); } }
 function setAllyName(idx, name)      { if (!playerLoadout.allies[idx]) return; playerLoadout.allies[idx].name = name.trim()||playerLoadout.allies[idx].ship; renderLoadout(); }
 function setAllyBehavior(idx, beh)   { if (!playerLoadout.allies[idx]) return; playerLoadout.allies[idx].behavior = beh; renderLoadout(); }
-function assignAllyToSlot(idx, sn)   { if (allyAvailable(sn, idx) <= 0) return; playerLoadout.allies[idx] = { ship:sn, name:`${sn}#${allyPurchaseCount[sn]||1}`, weapon:"builtin", shieldTier:1, ownedShieldTiers:[1], behavior:0 }; renderLoadout(); }
-function removeAllyFromSlot(idx)     { playerLoadout.allies[idx] = null; renderLoadout(); }
+function assignAllyToSlot(idx, sn) {
+  if (allyAvailable(sn, idx) <= 0) return;
+  const sd = SHIPS[playerLoadout.ship || "Starlight"];
+  const slotDefs = sd.allySlots || Array(4).fill("small");
+  const slotType = slotDefs[idx] || "small";
+  const slotRank = (typeof ALLY_SLOT_RANK !== "undefined" ? ALLY_SLOT_RANK : {})[slotType] || 0;
+  const aRank = (typeof ALLY_SLOT_RANK !== "undefined" ? ALLY_SLOT_RANK : {})[ALLY_SHIP_DEFS[sn]?.slotSize || "small"] || 0;
+  if (aRank > slotRank) return; // ally too large for slot
+  if (playerLoadout.allies[idx] && !playerLoadout.allies[idx]._occupied) return; // slot occupied by real ally
+  playerLoadout.allies[idx] = { ship:sn, name:`${sn}#${allyPurchaseCount[sn]||1}`, weapon:"builtin", shieldTier:1, ownedShieldTiers:[1], behavior:0 };
+  renderLoadout();
+}
+function removeAllyFromSlot(idx) {
+  playerLoadout.allies[idx] = null;
+  renderLoadout();
+}
 function setAllyWeapon(idx, wk)      { playerLoadout.allies[idx].weapon = wk; renderLoadout(); }
 function setAllyShieldTier(idx,tier) { const s=playerLoadout.allies[idx]; if(!s||(!(s.ownedShieldTiers||[1]).includes(tier)))return; s.shieldTier=tier; renderLoadout(); }
 
