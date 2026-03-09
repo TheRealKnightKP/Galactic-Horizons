@@ -907,13 +907,13 @@ function renderAllyLoadoutPanel(container) {
   let html = `<p style="color:#aaa;margin:4px 0 8px">Ally slots: ${totalSlots} &nbsp;<span style="color:#666;font-size:11px">Buy allies in Shop → Allies tab</span></p>`;
   for (let i = 0; i < totalSlots; i++) {
     const slot = playerLoadout.allies[i];
+    // _occupied is a truthy object — must check BEFORE the !slot branch
+    if (slot && slot._occupied) {
+      html += `<div class="ally-slot" style="background:#060610;border:1px dashed #222;border-radius:6px;padding:6px 8px;margin-bottom:8px;color:#333;font:11px monospace;font-style:italic">
+        Slot ${i+1}: <span style="color:#333">occupied by multi-slot ally above</span></div>`;
+      continue;
+    }
     if (!slot) {
-      // Skip slots marked as occupied by a multi-slot ally
-      if (playerLoadout.allies[i] && playerLoadout.allies[i]._occupied) {
-        html += `<div class="ally-slot" style="background:#060610;border:1px dashed #222;border-radius:6px;padding:6px 8px;margin-bottom:8px;color:#333;font:11px monospace;font-style:italic">
-          Slot ${i+1}: <span style="color:#333">occupied by multi-slot ally above</span></div>`;
-        continue;
-      }
       html += `<div class="ally-slot" style="background:#0a0a14;border:1px dashed #334;border-radius:6px;padding:8px;margin-bottom:8px;color:#555;font:12px monospace">
         <b style="color:#444">Slot ${i+1} — Empty</b><br>
         <div style="margin-top:6px">`;
@@ -1222,7 +1222,7 @@ function buyAllyShield(idx, tier) {
   const price = SHIELD_TIER_PRICES[tier];
   const slot = playerLoadout.allies[idx];
   if (!slot||!price||money<price) return;
-  if (!(slot.ownedShieldTiers||[1]).includes(1)) slot.ownedShieldTiers=[1];
+  if (!slot.ownedShieldTiers) slot.ownedShieldTiers=[1];
   if (slot.ownedShieldTiers.includes(tier)) return;
   if (tier===3&&!slot.ownedShieldTiers.includes(2)) return;
   money -= price;
