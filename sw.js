@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.5.8";
+const CACHE = "galactic-horizons-v1.5.9";
 const ASSETS = [
   "./",
   "./index.html",
@@ -102,4 +102,5 @@ Versions:
 -V1.5.6 - Fixed Ally tab on shop
 -V1.5.7 - Arena Evolution part 2 update: Capital ship gameplay
 -V1.5.8 - Fixed Capital deployments and fixed Prometheus gun
+-V1.5.9 - Fixed capital deployments again
 */
