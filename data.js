@@ -120,7 +120,7 @@ const ALLY_SHIP_DEFS = {
   AllyTempest: { price: 280000, weaponSize: 5, hp: 2000, shields: 2200, armorType: "subcapital", image: "StarlancerTAC.png", color: "#00ffcc", w: 110, h: 60, slotCost: 2, doubleShot: true, pdc: 2, pdcSize: 5 },
   AllyBulwark: { price: 220000, weaponSize: 0, hp: 1750, shields: 1200, armorType: "subcapital", image: "HammerHead.png",    color: "#4488ff", w: 110, h: 60, slotCost: 2, pdc: 6, pdcSize: 4, isHeavyAlly: true },
   // ── Capital ally — costs 3 slots ──
-  AllyNemesis: { price: 800000, weaponSize: 8, hp: 2000, shields: 2500, armorType: "capital",    image: "Nemesis.png",       color: "#ffff44", w: 130, h: 68, slotCost: 3, doubleShot: true, pdc: 3, pdcSize: 3 },
+  AllyNemesis: { price: 800000, weaponSize: 8, hp: 2000, shields: 2500, armorType: "capital",    image: "Nemesis.png",       color: "#ffff44", w: 130, h: 68, slotCost: 3, doubleShot: true, bespoke: true, weaponType: "ballistic_cannon", pdc: 3, pdcSize: 3 },
   // Secret ship allies — spawned by Retribution Ultimate Power
   CometAlly:    { price: 999999, weaponSize: 5, hp: 100,  shields: 90,   armorType: "light",   image: "Meteor.png",        color: "#ff2200", w: 52,  h: 32 },
   VenganceAlly: { price: 999999, weaponSize: 8, hp: 200,  shields: 400,  armorType: "medium",  image: "Meteor.png",        color: "#ff0044", w: 72,  h: 44 },
