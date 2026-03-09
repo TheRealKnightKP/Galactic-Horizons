@@ -807,7 +807,7 @@ function setPlayerShip(name) {
     const _tuFireRate=Math.round((pdcStats?pdcStats.fireInterval*2:40)/_tuMult);
     player.turrets.push({rx:0,ry,fireRate:_tuFireRate,shootTimer:Math.floor(Math.random()*40),weaponStats:pdcStats});
   }
-  const totalSlots=4+(d.extraAllySlots||0);
+  const totalSlots=(d.allySlots||[]).length||4;
   while(playerLoadout.allies.length<totalSlots) playerLoadout.allies.push(null);
   allies=[];
   for(let i=0;i<totalSlots;i++){
@@ -825,7 +825,7 @@ function setPlayerShip(name) {
 function respawnDeadAllies() {
   if (capitalNoRespawn > 0) return; // ally respawn penalty active
   const d=SHIPS[currentShipName];
-  const totalSlots=4+(d.extraAllySlots||0);
+  const totalSlots=(d.allySlots||[]).length||4;
   allies=[];
   for(let i=0;i<totalSlots;i++){
     const a=buildAlly(i,totalSlots);
