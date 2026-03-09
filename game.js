@@ -384,6 +384,9 @@ let player={}, allies=[], enemies=[], playerBullets=[], enemyBullets=[];
 let missileTimer=0, ownedShips=[], shopOpenedFromMenu=false;
 let waveTransitionTimer=0, waveTransitionText="", beamFlashes=[], nukeRings=[];
 let frameCount = 0;
+// ── Adaptive AI: pattern learning state ──────────────────────────────────────
+let playerDodgeHistory = []; // last 8 dodge events: {preVx,preVy,postVx,postVy}
+let _prevPlayerVx = 0, _prevPlayerVy = 0; // last frame velocity for dodge detection
 let allyFormation = "behind";
 let playerTookDamageThisWave = false;
 const MAX_HIT_EFFECTS = 80;
@@ -428,6 +431,119 @@ function getEnemyAccel(e) {
   const s=ENEMIES[e.type]?.size||2;
   return e.speed*Math.max(0.06,0.55/Math.sqrt(s));
 }
+// ============================================================
+// ADAPTIVE ENEMY AI — Shot feedback + dodge habit learning
+// ============================================================
+
+// Called every frame from gameLoop to track player velocity changes
+function updatePlayerDodgeTracking() {
+  if(!player) return;
+  const vx = player.vx||0, vy = player.vy||0;
+  const dvx = vx - _prevPlayerVx, dvy = vy - _prevPlayerVy;
+  const deltaMag = Math.hypot(dvx, dvy);
+  // A "dodge event" = sharp velocity change above threshold
+  if(deltaMag > 1.8) {
+    playerDodgeHistory.push({preVx:_prevPlayerVx, preVy:_prevPlayerVy, postVx:vx, postVy:vy});
+    if(playerDodgeHistory.length > 8) playerDodgeHistory.shift();
+  }
+  _prevPlayerVx = vx;
+  _prevPlayerVy = vy;
+}
+
+// Returns the learning strength factor for the current player ship
+// High-dodge ships are harder to learn — more chaotic movement = noisier samples
+function getLearningStrength() {
+  const dodge = player ? (player.dodgeBase || 0) : 0;
+  return Math.max(0.08, 1.0 - dodge * 0.85);
+}
+
+// Returns wave-based learning scale: 0 at wave 1, fully active by wave 20
+function getWaveLearningScale() {
+  return Math.min(1.0, Math.max(0, currentWave - 5) / 15);
+}
+
+// Resolves pending shot feedback for an enemy — called from updateEnemies
+// Each entry in e.shotFeedback: {frame, predictedX, predictedY}
+function resolveEnemyShotFeedback(e) {
+  if(!e.shotFeedback || !e.shotFeedback.length || !player) return;
+  const wavScale = getWaveLearningScale();
+  const learnStr = getLearningStrength();
+  e.shotFeedback = e.shotFeedback.filter(fb => {
+    if(frameCount - fb.frame < 25) return true; // not resolved yet
+    // Player actual position when bullet would have arrived
+    const actualX = player.x + player.w/2;
+    const actualY = player.y + player.h/2;
+    const errX = actualX - fb.predictedX;
+    const errY = actualY - fb.predictedY;
+    // Weight the error into leadCorrection
+    // Noise proportional to dodge% — high dodge ships cause noisier corrections
+    const dodge = player.dodgeBase || 0;
+    const noiseX = (Math.random()-0.5) * dodge * 40;
+    const noiseY = (Math.random()-0.5) * dodge * 40;
+    const weight = 0.22 * learnStr * wavScale;
+    e.leadCorrection = e.leadCorrection || {x:0, y:0};
+    e.leadCorrection.x += (errX + noiseX) * weight;
+    e.leadCorrection.y += (errY + noiseY) * weight;
+    // Clamp correction so it doesn't go wild
+    const maxCorr = 80 * wavScale;
+    e.leadCorrection.x = Math.max(-maxCorr, Math.min(maxCorr, e.leadCorrection.x));
+    e.leadCorrection.y = Math.max(-maxCorr, Math.min(maxCorr, e.leadCorrection.y));
+    return false; // resolved, remove
+  });
+  // Decay correction each frame so old habits don't stick forever
+  if(e.leadCorrection) {
+    const decay = 0.998 - learnStr * 0.001;
+    e.leadCorrection.x *= decay;
+    e.leadCorrection.y *= decay;
+  }
+}
+
+// Returns the adjusted predicted aim position for an enemy firing at the player
+// Applies lead correction + dodge habit prediction
+function getAdaptiveAimPos(e, rawPredX, rawPredY) {
+  const wavScale = getWaveLearningScale();
+  if(wavScale <= 0) return {x: rawPredX, y: rawPredY};
+  e.leadCorrection = e.leadCorrection || {x:0, y:0};
+  let ax = rawPredX + e.leadCorrection.x;
+  let ay = rawPredY + e.leadCorrection.y;
+  // ── Dodge habit prediction ──
+  // If player is currently dodging AND we have history, predict post-dodge destination
+  if(playerDodgeHistory.length >= 3) {
+    const dvx = (player.vx||0) - _prevPlayerVx;
+    const dvy = (player.vy||0) - _prevPlayerVy;
+    const isMidDodge = Math.hypot(dvx, dvy) > 1.2;
+    if(isMidDodge) {
+      // Average recent post-dodge velocities to predict where they're heading
+      const recentCount = Math.min(4, playerDodgeHistory.length);
+      let avgPostVx = 0, avgPostVy = 0;
+      for(let i = playerDodgeHistory.length - recentCount; i < playerDodgeHistory.length; i++) {
+        avgPostVx += playerDodgeHistory[i].postVx;
+        avgPostVy += playerDodgeHistory[i].postVy;
+      }
+      avgPostVx /= recentCount;
+      avgPostVy /= recentCount;
+      // Usefulness of dodge history inversely proportional to dodge%
+      const dodge = player ? (player.dodgeBase || 0) : 0;
+      const dodgeHistoryWeight = (1.0 - dodge * 0.7) * wavScale * 0.4;
+      ax += avgPostVx * 18 * dodgeHistoryWeight;
+      ay += avgPostVy * 18 * dodgeHistoryWeight;
+    }
+  }
+  return {x: ax, y: ay};
+}
+
+// Wraps predictPos + applies adaptive aim for an enemy, records feedback
+function adaptivePredictAndRecord(e, targetX, targetY, tvx, tvy, fromX, fromY, speed) {
+  const raw = predictPos(targetX, targetY, tvx, tvy, fromX, fromY, speed);
+  const adj = getAdaptiveAimPos(e, raw.x, raw.y);
+  // Record for future feedback
+  e.shotFeedback = e.shotFeedback || [];
+  if(e.shotFeedback.length < 20) {
+    e.shotFeedback.push({frame: frameCount, predictedX: adj.x, predictedY: adj.y});
+  }
+  return adj;
+}
+
 function getEnemyInaccuracySpread() {
   const acc=Math.min(0.75,0.15+(Math.max(0,currentWave-1)/19)*0.60);
   return 1.2*(1-acc/0.75);
@@ -560,6 +676,7 @@ function drawShieldFaces(obj) {
 
 function buildAlly(i,totalSlots) {
   const slot=playerLoadout.allies[i];
+  if(slot && slot._occupied) return null; // this slot is occupied by a multi-slot ally
   if(!slot||!slot.ship) return null;
   const sName=slot.ship;
   const aDef=ALLY_SHIP_DEFS[sName]||ALLY_SHIP_DEFS.Sprite;
@@ -659,17 +776,35 @@ function setPlayerShip(name) {
     const _tuFireRate=Math.round((pdcStats?pdcStats.fireInterval*2:40)/_tuMult);
     player.turrets.push({rx:0,ry,fireRate:_tuFireRate,shootTimer:Math.floor(Math.random()*40),weaponStats:pdcStats});
   }
-  const totalSlots=2+(d.extraAllySlots||0);
+  const totalSlots=4+(d.extraAllySlots||0);
   while(playerLoadout.allies.length<totalSlots) playerLoadout.allies.push(null);
   allies=[];
-  for(let i=0;i<totalSlots;i++){const a=buildAlly(i,totalSlots);if(a)allies.push(a);}
+  for(let i=0;i<totalSlots;i++){
+    const a=buildAlly(i,totalSlots);
+    if(a){
+      allies.push(a);
+      const sc=(ALLY_SHIP_DEFS[playerLoadout.allies[i]?.ship||""]?.slotCost||1);
+      for(let si=1;si<sc&&i+si<totalSlots;si++){
+        if(!playerLoadout.allies[i+si]) playerLoadout.allies[i+si]={_occupied:true};
+      }
+    }
+  }
 }
 
 function respawnDeadAllies() {
   const d=SHIPS[currentShipName];
-  const totalSlots=2+(d.extraAllySlots||0);
+  const totalSlots=4+(d.extraAllySlots||0);
   allies=[];
-  for(let i=0;i<totalSlots;i++){const a=buildAlly(i,totalSlots);if(a)allies.push(a);}
+  for(let i=0;i<totalSlots;i++){
+    const a=buildAlly(i,totalSlots);
+    if(a){
+      allies.push(a);
+      const sc=(ALLY_SHIP_DEFS[playerLoadout.allies[i]?.ship||""]?.slotCost||1);
+      for(let si=1;si<sc&&i+si<totalSlots;si++){
+        if(!playerLoadout.allies[i+si]) playerLoadout.allies[i+si]={_occupied:true};
+      }
+    }
+  }
 }
 
 // ── SHADOW COMET WAVE ─────────────────────────────────────────
@@ -1084,46 +1219,35 @@ function checkShadowVenganceDefeat() {
   shadowVenganceActive = false;
   pdcDisabledThisWave = false;
 
-  // Determine unlock based on ship + upgrades + hitless
-  const _ship = playerLoadout.ship || currentShipName;
-  const _isComet = _ship === "Comet";
-  const _isVeng = _ship === "Vengeance";
-  const _isVengFull = isVenganceFullyUpgraded();
-  const _vengUpgrades = countVenganceUpgrades();
-  const _over50pct = _vengUpgrades.total / Math.max(1, _vengUpgrades.max) > 0.5;
+  // Progressive unlock chain — based on ownership state, not what you're flying
+  // Step 1: Don't own Vengeance → give it
+  // Step 2: Own Vengeance but ≤50% upgrades → max all upgrades
+  // Step 3: Own Vengeance with >50% upgrades (or fully upgraded) → max + give Retribution IF hitless
   let unlockMsg = "";
 
-  if (_isComet && isCometFullyUpgraded()) {
-    // Fully upgraded Comet → unlock Vengeance
-    if (!ownedShips.includes("Vengeance")) {
-      ownedShips.push("Vengeance");
-      unlockMsg = "⚔ VENGEANCE UNLOCKED — Fully upgraded Comet!";
-    } else {
-      unlockMsg = "⚔ Already own the Vengeance!";
-    }
-  } else if (_isVeng) {
-    if (_isVengFull || _over50pct) {
-      // ≥50% upgrades on Vengeance: max upgrades AND give Retribution if hitless
-      fullUpgradeVengance();
-      if (shadowVenganceNoHitWave) {
-        if (!ownedShips.includes("Retribution")) {
-          ownedShips.push("Retribution");
-          retributionUnlocked = true;
-          unlockMsg = "🔥 RETRIBUTION UNLOCKED — Fully upgraded + Perfect run!";
-        } else {
-          unlockMsg = "🔥 Already own the Retribution!";
-        }
+  if (!ownedShips.includes("Vengeance")) {
+    ownedShips.push("Vengeance");
+    vengeanaceUnlocked = true;
+    unlockMsg = "⚔ VENGEANCE UNLOCKED";
+  } else {
+    const _vengUpgrades = countVenganceUpgrades();
+    const _over50pct = _vengUpgrades.total / Math.max(1, _vengUpgrades.max) > 0.5;
+    // Always max upgrades
+    fullUpgradeVengance();
+    if (_over50pct && shadowVenganceNoHitWave) {
+      // >50% upgrades + hitless → Retribution
+      if (!ownedShips.includes("Retribution")) {
+        ownedShips.push("Retribution");
+        retributionUnlocked = true;
+        unlockMsg = "🔥 RETRIBUTION UNLOCKED — Vengeance mastered + Perfect run!";
       } else {
-        unlockMsg = "⚡ VENGEANCE FULLY UPGRADED";
+        unlockMsg = "🔥 RETRIBUTION already owned. Vengeance fully upgraded!";
       }
+    } else if (_over50pct) {
+      unlockMsg = "⚡ VENGEANCE FULLY UPGRADED — Beat it hitless for RETRIBUTION!";
     } else {
-      // ≤50% upgrades: just max upgrades
-      fullUpgradeVengance();
       unlockMsg = "⚡ VENGEANCE FULLY UPGRADED";
     }
-  } else {
-    // Other ship: no unlock, just reward
-    unlockMsg = "";
   }
 
   if (unlockMsg) {
@@ -2106,13 +2230,28 @@ function updateAllies() {
     let closest=null,closestD=1e9;
     if(pingTarget&&!pingTarget.dead){closest=pingTarget;}
     else enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-a.x-a.w/2,e.y+e.h/2-a.y-a.h/2);if(d<closestD){closestD=d;closest=e;}});
+
+    // ── Standalone 1v1: if a small/medium enemy is close, break formation and engage it ──
+    const _acx=a.x+a.w/2,_acy=a.y+a.h/2;
+    const _engageTarget = closest && !closest.dead && closestD < 320 && !pingTarget && isSmallEnemy(closest.type) ? closest : null;
+    if(_engageTarget) {
+      // Orbit the target at close range — independent dogfight
+      a._orbitAngle = (a._orbitAngle||0) + 0.045;
+      const orbitR = 110;
+      const targetX = _engageTarget.x+_engageTarget.w/2 + Math.cos(a._orbitAngle)*orbitR - a.w/2;
+      const targetY = _engageTarget.y+_engageTarget.h/2 + Math.sin(a._orbitAngle)*orbitR - a.h/2;
+      const odx=targetX-a.x, ody=targetY-a.y, od=Math.hypot(odx,ody)||1;
+      a.vx += (odx/od)*2.2; a.vy += (ody/od)*2.2;
+      const _as=Math.hypot(a.vx,a.vy); if(_as>18){a.vx*=18/_as;a.vy*=18/_as;}
+      a.vx*=0.84; a.vy*=0.84; a.x+=a.vx; a.y+=a.vy;
+    }
+
     a.rotation=closest?Math.atan2(closest.y+closest.h/2-a.y-a.h/2,closest.x+closest.w/2-a.x-a.w/2):player.rotation;
     a.shootTimer--;
     if(a.shootTimer<=0&&closest&&a.weaponStats){
-      const acx=a.x+a.w/2,acy=a.y+a.h/2;
-      const pred=predictPos(closest.x+closest.w/2,closest.y+closest.h/2,closest.vx||0,closest.vy||0,acx,acy,a.weaponStats.speed||8);
-      const aimAngle=Math.atan2(pred.y-acy,pred.x-acx);
-      const fmtMult=(allyFormation==="front"&&!pingTarget)?1.3:1.0;
+      const pred=predictPos(closest.x+closest.w/2,closest.y+closest.h/2,closest.vx||0,closest.vy||0,_acx,_acy,a.weaponStats.speed||8);
+      const aimAngle=Math.atan2(pred.y-_acy,pred.x-_acx);
+      const fmtMult=(_engageTarget?1.5:1.0)*((allyFormation==="front"&&!pingTarget)?1.3:1.0);
       const vgMult=a.vanguardActive?1.5:1.0;
       if(a.weaponStats.hitscan){
         fireRailgun(a,a.weaponStats,aimAngle,true);
@@ -2162,7 +2301,7 @@ function updateEnemies() {
         t.shootTimer--;
         if(t.shootTimer<=0&&t.weaponStats){
           const tx=e.x+t.rx,ty=e.y+t.ry;
-          const pred=predictPos(pcx,pcy,player.vx||0,player.vy||0,tx,ty,t.weaponStats.speed||8);
+          const pred=adaptivePredictAndRecord(e,pcx,pcy,player.vx||0,player.vy||0,tx,ty,t.weaponStats.speed||8);
           const dAngle=Math.atan2(pred.y-ty,pred.x-tx);
           let dSide=dAngle-(e.rotation||0);
           while(dSide>Math.PI)dSide-=Math.PI*2; while(dSide<-Math.PI)dSide+=Math.PI*2;
@@ -2223,6 +2362,7 @@ function updateEnemies() {
       }
       return;
     }
+    resolveEnemyShotFeedback(e);
     if(e.stunTimer>0){e.stunTimer--;}
     else{
       const ecx=e.x+e.w/2,ecy=e.y+e.h/2;
@@ -2246,6 +2386,8 @@ function updateEnemies() {
           tx=closestA.x+closestA.w/2; ty=closestA.y+closestA.h/2;
         }
         const myIdx=smallList.indexOf(e);
+        // Capital command aura: fire faster when a capital is nearby
+        if(e._capitalBoost>0){e._capitalBoost--;e.shootTimer=Math.max(0,(e.shootTimer||0)-2);}
         e.surroundAngle+=mode==="flanker"?0.03:0.018;
         if(mode==="flanker"){
           if(e.archetypeTimer<=0){e.flankerPhase=e.flankerPhase==="flank"?"normal":"flank";e.archetypeTimer=90+Math.floor(Math.random()*120);}
@@ -2271,23 +2413,56 @@ function updateEnemies() {
           if(od<85){e.vx+=(odx/od)*accel*1.5;e.vy+=(ody/od)*accel*1.5;}
         });
       } else {
-        const TARGET_RANGE=430,FLEE_RANGE=260;
         const eSize=ENEMIES[e.type]?.size||2;
-        // Large ships get slower strafe to prevent wobble
-        const strafeMult=eSize>=6?0.6:eSize>=4?0.85:1.0;
+        const isCapital = eSize >= 6;
         const strafeSign=(enemies.indexOf(e)%2===0)?1:-1;
-        if(dist<FLEE_RANGE){e.vx-=ndx*accel*4;e.vy-=ndy*accel*4;}
-        else if(dist>TARGET_RANGE+100){e.vx+=ndx*accel*1.5;e.vy+=ndy*accel*1.5;}
-        else{
-          e.vx+=(-ndy*strafeSign)*accel*1.8*strafeMult;e.vy+=(ndx*strafeSign)*accel*1.8*strafeMult;
-          const re=dist-TARGET_RANGE;
-          e.vx+=ndx*(re/TARGET_RANGE)*accel*0.8;e.vy+=ndy*(re/TARGET_RANGE)*accel*0.8;
+        if(isCapital) {
+          // ── Capital ship battle line AI ──
+          // Hold range, strafe slowly, maintain spacing from other capitals
+          const CAPITAL_RANGE = 380 + eSize*10;
+          const CAPITAL_FLEE  = 200;
+          const strafeMult = eSize>=8 ? 0.35 : 0.55;
+          if(dist < CAPITAL_FLEE) {
+            e.vx -= ndx*accel*3; e.vy -= ndy*accel*3;
+          } else if(dist > CAPITAL_RANGE + 80) {
+            e.vx += ndx*accel*1.2; e.vy += ndy*accel*1.2;
+          } else {
+            // Slow controlled strafe — capitals hold the line
+            e.vx += (-ndy*strafeSign)*accel*strafeMult;
+            e.vy += (ndx*strafeSign)*accel*strafeMult;
+            const re=dist-CAPITAL_RANGE;
+            e.vx += ndx*(re/CAPITAL_RANGE)*accel*0.5;
+            e.vy += ndy*(re/CAPITAL_RANGE)*accel*0.5;
+          }
+          // Maintain spacing from other capitals
+          enemies.forEach(other=>{
+            if(other===e||isSmallEnemy(other.type)||other.type==="Dreadnaught")return;
+            const odx=e.x-other.x,ody=e.y-other.y,od=Math.hypot(odx,ody)||1;
+            if(od<220){e.vx+=(odx/od)*accel*1.2;e.vy+=(ody/od)*accel*1.2;}
+          });
+          // ── Command aura: nearby small ships shoot faster ──
+          enemies.forEach(other=>{
+            if(other===e||!isSmallEnemy(other.type)||other.dead)return;
+            const cd=Math.hypot(other.x+other.w/2-ecx,other.y+other.h/2-ecy);
+            if(cd<350) other._capitalBoost=8; // flag checked during small ship shoot timer
+          });
+        } else {
+          // Medium ship — existing behavior
+          const TARGET_RANGE=430,FLEE_RANGE=260;
+          const strafeMult=eSize>=4?0.85:1.0;
+          if(dist<FLEE_RANGE){e.vx-=ndx*accel*4;e.vy-=ndy*accel*4;}
+          else if(dist>TARGET_RANGE+100){e.vx+=ndx*accel*1.5;e.vy+=ndy*accel*1.5;}
+          else{
+            e.vx+=(-ndy*strafeSign)*accel*1.8*strafeMult;e.vy+=(ndx*strafeSign)*accel*1.8*strafeMult;
+            const re=dist-TARGET_RANGE;
+            e.vx+=ndx*(re/TARGET_RANGE)*accel*0.8;e.vy+=ndy*(re/TARGET_RANGE)*accel*0.8;
+          }
+          enemies.forEach(other=>{
+            if(other===e||isSmallEnemy(other.type)||other.type==="Dreadnaught")return;
+            const odx=e.x-other.x,ody=e.y-other.y,od=Math.hypot(odx,ody)||1;
+            if(od<200){e.vx+=(odx/od)*accel;e.vy+=(ody/od)*accel;}
+          });
         }
-        enemies.forEach(other=>{
-          if(other===e||isSmallEnemy(other.type)||other.type==="Dreadnaught")return;
-          const odx=e.x-other.x,ody=e.y-other.y,od=Math.hypot(odx,ody)||1;
-          if(od<200){e.vx+=(odx/od)*accel;e.vy+=(ody/od)*accel;}
-        });
       }
       e.vx*=friction;e.vy*=friction;
       const spd=Math.hypot(e.vx,e.vy);
@@ -2327,7 +2502,7 @@ function updateEnemies() {
       t.shootTimer--;
       if(t.shootTimer<=0&&t.weaponStats){
         const tx=e.x+t.rx,ty=e.y+t.ry;
-        const pred=predictPos(pcx,pcy,player.vx||0,player.vy||0,tx,ty,t.weaponStats.speed||8);
+        const pred=adaptivePredictAndRecord(e,pcx,pcy,player.vx||0,player.vy||0,tx,ty,t.weaponStats.speed||8);
         const aimAngle=Math.atan2(pred.y-ty,pred.x-tx);
         // Half RPM if target is roughly to the side of the turret
         const shipAngle=e.rotation||0;
@@ -2352,7 +2527,7 @@ function updateEnemies() {
       e.beamTimer--;
       if(e.beamTimer<=0){
         const ecx=e.x+e.w/2,ecy=e.y+e.h/2;
-        const pred=predictPos(pcx,pcy,player.vx||0,player.vy||0,ecx,ecy,16);
+        const pred=adaptivePredictAndRecord(e,pcx,pcy,player.vx||0,player.vy||0,ecx,ecy,16);
         const angle=Math.atan2(pred.y-ecy,pred.x-ecx);
         enemyBullets.push({x:ecx,y:ecy,vx:Math.cos(angle)*16,vy:Math.sin(angle)*16,w:14,h:14,damage:ENEMIES.Dominion.beamDamage,color:"#00aaff",category:"laser",weaponSize:10,penetration:9999,missile:true});
         e.beamTimer=ENEMIES.Dominion.beamCooldownFrames||600;
@@ -2482,7 +2657,17 @@ function drawEntity(obj) {
   const hasImg=obj.img&&obj.img.complete&&obj.img.naturalWidth>0;
   const cx=obj.x+obj.w/2,cy=obj.y+obj.h/2;
   ctx.save();ctx.translate(cx,cy);ctx.rotate((obj.rotation||0)+(obj.spriteAngleOffset||0));
-  if(hasImg)ctx.drawImage(obj.img,-obj.w/2,-obj.h/2,obj.w,obj.h);
+  if(hasImg){
+    const nw=obj.img.naturalWidth, nh=obj.img.naturalHeight;
+    if(nw>0&&nh>0){
+      // Fit image inside hitbox while preserving natural aspect ratio
+      const scale=Math.min(obj.w/nw, obj.h/nh);
+      const dw=nw*scale, dh=nh*scale;
+      ctx.drawImage(obj.img,-dw/2,-dh/2,dw,dh);
+    } else {
+      ctx.drawImage(obj.img,-obj.w/2,-obj.h/2,obj.w,obj.h);
+    }
+  }
   else{ctx.fillStyle=obj.color||"#fff";ctx.fillRect(-obj.w/2,-obj.h/2,obj.w,obj.h);}
 
   const isPlayer=obj===player, isAlly=obj.isAlly;
@@ -2798,6 +2983,7 @@ function gameLoop() {
     return;
   }
   if(state==="playing"){
+    updatePlayerDodgeTracking();
     updatePlayer();updateAllies();updateEnemies();updateBullets();checkCollisions();updateSpecial();
     if(waveReinforceTimer>0){waveReinforceTimer--;if(waveReinforceTimer<=0&&!waveReinforceDone){
       waveReinforceDone=true;
