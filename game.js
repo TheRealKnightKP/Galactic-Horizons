@@ -344,8 +344,105 @@ function drawHitEffects() {
 }
 
 // ============================================================
-// DEATH EFFECTS
+// THRUSTER EFFECTS
 // ============================================================
+const MAX_THRUSTER_PARTICLES = 200;
+
+function spawnThrusterParticles(obj, isPlayer, shipName) {
+  if (_thrusterParticles.length >= MAX_THRUSTER_PARTICLES) return;
+  const shape = isPlayer ? (typeof getThrusterShape==="function"?getThrusterShape(shipName):"classic") : "classic";
+  const color = isPlayer ? (typeof getThrusterColor==="function"?getThrusterColor(shipName):THRUSTER_DEFAULT_COLOR) : "#8084ff";
+  const cx = obj.x + obj.w/2, cy = obj.y + obj.h/2;
+  const angle = obj.rotation || 0;
+  // Exhaust comes from the back of the ship
+  const backX = cx - Math.cos(angle) * (obj.w * 0.5);
+  const backY = cy - Math.sin(angle) * (obj.w * 0.5);
+  const spd = Math.hypot(obj.vx||0, obj.vy||0);
+  if (spd < 0.5 && !obj.boosting) return; // don't spawn if barely moving
+
+  const count = obj.boosting ? 4 : 2;
+  for (let i = 0; i < count; i++) {
+    if (_thrusterParticles.length >= MAX_THRUSTER_PARTICLES) break;
+    let px=backX, py=backY, pvx, pvy, life, size;
+    const base = spd * 0.3;
+
+    switch(shape) {
+      case "cone":
+        pvx = -Math.cos(angle)*base + (Math.random()-0.5)*2.5;
+        pvy = -Math.sin(angle)*base + (Math.random()-0.5)*2.5;
+        life = 14; size = 4 + Math.random()*3;
+        break;
+      case "ring":
+        const ra = Math.random()*Math.PI*2;
+        px = backX + Math.cos(ra)*4; py = backY + Math.sin(ra)*4;
+        pvx = -Math.cos(angle)*base*0.3; pvy = -Math.sin(angle)*base*0.3;
+        life = 12; size = 3;
+        break;
+      case "twin":
+        const side = (i%2===0?1:-1);
+        px = backX + Math.cos(angle+Math.PI/2)*side*(obj.h*0.28);
+        py = backY + Math.sin(angle+Math.PI/2)*side*(obj.h*0.28);
+        pvx = -Math.cos(angle)*base*1.2; pvy = -Math.sin(angle)*base*1.2;
+        life = 13; size = 3;
+        break;
+      case "spiral":
+        const sa = angle + Math.PI + (frameCount*0.3 + i*Math.PI);
+        pvx = Math.cos(sa)*base; pvy = Math.sin(sa)*base;
+        life = 16; size = 2.5;
+        break;
+      case "burst":
+        const ba = Math.random()*Math.PI*2;
+        pvx = Math.cos(ba)*(base*0.8+Math.random()*1.5); pvy = Math.sin(ba)*(base*0.8+Math.random()*1.5);
+        life = 10; size = 2;
+        break;
+      case "blade":
+        pvx = -Math.cos(angle)*base*1.5 + (Math.random()-0.5)*0.5;
+        pvy = -Math.sin(angle)*base*1.5 + (Math.random()-0.5)*0.5;
+        life = 8; size = 1.5 + Math.random()*4;
+        break;
+      case "ghost":
+        pvx = -Math.cos(angle)*base*0.4 + (Math.random()-0.5)*1;
+        pvy = -Math.sin(angle)*base*0.4 + (Math.random()-0.5)*1;
+        life = 22; size = 5 + Math.random()*4;
+        break;
+      default: // classic
+        pvx = -Math.cos(angle)*base + (Math.random()-0.5)*1.2;
+        pvy = -Math.sin(angle)*base + (Math.random()-0.5)*1.2;
+        life = 12; size = 3 + Math.random()*2;
+    }
+    if (obj.boosting) { life = Math.round(life * 1.5); size *= 1.3; }
+    _thrusterParticles.push({ x:px, y:py, vx:pvx, vy:pvy, life, maxLife:life, color, shape, size });
+  }
+}
+
+function updateThrusterParticles() {
+  _thrusterParticles.forEach(p => { p.x+=p.vx; p.y+=p.vy; p.vx*=0.88; p.vy*=0.88; p.life--; });
+  _thrusterParticles = _thrusterParticles.filter(p => p.life > 0);
+}
+
+function drawThrusterParticles() {
+  _thrusterParticles.forEach(p => {
+    const t = p.life/p.maxLife;
+    ctx.save();
+    ctx.globalAlpha = t * (p.shape==="ghost" ? 0.35 : 0.75);
+    ctx.fillStyle   = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur  = p.shape==="blade" ? 14 : p.shape==="ghost" ? 22 : 8;
+    if (p.shape==="blade") {
+      // Draw a sharp slash line
+      const len = p.size * t;
+      ctx.strokeStyle = p.color; ctx.lineWidth = 2*t;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x+p.vx*len, p.y+p.vy*len); ctx.stroke();
+    } else if (p.shape==="ring") {
+      ctx.strokeStyle = p.color; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size*(2-t), 0, Math.PI*2); ctx.stroke();
+    } else {
+      const r = Math.max(0.5, p.size * t);
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  });
+}
 let deathEffects = [];
 
 function spawnDeathEffect(enemy) {
@@ -410,6 +507,8 @@ let deployedShipAvail = true;    // false after deployed ship dies until next wa
 let capitalNoRespawn  = 0;       // waves remaining where allies don't respawn (penalty)
 let capitalDestroyed  = false;   // capital was destroyed this wave
 let playerTookDamageThisWave = false;
+let _waveMissileFired = false; // tracks if player fired a missile this wave
+let _thrusterParticles = []; // { x,y,vx,vy,life,maxLife,color,shape,size }
 // Enemy capital AI state
 let _enemyCapFormation = "default"; // current enemy capital formation response
 let _enemyCapTimer     = 0;         // frames until next formation re-evaluation
@@ -773,20 +872,35 @@ function setPlayerShip(name) {
   // Retribution Ultimate Power overrides dodge to 50% base / 95% boosted while active
   const dodgeBase=Math.min(0.90, specialDodge + baseDodgeBySize + engTier.dodgeBonus);
   const dodgeBoosted=Math.min(0.95, specialDodge + baseDodgeBySize*2 + engTier.dodgeBonus);
+  // ── Apply ship mastery bonuses ──
+  const _mb = (typeof getMasteryBonus === "function") ? getMasteryBonus(name) : null;
+  const _mbHp      = _mb?.maxHpMult      || 1.0;
+  const _mbShield  = _mb?.maxShieldsMult || 1.0;
+  const _mbSpeed   = _mb?.speedMult      || 1.0;
+  const _mbDodge   = _mb?.dodgeBonus     || 0;
+  const _mbDmg     = _mb?.weaponDamageMult || 1.0;
+  const _mbFR      = _mb?.fireRateMult   || 1.0;
+  const _mastHp    = Math.round(baseHp * _mbHp);
+  const _mastSh    = Math.round(baseShields * _mbShield);
+  const _mastSpd   = baseSpeed * _mbSpeed;
+  const _mastDodge = Math.min(0.90, dodgeBase + _mbDodge);
+  const _mastDodgeB= Math.min(0.95, dodgeBoosted + _mbDodge);
+  const _mastWStats= wStats ? {...wStats, damage: Math.round(wStats.damage*_mbDmg), fireInterval: Math.max(1, Math.round(wStats.fireInterval/_mbFR))} : null;
+
   player={
     x:80, y:GAME_H/2-20, w:Math.round((40+(d.size||1)*16)*SIZE_SCALE), h:Math.round((24+(d.size||1)*8)*SIZE_SCALE),
-    hp:baseHp, maxHp:baseHp, shields:baseShields, maxShields:baseShields,
+    hp:_mastHp, maxHp:_mastHp, shields:_mastSh, maxShields:_mastSh,
     armor:baseArmor, maxArmor:baseArmor, armorType:d.armorType||"light",
     missiles:(playerLoadout.missileRack||[]).length,
     maxMissiles:(playerLoadout.missileRack||[]).length,
-    speed:baseSpeed, maxSpeed:baseSpeed, accel:baseSpeed*0.20,
-    weaponType:wType, weaponSize:d.weaponSize, weaponStats:wStats,
+    speed:_mastSpd, maxSpeed:_mastSpd, accel:_mastSpd*0.20,
+    weaponType:wType, weaponSize:d.weaponSize, weaponStats:_mastWStats,
     bespoke:d.bespoke, doubleShot:d.doubleShot||false, pdcCount:d.pdc, missileType:d.missileType||2,
     missileRack:[...(playerLoadout.missileRack||[])], missileActiveKind:(playerLoadout.missileRack||[])[0]?.kind||null,
     img:getImage(d.image), color:d.color, rotation:0, spriteAngleOffset:spriteOffset,
     vx:0, vy:0, shootTimer:0,
     boosting:false, boostTimer:0, boostCooldown:0,
-    boostDuration, boostCooldownMax, dodgeBase, dodgeBoosted,
+    boostDuration, boostCooldownMax, dodgeBase:_mastDodge, dodgeBoosted:_mastDodgeB,
     railgunCharge:0, railgunCharging:false,
     specialCooldown:0, specialActive:false, specialTimer:0,
     specialMissilesUsed:0, specialSalvoTimer:0, specialSalvoCount:0, specialSalvoTotal:0,
@@ -1363,6 +1477,7 @@ function spawnWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
   waveReinforceTimer=0; waveReinforceDone=false;
   _enemyCapFormation="default"; _enemyCapTimer=0; _enemyCapRegen=1.0; _playerYHistory=[];
+  _waveMissileFired = false;
   shadowCometActive = false;
   shadowVenganceActive = false;
   pdcDisabledThisWave = false;
@@ -1473,6 +1588,10 @@ function returnToMenuPreserveMoney() {
 
 function endGame(won) {
   state="gameover";
+  if (!won) recordPlayerDeath?.();
+  recordSessionEnd?.();
+  saveGame?.();
+  submitLeaderboard?.();
   document.getElementById("gameOverText").textContent=won?"🏆 Victory!":"💀 Game Over";
   document.getElementById("finalMoney").textContent=money;
   document.getElementById("gameOverMenu").style.display="block";
@@ -1525,10 +1644,52 @@ function applyDamage(target,bullet) {
   const stunSynergy=(cat==="ballistic"&&target.stunTimer>0)?1.5:1.0;
   const laserShieldMult=(cat==="laser"&&target.distortionWeakened)?1.5:1.0;
 
-  let shieldDmg,hullDmg;
-  if(cat==="ballistic"){shieldDmg=rawDmg*0.25;hullDmg=rawDmg*0.5*stunSynergy*dirMult;}
-  else if(cat==="distortion"){shieldDmg=rawDmg*0.15;hullDmg=rawDmg*0.1;}
-  else{shieldDmg=rawDmg*laserShieldMult;hullDmg=rawDmg*dirMult;}
+  // Critical hit (critical_railgun)
+  let critBoost = 1.0;
+  if (bullet.critChance && Math.random() < bullet.critChance) {
+    critBoost = bullet.critMult || 3.0;
+    if (target === player || target.isAlly) {
+      // crits on player side show effect
+    } else {
+      spawnHitEffect(target.x+target.w/2, target.y+target.h/2, {...bullet, category:"railgun", size: wSize+2});
+    }
+    if (typeof recordCareerStat === "function") recordCareerStat("railgunCrits");
+  }
+
+  let shieldDmg, hullDmg;
+  if (cat==="ballistic") {
+    shieldDmg = rawDmg * 0.25;
+    hullDmg   = rawDmg * 0.5 * stunSynergy * dirMult * critBoost;
+  } else if (cat==="lc_ballistic") {
+    // Laser-coated: 50% shield, 50% hull when shields up; 90% hull when shields down
+    const shieldsUp = (target.shields||0) > 0;
+    shieldDmg = rawDmg * (shieldsUp ? 0.50 : 0);
+    hullDmg   = rawDmg * (shieldsUp ? 0.50 : 0.90) * dirMult * critBoost;
+  } else if (cat==="distortion") {
+    shieldDmg = rawDmg * 0.15;
+    hullDmg   = rawDmg * 0.10;
+  } else if (cat==="phase") {
+    // Bypasses shields entirely, half hull
+    shieldDmg = 0;
+    hullDmg   = rawDmg * 0.5 * dirMult * critBoost;
+  } else if (cat==="corrosion") {
+    // Apply DoT, small direct damage
+    shieldDmg = rawDmg * 0.5;
+    hullDmg   = rawDmg * 0.3 * dirMult;
+    if (!target.corrosionTimer) {
+      target.corrosionTimer = 180;
+      target.corrosionDPS   = (bullet.corrosionDPS || 0.18) * rawDmg;
+    } else {
+      target.corrosionTimer = Math.max(target.corrosionTimer, 180); // refresh
+    }
+  } else if (cat==="void") {
+    // Dealt via AOE expansion in bullet loop — this is direct dmg for any direct hit
+    shieldDmg = rawDmg * laserShieldMult;
+    hullDmg   = rawDmg * dirMult * critBoost;
+  } else {
+    shieldDmg = rawDmg * laserShieldMult;
+    hullDmg   = rawDmg * dirMult * critBoost;
+  }
 
   if (target!==player && currentShipName==="Vengeance" && player.revengeActive) {
     shieldDmg*=2; hullDmg*=2;
@@ -1538,22 +1699,48 @@ function applyDamage(target,bullet) {
   applyShieldFaceHit(target, bullet, shieldDmg);
   const faceIsDownNow = isFaceDown(target, bullet);
 
-  const hullExposed = faceWasDown || faceIsDownNow || cat==="ballistic" || cat==="distortion";
-  if(hullExposed){
-    target.armor=Math.max(0,target.armor-pen*armorMult);
-    const hullFactor=1-(target.armor/(target.maxArmor||100));
-    target.hp-=hullDmg*hullFactor;
+  // Phase bypasses hull-exposure check — always hits hull
+  const hullExposed = cat==="phase" || cat==="lc_ballistic" || faceWasDown || faceIsDownNow || cat==="ballistic" || cat==="distortion";
+  if (hullExposed) {
+    target.armor = Math.max(0, target.armor - pen * armorMult);
+    // Corrosion DoT ignores armor
+    const hullFactor = (cat==="corrosion") ? 1.0 : 1 - (target.armor/(target.maxArmor||100));
+    target.hp -= hullDmg * hullFactor;
   }
 
-  if(cat==="distortion"){
+  // Stagger (overload_bolt)
+  if (bullet.staggerOnHit && !target.staggerTimer) {
+    target.staggerTimer = bullet.staggerDur || 45;
+    if (typeof personalRecords !== "undefined") personalRecords.staggerKills = (personalRecords.staggerKills||0) + 0.01; // counted on kill
+  }
+
+  // Distortion stun + weakened
+  if (cat==="distortion") {
     const hitFaceDown = isFaceDown(target, bullet);
-    if(hitFaceDown && !target.stunTimer){
-      target.stunTimer=getStunDuration(wSize);
-      target.distortionWeakened=false;
-    } else if(!hitFaceDown){
-      target.distortionWeakened=true;
+    if (hitFaceDown && !target.stunTimer) {
+      target.stunTimer = getStunDuration(wSize);
+      target.distortionWeakened = false;
+    } else if (!hitFaceDown) {
+      target.distortionWeakened = true;
+    }
+    // Distortion pulse shield-bypass
+    if (bullet.shieldBypassChance && Math.random() < bullet.shieldBypassChance) {
+      if (typeof personalRecords !== "undefined") personalRecords.distortionBypasses = (personalRecords.distortionBypasses||0) + 1;
+      target.hp -= rawDmg * 0.5; // bypass hits hull directly
+      checkChallengeCondition?.("sessionStat", { stat:"distortionBypasses", value: personalRecords.distortionBypasses });
     }
   }
+
+  // Gravity pull flag (handled in bullet update loop)
+  if (bullet.gravityPull && !target.gravityPullTimer) {
+    target.gravityPullTimer = bullet.gravityPullDur || 90;
+    target.gravityPullX = bullet.x + (bullet.vx||0)*2;
+    target.gravityPullY = bullet.y + (bullet.vy||0)*2;
+  }
+
+  // Shadow round damage trail (spawned in bullet loop on hit)
+  // Chain arc chaining (handled in bullet loop)
+  // Vortex pull (handled in bullet loop via aoeRadius + vortexPull flag)
 }
 
 function predictPos(tx,ty,tvx,tvy,sx,sy,spd) {
@@ -1613,20 +1800,51 @@ function fireBullets(origin,wStats,angle,isPlayer) {
   if(!wStats)return[];
   const bx=origin.x+origin.w/2, by=origin.y+origin.h/2;
   const col=isPlayer?wStats.playerColor:wStats.enemyColor;
-  const base={category:wStats.category,weaponSize:wStats.size,penetration:wStats.penetration,color:col};
+  const base={category:wStats.category,weaponSize:wStats.size,penetration:wStats.penetration,
+              color:col, critChance:wStats.critChance, critMult:wStats.critMult,
+              staggerOnHit:wStats.staggerOnHit, staggerDur:wStats.staggerDur,
+              chainHops:wStats.chainHops, chainRange:wStats.chainRange, chainDmgMult:wStats.chainDmgMult,
+              shadowPhaseChance:wStats.shadowPhaseChance, shadowTrail:wStats.shadowTrail,
+              gravityPull:wStats.gravityPull, gravityPullDur:wStats.gravityPullDur,
+              vortexPull:wStats.vortexPull, vortexPullDur:wStats.vortexPullDur,
+              shieldBypassChance:wStats.shieldBypassChance, corrosionDPS:wStats.corrosionDPS };
   const ssm=isPlayer?Math.max(0.65,1-(wStats.size-1)*0.035):Math.max(0.28,1-(wStats.size-1)*0.08);
   const scaledSpeed=wStats.speed*ssm;
-  const dmgScale=(!isPlayer&&wStats.category==="ballistic")?0.5:1.0;
+  const dmgScale=(!isPlayer&&(wStats.category==="ballistic"||wStats.category==="lc_ballistic"))?0.5:1.0;
   const inaccuracy=isPlayer?0:getEnemyInaccuracySpread();
+
+  // Record shot fired
+  if (isPlayer && typeof recordShotFired === "function") recordShotFired(wStats.category);
+
   if(wStats.hitscan){
     if(!isPlayer){
       const cos=Math.cos(angle),sin=Math.sin(angle);
       const ep=rayEndpoint(bx,by,cos,sin);
-      beamFlashes.push({x1:bx,y1:by,x2:ep.x,y2:ep.y,life:12,maxLife:12,color:"#ffff88"});
+      beamFlashes.push({x1:bx,y1:by,x2:ep.x,y2:ep.y,life:12,maxLife:12,color:col||"#ffff88"});
     }
     return[];
   }
   if(isPlayer)playShootSound(wStats.category,true);
+
+  // Nova burst: 3-shot light-spread fan (long range — use full GAME_W range fraction)
+  if (wStats.novaFan) {
+    const shots = wStats.fanShots || 3;
+    return Array.from({length:shots}, (_,i) => {
+      const spread = wStats.spread || 0.07;
+      const a = angle + (i - Math.floor(shots/2)) * spread + (Math.random()-0.5)*0.02;
+      return {...base, x:bx, y:by, vx:Math.cos(a)*scaledSpeed, vy:Math.sin(a)*scaledSpeed,
+              w:wStats.w, h:wStats.h, damage:wStats.damage*dmgScale, maxRange:GAME_W*0.9, distTraveled:0};
+    });
+  }
+
+  // Void cannon: flag for self-damage check, passes through as normal bullet with AOE
+  if (wStats.voidSelfDmg && isPlayer) {
+    // Destroy player shields immediately on fire
+    if (player.shields > 0) player.shields = 0;
+    // If deployed capital, also hit capital shields
+    if (capitalShipObj && !capitalDestroyed) capitalShipObj.shields = Math.max(0, (capitalShipObj.shields||0) - wStats.damage*0.5);
+  }
+
   if(wStats.scattergun){
     const maxRange=GAME_W*(wStats.rangeFraction||0.22);
     return Array.from({length:wStats.pellets||5},()=>{
@@ -1635,7 +1853,10 @@ function fireBullets(origin,wStats,angle,isPlayer) {
     });
   }
   const a=angle+(Math.random()-0.5)*((wStats.spread||0)+inaccuracy);
-  return[{...base,x:bx,y:by,vx:Math.cos(a)*scaledSpeed,vy:Math.sin(a)*scaledSpeed,w:wStats.w,h:wStats.h,damage:wStats.damage*dmgScale}];
+  const bullet = {...base,x:bx,y:by,vx:Math.cos(a)*scaledSpeed,vy:Math.sin(a)*scaledSpeed,w:wStats.w,h:wStats.h,damage:wStats.damage*dmgScale};
+  // Void cannon: tag with AOE
+  if (wStats.aoeRadius) { bullet.aoeRadius = wStats.aoeRadius; bullet.voidSelfDmg = wStats.voidSelfDmg; }
+  return [bullet];
 }
 
 function fireDoubleShot(origin,wStats,angle,isPlayer) {
@@ -2342,6 +2563,7 @@ function updatePlayer() {
   if(player.boosting){
     player.boostTimer--;
     if(player.boostTimer<=0){player.boosting=false;player.boostCooldown=player.boostCooldownMax;}
+    recordBoostFrame?.(); // mastery + challenge tracking
   } else if(player.boostCooldown>0){
     player.boostCooldown--;
   } else if(keys["ShiftLeft"]||keys["ShiftRight"]){
@@ -2397,10 +2619,14 @@ function updatePlayer() {
       }
       let finalBullets;
       if(SHIPS[currentShipName]?.burstFire) {
-        // Retribution burst: fire two shots in quick succession
-        finalBullets=fireBullets(player,player.weaponStats,player.rotation,true);
-        // Schedule second burst shot in ~8 frames
-        player._burstPending = 8;
+        // Retribution burst: 3 shots escalating 1× / 1.5× / 2.5×, third staggers
+        const isSiegeBreaker = player.weaponType === "siege_breaker";
+        finalBullets = fireBullets(player,player.weaponStats,player.rotation,true);
+        finalBullets.forEach(b => { b._burstShot = 1; }); // shot 1 = base damage
+        player._burstPending  = [
+          { delay: 8,  mult: 1.5, shot: 2 },
+          { delay: 16, mult: isSiegeBreaker ? 2.5 : 2.0, shot: 3, stagger: isSiegeBreaker },
+        ];
       } else if(player.doubleShot) finalBullets=fireDoubleShot(player,player.weaponStats,player.rotation,true);
       else finalBullets=fireBullets(player,player.weaponStats,player.rotation,true);
       if(currentShipName==="Vengeance"){
@@ -2482,15 +2708,25 @@ function updatePlayer() {
         friendlyFire:mkDef.friendly, lockTarget:lockTarget||null});
     }
     missileTimer=mKind==="micro"?20:mKind==="nuke"?70:40;
+    _waveMissileFired = true;
+    recordMissileFired?.();
   }
 
-  // Retribution burst: fire second shot after short delay
-  if(player._burstPending>0){
-    player._burstPending--;
-    if(player._burstPending===0&&player.weaponStats){
-      const burst2=fireBullets(player,player.weaponStats,player.rotation,true);
-      playerBullets.push(...burst2);
-    }
+  // Retribution burst: fire 2nd and 3rd shots after delays
+  if(player._burstPending && player._burstPending.length > 0) {
+    player._burstPending = player._burstPending.map(p => ({...p, delay: p.delay - 1}));
+    const ready = player._burstPending.filter(p => p.delay <= 0);
+    player._burstPending = player._burstPending.filter(p => p.delay > 0);
+    ready.forEach(p => {
+      if (player.weaponStats) {
+        const bs = fireBullets(player, player.weaponStats, player.rotation, true);
+        bs.forEach(b => {
+          b.damage = (b.damage||0) * p.mult;
+          if (p.stagger) { b.staggerOnHit = true; b.staggerDur = 45; }
+        });
+        playerBullets.push(...bs);
+      }
+    });
   }
 
   if (!pdcDisabledThisWave) {
@@ -2878,7 +3114,7 @@ function updateEnemies() {
       while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
       e.rotation=(e.rotation||0)+Math.sign(rotDiff)*Math.min(Math.abs(rotDiff),e.turnSpeed||0.015);
       regenShieldFaces(e, 0.015);
-      if(e.corrosionTimer>0){e.corrosionTimer--;e.hp-=e.maxHp*0.0001;}
+      if(e.corrosionTimer>0){e.corrosionTimer--;e.hp-=(e.corrosionDPS||e.maxHp*0.0001);}
       e.turrets&&e.turrets.forEach(t=>{
         t.shootTimer--;
         if(t.shootTimer<=0&&t.weaponStats){
@@ -2945,6 +3181,15 @@ function updateEnemies() {
       return;
     }
     resolveEnemyShotFeedback(e);
+    // ── Status effect ticks ──
+    if (e.corrosionTimer>0) { e.corrosionTimer--; e.hp -= (e.corrosionDPS||e.maxHp*0.0001); }
+    if (e.staggerTimer>0)   { e.staggerTimer--; }
+    if (e.gravityPullTimer>0) {
+      e.gravityPullTimer--;
+      const gx=(e.gravityPullX||0)-(e.x+e.w/2), gy=(e.gravityPullY||0)-(e.y+e.h/2);
+      const gd=Math.hypot(gx,gy)||1;
+      e.vx=(e.vx||0)+gx/gd*1.8; e.vy=(e.vy||0)+gy/gd*1.8;
+    }
     if(e.stunTimer>0){e.stunTimer--;}
     else{
       const ecx=e.x+e.w/2,ecy=e.y+e.h/2;
@@ -3137,7 +3382,8 @@ function updateBullets() {
   nukeRings.forEach(r=>{r.life--;r.r=r.maxR*(1-(r.life/r.maxLife));});
   nukeRings=nukeRings.filter(r=>r.life>0);
   beamFlashes=beamFlashes.filter(f=>f.life>0);
-  updateHitEffects(); updateDeathEffects();
+  updateHitEffects(); updateDeathEffects(); updateThrusterParticles();
+  tickAutoSave?.();
   const inBounds=b=>!b.dead&&b.x>-60&&b.x<GAME_W+60&&b.y>-60&&b.y<GAME_H+60;
   playerBullets=playerBullets.filter(inBounds);
   enemyBullets=enemyBullets.filter(inBounds);
@@ -3207,13 +3453,16 @@ function checkCollisions() {
         b.dead=true;
       }
       applyDamage(e,b);
+      if (b.isPlayerBullet !== false) recordShotHit?.(b.category, false);
       if(e.hp<=0){
         spawnDeathEffect(e);
         playExplosion(ENEMIES[e.type]?.size||2);
         e.dead=true;
         money+=e.score;
-        if(e.isShadowComet) checkShadowCometDefeat();
-        if(e.isShadowVengance) checkShadowVenganceDefeat();
+        recordCreditsEarned?.(e.score||0);
+        recordKill?.(e);
+        if(e.isShadowComet) { checkShadowVenganceCondition?.(); checkShadowCometDefeat(); }
+        if(e.isShadowVengance) { checkShadowVenganceCondition?.(); checkShadowVenganceDefeat(); }
       }
     });
   });
@@ -3241,7 +3490,7 @@ function checkCollisions() {
     if(b.dead)return;
     if(overlaps(b,player)){b.dead=true;applyDamage(player,b);}
     allies.forEach(a=>{
-      if(!a.dead&&overlaps(b,a)){applyDamage(a,b);if(a.hp<=0){spawnDeathEffect(a);a.dead=true;}}
+      if(!a.dead&&overlaps(b,a)){applyDamage(a,b);if(a.hp<=0){spawnDeathEffect(a);a.dead=true;recordAllyDeath?.(a.shipName||a.type);}}
     });
   });
   if(player.pdcCount>0&&!pdcDisabledThisWave){
@@ -3456,6 +3705,12 @@ function render() {
     ctx.fillText("⚠ TURRETS DISABLED",10,GAME_H-30);ctx.restore();
   }
 
+  // Spawn thruster particles for player and allies
+  if (player && !player.dead) spawnThrusterParticles(player, true, currentShipName);
+  allies.forEach(a => { if(!a.dead) spawnThrusterParticles(a, false, a.shipName||""); });
+  if (isDeployed && capitalShipObj && !capitalDestroyed) spawnThrusterParticles(capitalShipObj, true, currentShipName);
+
+  drawThrusterParticles();
   enemies.forEach(drawEntity);
   allies.forEach(drawEntity);
   if(isDeployed && capitalShipObj && !capitalDestroyed) drawEntity(capitalShipObj);
@@ -3646,6 +3901,16 @@ function gameLoop() {
       });
       waveTransitionText=`Wave ${currentWave} Cleared!  +${reward} credits`;
       waveTransitionTimer=300;state="waveTransition";updateHUD();
+      // ── Records + challenges ──
+      const _hitless = !playerTookDamageThisWave;
+      const _allAlliesAlive = allies.length > 0 && allies.every(a => !a.dead);
+      const _noMissiles = !_waveMissileFired;
+      recordCreditsEarned?.(reward);
+      recordWaveEnd?.(currentWave, _hitless, _allAlliesAlive, _noMissiles, _hitless);
+      tickSessionWave?.();
+      if (typeof infiniteMode !== "undefined" && infiniteMode) {
+        checkChallengeCondition?.("waveReach", { wave: currentWave, infinite: true });
+      }
     }
     if(player.hp<=0){
       if(isDeployed) handleDeployedShipDeath();
@@ -3682,5 +3947,12 @@ function confirmLeaveGame() {
     if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="none";}
   }
 }
+
+// ── V1.6.0 Init ──
+if (typeof initChallenges === "function") initChallenges();
+// Show login overlay on first load
+window.addEventListener("DOMContentLoaded", () => {
+  if (typeof buildLoginUI === "function") buildLoginUI();
+});
 
 gameLoop();
