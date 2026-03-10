@@ -7,7 +7,7 @@
   <link rel="manifest" href="manifest.json">
   <script>
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js");
+      navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
     }
   </script>
   <link rel="icon" href="data:,">
@@ -79,6 +79,7 @@
 <script src="game.js"></script>
 </body>
 </html>
+
 
 
 
