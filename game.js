@@ -348,7 +348,24 @@ function drawHitEffects() {
 // ============================================================
 // THRUSTER EFFECTS
 // ============================================================
-const MAX_THRUSTER_PARTICLES = 200;
+const MAX_THRUSTER_PARTICLES = typeof IS_MOBILE !== "undefined" && IS_MOBILE ? 80 : 200;
+
+// Pre-render static star background once
+let _starCanvas = null;
+function _buildStarBg() {
+  _starCanvas = document.createElement("canvas");
+  _starCanvas.width = GAME_W; _starCanvas.height = GAME_H;
+  const sc = _starCanvas.getContext("2d");
+  sc.fillStyle = "#000011"; sc.fillRect(0,0,GAME_W,GAME_H);
+  sc.fillStyle = "#ffffff";
+  for (let i = 0; i < 150; i++) sc.fillRect((i*137)%GAME_W,(i*97)%GAME_H,1,1);
+}
+
+// Shadow blur disabled on mobile to avoid GPU overdraw
+const _shadowsEnabled = !(typeof IS_MOBILE !== "undefined" && IS_MOBILE);
+
+// HUD throttle - only update DOM every 3 frames
+let _hudFrame = 0;
 
 function spawnThrusterParticles(obj, isPlayer, shipName) {
   if (_thrusterParticles.length >= MAX_THRUSTER_PARTICLES) return;
@@ -423,27 +440,35 @@ function updateThrusterParticles() {
 }
 
 function drawThrusterParticles() {
-  _thrusterParticles.forEach(p => {
-    const t = p.life/p.maxLife;
+  if (_thrusterParticles.length === 0) return;
+  // Group by color to minimize ctx state changes
+  const byColor = {};
+  for (const p of _thrusterParticles) {
+    (byColor[p.color] = byColor[p.color] || []).push(p);
+  }
+  for (const [color, particles] of Object.entries(byColor)) {
     ctx.save();
-    ctx.globalAlpha = t * (p.shape==="ghost" ? 0.35 : 0.75);
-    ctx.fillStyle   = p.color;
-    ctx.shadowColor = p.color;
-    ctx.shadowBlur  = p.shape==="blade" ? 14 : p.shape==="ghost" ? 22 : 8;
-    if (p.shape==="blade") {
-      // Draw a sharp slash line
-      const len = p.size * t;
-      ctx.strokeStyle = p.color; ctx.lineWidth = 2*t;
-      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x+p.vx*len, p.y+p.vy*len); ctx.stroke();
-    } else if (p.shape==="ring") {
-      ctx.strokeStyle = p.color; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.size*(2-t), 0, Math.PI*2); ctx.stroke();
-    } else {
-      const r = Math.max(0.5, p.size * t);
-      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle   = color;
+    ctx.strokeStyle = color;
+    if (_shadowsEnabled) { ctx.shadowColor = color; }
+    for (const p of particles) {
+      const t = p.life / p.maxLife;
+      ctx.globalAlpha = t * (p.shape === "ghost" ? 0.35 : 0.75);
+      if (_shadowsEnabled) ctx.shadowBlur = p.shape === "blade" ? 14 : p.shape === "ghost" ? 22 : 8;
+      if (p.shape === "blade") {
+        const len = p.size * t;
+        ctx.lineWidth = 2 * t;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.vx * len, p.y + p.vy * len); ctx.stroke();
+      } else if (p.shape === "ring") {
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (2 - t), 0, Math.PI * 2); ctx.stroke();
+      } else {
+        const r = Math.max(0.5, p.size * t);
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+      }
     }
     ctx.restore();
-  });
+  }
 }
 let deathEffects = [];
 
@@ -490,7 +515,7 @@ function drawDeathEffects() {
 // ============================================================
 // GAME STATE
 // ============================================================
-let state="menu", money=0, currentWave=0, infiniteMode=false, currentShipName="Starlight";
+let state="menu", money=5000000, currentWave=0, infiniteMode=false, currentShipName="Starlight";
 let player={}, allies=[], enemies=[], playerBullets=[], enemyBullets=[];
 let missileTimer=0, ownedShips=[], shopOpenedFromMenu=false;
 let waveTransitionTimer=0, waveTransitionText="", beamFlashes=[], nukeRings=[];
@@ -791,8 +816,10 @@ function drawShieldFaces(obj) {
     const glowG = Math.round(160 + (1-frac)*95);
     const glowB = 255;
     ctx.strokeStyle = `rgba(${glowR},${glowG},${glowB},${alpha})`;
-    ctx.shadowColor  = `rgba(0,180,255,${alpha * 0.8})`;
-    ctx.shadowBlur   = 8 + 6 * frac;
+    if (_shadowsEnabled) {
+      ctx.shadowColor = `rgba(0,180,255,${alpha * 0.8})`;
+      ctx.shadowBlur  = 8 + 6 * frac;
+    }
 
     ctx.beginPath();
     ctx.arc(cx, cy, r, startAngle, endAngle);
@@ -3541,7 +3568,7 @@ function drawEntity(obj) {
   const frameColor=isCapitalAuto?"#ffaa00":isPlayer?"#4488ff":isAlly?"#44ff88":isShadow?"#ff2200":"#ff4444";
   const hw=obj.w/2, hh=obj.h/2, cs=Math.min(hw,hh)*0.35, lw=2.5;
   ctx.strokeStyle=frameColor; ctx.lineWidth=lw;
-  ctx.shadowColor=frameColor; ctx.shadowBlur=6;
+  if (_shadowsEnabled) { ctx.shadowColor=frameColor; ctx.shadowBlur=6; }
   ctx.beginPath();ctx.moveTo(-hw,-hh+cs);ctx.lineTo(-hw,-hh);ctx.lineTo(-hw+cs,-hh);ctx.stroke();
   ctx.beginPath();ctx.moveTo(hw-cs,-hh);ctx.lineTo(hw,-hh);ctx.lineTo(hw,-hh+cs);ctx.stroke();
   ctx.beginPath();ctx.moveTo(-hw,hh-cs);ctx.lineTo(-hw,hh);ctx.lineTo(-hw+cs,hh);ctx.stroke();
@@ -3674,9 +3701,8 @@ function drawBoostHUD() {
 }
 
 function render() {
-  ctx.fillStyle="#000011";ctx.fillRect(0,0,GAME_W,GAME_H);
-  ctx.fillStyle="#ffffff";
-  for(let i=0;i<150;i++)ctx.fillRect((i*137)%GAME_W,(i*97)%GAME_H,1,1);
+  if (!_starCanvas) _buildStarBg();
+  ctx.drawImage(_starCanvas, 0, 0);
 
   if(state==="shadowCometCutscene"){
     drawShadowCometCutscene();
@@ -3714,11 +3740,6 @@ function render() {
     ctx.save();ctx.globalAlpha=0.7;ctx.fillStyle="#ff2200";ctx.font="bold 13px monospace";
     ctx.fillText("⚠ TURRETS DISABLED",10,GAME_H-30);ctx.restore();
   }
-
-  // Spawn thruster particles for player and allies
-  if (player && !player.dead) spawnThrusterParticles(player, true, currentShipName);
-  allies.forEach(a => { if(!a.dead) spawnThrusterParticles(a, false, a.shipName||""); });
-  if (isDeployed && capitalShipObj && !capitalDestroyed) spawnThrusterParticles(capitalShipObj, true, currentShipName);
 
   drawThrusterParticles();
   enemies.forEach(drawEntity);
@@ -3884,6 +3905,11 @@ function gameLoop() {
     updateEnemyCapitalAI();
     updateCapitalAutopilot();
     updatePlayer();updateAllies();updateEnemies();updateBullets();checkCollisions();updateSpecial();
+    // Thruster particles updated in game loop, not render
+    if (player && !player.dead) spawnThrusterParticles(player, true, currentShipName);
+    allies.forEach(a => { if(!a.dead) spawnThrusterParticles(a, false, a.shipName||""); });
+    if (isDeployed && capitalShipObj && !capitalDestroyed) spawnThrusterParticles(capitalShipObj, true, currentShipName);
+    updateThrusterParticles();
     if(waveReinforceTimer>0){waveReinforceTimer--;if(waveReinforceTimer<=0&&!waveReinforceDone){
       waveReinforceDone=true;
       const wd=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
@@ -3927,12 +3953,13 @@ function gameLoop() {
       else if(capitalShipObj) { /* shouldn't happen */ endGame(false); }
       else endGame(false);
     }
-    updateHUD();
+    _hudFrame++;
+    if (_hudFrame % 3 === 0) updateHUD();
   }
   if(state==="waveTransition"){
     updatePlayer();updateDeathEffects();waveTransitionTimer--;
     if(waveTransitionTimer<=0)nextWave();
-    updateHUD();
+    if (_hudFrame % 3 === 0) updateHUD();
   }
   render();
   if(IS_MOBILE){
@@ -3965,4 +3992,3 @@ if (typeof initChallenges === "function") initChallenges();
 if (typeof buildLoginUI  === "function") buildLoginUI();
 
 gameLoop();
-
