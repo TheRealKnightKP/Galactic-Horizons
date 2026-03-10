@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.6.6";
+const CACHE = "galactic-horizons-v1.6.7";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -118,4 +118,5 @@ Versions:
 -V1.6.4 - Removing special weapons from store
 -V1.6.5 - Fixing special weapons in store
 -V1.6.6 - Adding command center tab
+-V1.6.7 - SIXSEVEN WOOO (Made starter money 0)
 */
