@@ -828,7 +828,32 @@ function renderShipLoadoutPanel(container) {
   if (sd.weaponType === "none") {
     html += `<p><b>Main Weapon:</b> None (PDC-only ship)</p>`;
   } else if (sd.bespoke) {
-    html += `<p><b>Main Weapon:</b> <span style="color:#ffcc44">Bespoke ${WEAPON_DEFS[sd.weaponType]?.name} S${sd.weaponSize} — fixed</span></p>`;
+    const baseWeaponName = WEAPON_DEFS[sd.weaponType]?.name || sd.weaponType;
+    html += `<p><b>Main Weapon:</b> <span style="color:#ffcc44">Bespoke — fixed</span></p>`;
+    // Bespoke alt selector — show if the alt weapon is unlocked
+    if (sd.bespokeAlt) {
+      const altUnlocked = typeof unlockedChallengeIds !== "undefined"
+        ? unlockedChallengeIds.some(id => id.includes(sd.bespokeAlt) || id.includes("bespoke"))
+        || (typeof window._unlockedBespokeAlts !== "undefined" && window._unlockedBespokeAlts?.includes(sd.bespokeAlt))
+        : false;
+      const usingAlt = playerLoadout.useBespokeAlt === true;
+      const altName = sd.bespokeAltName || WEAPON_DEFS[sd.bespokeAlt]?.name || sd.bespokeAlt;
+      if (altUnlocked) {
+        html += `<div style="margin:6px 0;padding:8px;background:#0a1020;border:1px solid #ffcc4444;border-radius:6px">
+          <span style="color:#ffcc44;font-size:11px">Alt Weapon Unlocked: <b>${altName}</b></span><br>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button onclick="playerLoadout.useBespokeAlt=false;setPlayerShip(currentShipName);renderLoadout()"
+              style="width:auto;font-size:11px;background:${!usingAlt?'#ffcc44':'#1a1a2a'};color:${!usingAlt?'#000':'#aaa'};border:1px solid #ffcc4466;padding:4px 10px;cursor:pointer;border-radius:4px">
+              ${baseWeaponName}</button>
+            <button onclick="playerLoadout.useBespokeAlt=true;setPlayerShip(currentShipName);renderLoadout()"
+              style="width:auto;font-size:11px;background:${usingAlt?'#ffcc44':'#1a1a2a'};color:${usingAlt?'#000':'#aaa'};border:1px solid #ffcc4466;padding:4px 10px;cursor:pointer;border-radius:4px">
+              ${altName}</button>
+          </div>
+        </div>`;
+      } else {
+        html += `<div style="margin:4px 0;color:#555;font-size:11px">🔒 Alt: ${altName} — unlock via challenge</div>`;
+      }
+    }
   } else {
     html += `<p><b>Main Weapon</b> (S${sd.weaponSize}): ${buildWeaponSelect(sd.weaponSize, playerLoadout.mainWeapon, "setMainWeapon(this.value)")}</p>`;
   }
@@ -1465,7 +1490,7 @@ function renderShopAccount(container) {
         <button onclick="if(typeof saveGame==='function'){saveGame();showNotification?.('Game saved!','#0af');}" 
           style="padding:6px 14px;background:#0a4;color:#fff;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Save Now</button>
         ${acct.isAdmin?'':
-        `<button onclick="window._showDeleteConfirm=true;renderCommandCenter?..()" 
+        `<button onclick="window._showDeleteConfirm=true;renderCommandCenter?.()"
           style="padding:6px 14px;background:#1a0000;color:#f44;font:11px monospace;border:1px solid #f444;cursor:pointer;border-radius:4px">Delete Account</button>`}
       </div>
       ${window._showDeleteConfirm ? `
@@ -1476,11 +1501,12 @@ function renderShopAccount(container) {
             style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;color:#eee;padding:6px;font:12px monospace;margin-bottom:8px;border-radius:4px">
           <div id="deleteErr" style="color:#f44;font:10px monospace;min-height:14px;margin-bottom:6px"></div>
           <div style="display:flex;gap:8px">
-            <button onclick="
+            <button onclick="(async()=>{
               const pw=document.getElementById('deletePassInput')?.value||'';
-              const r=typeof deleteAccount==='function'?deleteAccount('${acct.username}',pw):{ok:false,error:'Not available'};
+              const btn=this;btn.disabled=true;btn.textContent='...';
+              const r=typeof deleteAccount==='function'?await deleteAccount('${acct.username}',pw):{ok:false,error:'Not available'};
               if(r.ok){window._showDeleteConfirm=false;if(typeof buildLoginUI==='function')buildLoginUI();}
-              else{const el=document.getElementById('deleteErr');if(el)el.textContent=r.error;}"
+              else{const el=document.getElementById('deleteErr');if(el)el.textContent=r.error;btn.disabled=false;btn.textContent='Confirm Delete';}})()"
               style="padding:6px 14px;background:#f44;color:#000;font:bold 11px monospace;border:none;cursor:pointer;border-radius:4px">Confirm Delete</button>
             <button onclick="window._showDeleteConfirm=false;renderCommandCenter?.()"
               style="padding:6px 14px;background:#333;color:#ccc;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Cancel</button>
@@ -1653,7 +1679,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const menu = document.getElementById("mainMenu");
   if (menu) {
     const btn = document.createElement("button");
-    btn.textContent = "⬡ Command Center";
+    btn.textContent = "Command Center";
     btn.onclick = () => openCommandCenter("challenges");
     const buttons = menu.querySelectorAll("button");
     if (buttons.length >= 3) {
