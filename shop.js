@@ -375,7 +375,8 @@ function renderShopAllies(container) {
   for (const sn of ALLY_SHIP_ORDER) {
     const aDef = ALLY_SHIP_DEFS[sn];
     if (!aDef || aDef.price === undefined || aDef.price >= 999990) continue;
-    const slotCost = aDef.slotCost || 1;
+    const slotLabel = (typeof ALLY_SLOT_LABEL!=="undefined"?ALLY_SLOT_LABEL:{})[aDef.slotSize||"small"] || (aDef.slotSize||"small");
+    const slotColor = (typeof ALLY_SLOT_COLOR!=="undefined"?ALLY_SLOT_COLOR:{})[aDef.slotSize||"small"] || "#888";
     const owned = allyOwned(sn);
     const equipped = allyEquipped(sn);
     const available = owned - equipped;
@@ -386,11 +387,11 @@ function renderShopAllies(container) {
       <div style="color:#888;font:11px monospace;line-height:1.6">
         HP: ${aDef.hp} | Shields: ${aDef.shields}<br>
         Armor: ${aDef.armorType} | Weapon: S${aDef.weaponSize}<br>
+        Slot: <span style="color:${slotColor};font-weight:bold">${slotLabel}</span><br>
         Owned: <span style="color:#0af">${owned}</span> &nbsp; Equipped: <span style="color:#ff8">${equipped}</span> &nbsp; Available: <span style="color:#0f0">${available}</span>
       </div>
       <div style="color:${canAfford?"#0f0":"#f44"};font:12px monospace;margin:6px 0">${sn==="Sprite"?"Free":aDef.price.toLocaleString()+" cr"}</div>
       <button style="width:100%;${canAfford?"":"opacity:0.4"}" onclick="buyAllyShipFromShop('${sn}')" ${canAfford?"":"disabled"}>
-        ${slotCost > 1 ? `<span style="color:#ff8800;font-size:10px">⚠ ${slotCost} SLOTS</span><br>` : ""}
         Buy ${sn} #${(allyPurchaseCount[sn]||0)+1}
       </button>
     </div>`;
@@ -539,10 +540,20 @@ function closeShop() {
 // ============================
 function ensureAllySlots() {
   const d = SHIPS[playerLoadout.ship || "Starlight"];
-  const n = (d.allySlots || []).length || 4;
-  // Clean up legacy _occupied markers — no longer needed
+  const slotDefs = d.allySlots || Array(4).fill("small");
+  const n = slotDefs.length;
+  // Strip legacy _occupied markers
   playerLoadout.allies = playerLoadout.allies.map(a => (a && a._occupied) ? null : a);
   while (playerLoadout.allies.length < n) playerLoadout.allies.push(null);
+  // Validate existing assignments against slot sizes — evict allies that no longer fit
+  for (let i = 0; i < n; i++) {
+    const slot = playerLoadout.allies[i];
+    if (!slot || !slot.ship) continue;
+    const slotType = slotDefs[i] || "small";
+    const slotRank = (typeof ALLY_SLOT_RANK!=="undefined"?ALLY_SLOT_RANK:{})[slotType]||0;
+    const aRank    = (typeof ALLY_SLOT_RANK!=="undefined"?ALLY_SLOT_RANK:{})[ALLY_SHIP_DEFS[slot.ship]?.slotSize||"small"]||0;
+    if (aRank > slotRank) playerLoadout.allies[i] = null; // evict invalid ally
+  }
 }
 
 function openLoadout() {
