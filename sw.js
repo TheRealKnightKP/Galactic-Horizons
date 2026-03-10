@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.6.2";
+const CACHE = "galactic-horizons-v1.6.3";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -114,4 +114,5 @@ Versions:
 -V1.6.0 - Arena Finale Update.
 -V1.6.1 - pushing leaderboard stuff
 -V1.6.2 - Fixing a lot of stuff (10/3/2026)
+-V1.6.3 - Pushing leaderboard live
 */
