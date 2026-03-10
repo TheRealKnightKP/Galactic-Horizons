@@ -1,4 +1,4 @@
-// challenges.js — Arena Evolution V1.6.0
+// challenges.js — Galactic Horizons V1.6.0
 // Challenge tracking, ship mastery, personal records, daily system
 
 // ============================================================
