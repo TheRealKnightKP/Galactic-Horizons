@@ -2,7 +2,7 @@
 // Local save/load, account system, leaderboard (Cloudflare Workers)
 
 const SAVE_VERSION    = "1.6.0";
-const LEADERBOARD_URL = "https://galactic-horizons.francoandretbr.workers.dev"; // set after deploy
+const LEADERBOARD_URL = "https://galactic-horizons.francoandretbr.workers.dev";
 const ADMIN_USER      = "TheRealKnightAdmin";
 const ADMIN_PASS      = "650392026";
 const ADMIN_SAVE = {
@@ -177,6 +177,23 @@ function registerAccount(username, password) {
 function logoutAccount() {
   if (currentAccount) saveGame();
   currentAccount = null;
+}
+
+function deleteAccount(username, password) {
+  if (!username) return { ok: false, error: "No account" };
+  // Admin can't be deleted
+  if (username === ADMIN_USER) return { ok: false, error: "Cannot delete admin account" };
+  // Must confirm with password
+  const accounts = getAllAccounts();
+  const acct = accounts.find(a => a.username.toLowerCase() === username.toLowerCase());
+  if (!acct) return { ok: false, error: "Account not found" };
+  if (acct.passwordHash !== hashPassword(password)) return { ok: false, error: "Wrong password" };
+  // Delete save data
+  localStorage.removeItem(getAccountKey(username));
+  // Remove from account list
+  saveAccountList(accounts.filter(a => a.username.toLowerCase() !== username.toLowerCase()));
+  currentAccount = null;
+  return { ok: true };
 }
 
 // Simple hash — not cryptographic, just obfuscates password in localStorage
