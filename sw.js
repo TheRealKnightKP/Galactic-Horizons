@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.5.14";
+const CACHE = "galactic-horizons-v1.5.15";
 const ASSETS = [
   "./",
   "./index.html",
@@ -108,4 +108,5 @@ Versions:
 -V1.5.12 - Reworked ally slots
 -V1.5.13 - Forgot index changing Version num
 -V1.5.14 - Arena Evolution part 3 update: Enemy capital ship ai
+-V1.5.15 - Fixed ally slots
 */
