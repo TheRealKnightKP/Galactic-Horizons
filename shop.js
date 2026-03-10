@@ -283,6 +283,7 @@ function showShop() {
     }
   }
   renderShopTab();
+  _updateShopCloseBtn();
 }
 
 function setShopTab(tab) { _shopTab = tab; renderShopTab(); }
@@ -544,6 +545,13 @@ function closeShop() {
     state = "menu"; return;
   }
   if (currentWave === 0) nextWave(); else state = "playing";
+}
+
+function _updateShopCloseBtn() {
+  const btn = document.getElementById("shopBackBtn");
+  if (!btn) return;
+  btn.style.display = "block";
+  btn.textContent = shopOpenedFromMenu ? "← Back to Menu" : "▶ Continue to Battle";
 }
 
 // ============================
@@ -1564,10 +1572,12 @@ function openCommandCenter(startTab) {
     panel = document.createElement("div");
     panel.id = "cmdCenterMenu";
     panel.className = "menu";
-    panel.style.cssText = "display:block;min-width:720px;max-width:95vw;max-height:85vh;overflow-y:auto;position:relative";
+    const isMob = typeof IS_MOBILE !== "undefined" && IS_MOBILE;
+    panel.style.cssText = isMob
+      ? "display:block;width:96vw;max-height:88vh;overflow-y:auto;position:relative;padding:12px;box-sizing:border-box"
+      : "display:block;width:760px;max-width:92vw;max-height:85vh;overflow-y:auto;position:relative;margin-left:0;text-align:left";
     document.body.appendChild(panel);
   }
-  // Hide main menu
   document.getElementById("mainMenu").style.display = "none";
   panel.style.display = "block";
   renderCommandCenter();
@@ -1595,9 +1605,9 @@ function renderCommandCenter() {
 
   const tabBar = tabs.map(t =>
     `<button onclick="setCCTab('${t.tab}')"
-      style="width:auto;display:inline-block;margin:2px;padding:6px 12px;font:12px monospace;cursor:pointer;
+      style="width:auto;display:inline-block;margin:2px 2px 4px;padding:6px 10px;font:11px monospace;cursor:pointer;
       border-bottom:${_ccTab===t.tab?'2px solid #0af':'2px solid transparent'};
-      background:${_ccTab===t.tab?'#0a1a2a':'transparent'};color:${_ccTab===t.tab?'#0af':'#888'};border-top:none;border-left:none;border-right:none">
+      background:${_ccTab===t.tab?'#0a1a2a':'transparent'};color:${_ccTab===t.tab?'#0af':'#888'};border-top:none;border-left:none;border-right:none;white-space:nowrap">
       ${t.label}</button>`
   ).join('');
 
@@ -1637,18 +1647,28 @@ function renderCCLeaderboard(container) {
   if (cats.length > 0) setTimeout(() => loadLBCat(cats[0].id), 50);
 }
 
-// Inject "Command Center" button into main menu on load
+// Inject "Command Center" button into main menu and clean up shop footer on load
 window.addEventListener("DOMContentLoaded", () => {
+  // Add Command Center button to main menu
   const menu = document.getElementById("mainMenu");
-  if (!menu) return;
-  const btn = document.createElement("button");
-  btn.textContent = "Command Center";
-  btn.onclick = () => openCommandCenter("challenges");
-  // Insert after the Shop button (3rd button)
-  const buttons = menu.querySelectorAll("button");
-  if (buttons.length >= 3) {
-    buttons[2].insertAdjacentElement("afterend", btn);
-  } else {
-    menu.appendChild(btn);
+  if (menu) {
+    const btn = document.createElement("button");
+    btn.textContent = "⬡ Command Center";
+    btn.onclick = () => openCommandCenter("challenges");
+    const buttons = menu.querySelectorAll("button");
+    if (buttons.length >= 3) {
+      buttons[2].insertAdjacentElement("afterend", btn);
+    } else {
+      menu.appendChild(btn);
+    }
+  }
+
+  // Remove the duplicate "Continue →" button from shop — shopBackBtn handles both cases
+  // We do this by hiding any button in shopMenu that says "Continue"
+  const shopMenu = document.getElementById("shopMenu");
+  if (shopMenu) {
+    shopMenu.querySelectorAll("button").forEach(b => {
+      if (b.textContent.trim().startsWith("Continue")) b.style.display = "none";
+    });
   }
 });
