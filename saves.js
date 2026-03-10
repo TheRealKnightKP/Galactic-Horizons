@@ -2,7 +2,7 @@
 // Local save/load, account system, leaderboard (Cloudflare Workers)
 
 const SAVE_VERSION    = "1.6.0";
-const LEADERBOARD_URL = "https://arena-evolution.ktnightfall.workers.dev"; // set after deploy
+const LEADERBOARD_URL = "https://galactic-horizons.workers.dev"; // set after deploy
 const ADMIN_USER      = "TheRealKnightAdmin";
 const ADMIN_PASS      = "650392026";
 const ADMIN_SAVE = {
