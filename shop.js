@@ -299,37 +299,14 @@ function renderShopTab() {
     a.onclick = () => setShopTab("allies");
     if (w && w.parentNode) w.parentNode.insertBefore(a, w.nextSibling);
   }
-  // Extra V1.6 tabs
-  const extraTabs = [
-    { id:"shopTabMastery",    label:"Mastery",    tab:"mastery"    },
-    { id:"shopTabChallenges", label:"Challenges", tab:"challenges" },
-    { id:"shopTabRecords",    label:"Records",    tab:"records"    },
-    { id:"shopTabAccount",    label:"Account",    tab:"account"    },
-  ];
-  extraTabs.forEach(({id, label, tab}) => {
-    let btn = document.getElementById(id);
-    if (!btn) {
-      btn = document.createElement("button");
-      btn.id = id;
-      btn.textContent = label;
-      btn.style.cssText = "width:auto;display:inline-block;margin:2px";
-      btn.onclick = () => setShopTab(tab);
-      if (a && a.parentNode) a.parentNode.appendChild(btn);
-    }
-    btn.style.borderBottom = _shopTab === tab ? "2px solid #0af" : "none";
-  });
 
   if (s) s.style.borderBottom = _shopTab === "ships"   ? "2px solid #0af" : "none";
   if (w) w.style.borderBottom = _shopTab === "weapons" ? "2px solid #0af" : "none";
   if (a) a.style.borderBottom = _shopTab === "allies"  ? "2px solid #0af" : "none";
   const body = document.getElementById("shopBody");
   if (!body) return;
-  if      (_shopTab === "ships")      renderShopShips(body);
-  else if (_shopTab === "allies")     renderShopAllies(body);
-  else if (_shopTab === "mastery")    renderShopMastery(body);
-  else if (_shopTab === "challenges") renderShopChallenges(body);
-  else if (_shopTab === "records")    renderShopRecords(body);
-  else if (_shopTab === "account")    renderShopAccount(body);
+  if      (_shopTab === "ships")  renderShopShips(body);
+  else if (_shopTab === "allies") renderShopAllies(body);
   else renderShopWeapons(body);
 }
 
@@ -1550,3 +1527,104 @@ async function loadLBCat(catId) {
     </div>`
   ).join('');
 }
+
+// ============================================================
+// COMMAND CENTER — standalone menu for Mastery/Challenges/Records/Account/Leaderboard
+// ============================================================
+let _ccTab = "challenges";
+
+function openCommandCenter(startTab) {
+  if (startTab) _ccTab = startTab;
+  let panel = document.getElementById("cmdCenterMenu");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "cmdCenterMenu";
+    panel.className = "menu";
+    panel.style.cssText = "display:block;min-width:720px;max-width:95vw;max-height:85vh;overflow-y:auto;position:relative";
+    document.body.appendChild(panel);
+  }
+  // Hide main menu
+  document.getElementById("mainMenu").style.display = "none";
+  panel.style.display = "block";
+  renderCommandCenter();
+}
+
+function closeCommandCenter() {
+  const panel = document.getElementById("cmdCenterMenu");
+  if (panel) panel.style.display = "none";
+  document.getElementById("mainMenu").style.display = "block";
+}
+
+function setCCTab(tab) { _ccTab = tab; renderCommandCenter(); }
+
+function renderCommandCenter() {
+  const panel = document.getElementById("cmdCenterMenu");
+  if (!panel) return;
+
+  const tabs = [
+    { id:"ccTabChallenges", label:"🏆 Challenges", tab:"challenges" },
+    { id:"ccTabMastery",    label:"⚡ Mastery",    tab:"mastery"    },
+    { id:"ccTabRecords",    label:"📊 Records",    tab:"records"    },
+    { id:"ccTabLeaderboard",label:"🌐 Leaderboard",tab:"leaderboard"},
+    { id:"ccTabAccount",    label:"👤 Account",    tab:"account"    },
+  ];
+
+  const tabBar = tabs.map(t =>
+    `<button onclick="setCCTab('${t.tab}')"
+      style="width:auto;display:inline-block;margin:2px;padding:6px 12px;font:12px monospace;cursor:pointer;
+      border-bottom:${_ccTab===t.tab?'2px solid #0af':'2px solid transparent'};
+      background:${_ccTab===t.tab?'#0a1a2a':'transparent'};color:${_ccTab===t.tab?'#0af':'#888'};border-top:none;border-left:none;border-right:none">
+      ${t.label}</button>`
+  ).join('');
+
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0">Command Center</h2>
+      <button onclick="closeCommandCenter()" style="width:auto;background:#1a0a0a;color:#f88;border:1px solid #f444;padding:4px 12px;font:12px monospace;cursor:pointer;border-radius:4px">✕ Close</button>
+    </div>
+    <div style="margin-bottom:14px;border-bottom:1px solid #223;padding-bottom:6px">${tabBar}</div>
+    <div id="ccBody"></div>`;
+
+  const body = document.getElementById("ccBody");
+  if (!body) return;
+  if      (_ccTab === "challenges")  renderShopChallenges(body);
+  else if (_ccTab === "mastery")     renderShopMastery(body);
+  else if (_ccTab === "records")     renderShopRecords(body);
+  else if (_ccTab === "leaderboard") renderCCLeaderboard(body);
+  else if (_ccTab === "account")     renderShopAccount(body);
+}
+
+function renderCCLeaderboard(container) {
+  const cats = typeof LB_CATEGORIES !== "undefined" ? LB_CATEGORIES : [];
+  let html = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:600px">
+    <div style="color:#ffcc00;font:bold 16px monospace;margin-bottom:12px">🌐 Leaderboard</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
+  cats.forEach(c => {
+    html += `<button onclick="loadLBCat('${c.id}')"
+      style="padding:5px 12px;background:#0a0e1a;border:1px solid #333;color:#aaa;font:11px monospace;cursor:pointer;border-radius:4px">
+      ${c.label}</button>`;
+  });
+  html += `</div>
+    <div id="lbContent" style="background:#0a0e1a;border:1px solid #223;border-radius:6px;padding:12px;color:#888;font:11px monospace;min-height:60px">
+      Loading...
+    </div>
+  </div>`;
+  container.innerHTML = html;
+  if (cats.length > 0) setTimeout(() => loadLBCat(cats[0].id), 50);
+}
+
+// Inject "Command Center" button into main menu on load
+window.addEventListener("DOMContentLoaded", () => {
+  const menu = document.getElementById("mainMenu");
+  if (!menu) return;
+  const btn = document.createElement("button");
+  btn.textContent = "Command Center";
+  btn.onclick = () => openCommandCenter("challenges");
+  // Insert after the Shop button (3rd button)
+  const buttons = menu.querySelectorAll("button");
+  if (buttons.length >= 3) {
+    buttons[2].insertAdjacentElement("afterend", btn);
+  } else {
+    menu.appendChild(btn);
+  }
+});
