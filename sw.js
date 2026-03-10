@@ -1,6 +1,5 @@
 const CACHE = "galactic-horizons-v1.6.1";
 const ASSETS = [
-  "./",
   "./index.html",
   "./style.css",
   "./data.js",
