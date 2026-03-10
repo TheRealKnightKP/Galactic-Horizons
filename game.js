@@ -702,8 +702,7 @@ function drawShieldFaces(obj) {
 
 function buildAlly(i,totalSlots) {
   const slot=playerLoadout.allies[i];
-  if(slot && slot._occupied) return null; // this slot is occupied by a multi-slot ally
-  if(!slot||!slot.ship) return null;
+  if(!slot||!slot.ship||slot._occupied) return null; // skip empty or legacy occupied markers
   const sName=slot.ship;
   const aDef=ALLY_SHIP_DEFS[sName]||ALLY_SHIP_DEFS.Sprite;
   const shieldMult=SHIELD_TIERS[slot.shieldTier||1].mult;
@@ -817,13 +816,7 @@ function setPlayerShip(name) {
   allies=[];
   for(let i=0;i<totalSlots;i++){
     const a=buildAlly(i,totalSlots);
-    if(a){
-      allies.push(a);
-      const sc=(ALLY_SHIP_DEFS[playerLoadout.allies[i]?.ship||""]?.slotCost||1);
-      for(let si=1;si<sc&&i+si<totalSlots;si++){
-        if(!playerLoadout.allies[i+si]) playerLoadout.allies[i+si]={_occupied:true};
-      }
-    }
+    if(a) allies.push(a);
   }
 }
 
@@ -834,13 +827,7 @@ function respawnDeadAllies() {
   allies=[];
   for(let i=0;i<totalSlots;i++){
     const a=buildAlly(i,totalSlots);
-    if(a){
-      allies.push(a);
-      const sc=(ALLY_SHIP_DEFS[playerLoadout.allies[i]?.ship||""]?.slotCost||1);
-      for(let si=1;si<sc&&i+si<totalSlots;si++){
-        if(!playerLoadout.allies[i+si]) playerLoadout.allies[i+si]={_occupied:true};
-      }
-    }
+    if(a) allies.push(a);
   }
 }
 
