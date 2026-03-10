@@ -299,13 +299,37 @@ function renderShopTab() {
     a.onclick = () => setShopTab("allies");
     if (w && w.parentNode) w.parentNode.insertBefore(a, w.nextSibling);
   }
+  // Extra V1.6 tabs
+  const extraTabs = [
+    { id:"shopTabMastery",    label:"Mastery",    tab:"mastery"    },
+    { id:"shopTabChallenges", label:"Challenges", tab:"challenges" },
+    { id:"shopTabRecords",    label:"Records",    tab:"records"    },
+    { id:"shopTabAccount",    label:"Account",    tab:"account"    },
+  ];
+  extraTabs.forEach(({id, label, tab}) => {
+    let btn = document.getElementById(id);
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.id = id;
+      btn.textContent = label;
+      btn.style.cssText = "width:auto;display:inline-block;margin:2px";
+      btn.onclick = () => setShopTab(tab);
+      if (a && a.parentNode) a.parentNode.appendChild(btn);
+    }
+    btn.style.borderBottom = _shopTab === tab ? "2px solid #0af" : "none";
+  });
+
   if (s) s.style.borderBottom = _shopTab === "ships"   ? "2px solid #0af" : "none";
   if (w) w.style.borderBottom = _shopTab === "weapons" ? "2px solid #0af" : "none";
   if (a) a.style.borderBottom = _shopTab === "allies"  ? "2px solid #0af" : "none";
   const body = document.getElementById("shopBody");
   if (!body) return;
-  if (_shopTab === "ships")   renderShopShips(body);
-  else if (_shopTab === "allies") renderShopAllies(body);
+  if      (_shopTab === "ships")      renderShopShips(body);
+  else if (_shopTab === "allies")     renderShopAllies(body);
+  else if (_shopTab === "mastery")    renderShopMastery(body);
+  else if (_shopTab === "challenges") renderShopChallenges(body);
+  else if (_shopTab === "records")    renderShopRecords(body);
+  else if (_shopTab === "account")    renderShopAccount(body);
   else renderShopWeapons(body);
 }
 
@@ -403,12 +427,22 @@ function renderShopAllies(container) {
 function renderShopWeapons(container) {
   const selectedSizes = window._wpSizes || {};
   const selectedQty   = window._wpQtys  || {};
+  // Weapons not for sale — bespoke ship weapons and all special/challenge-reward weapons
+  const NOT_FOR_SALE = new Set([
+    "vengeance_cannon",
+    // bespoke alts
+    "nova_burst","shadow_round","siege_breaker","vortex_cannon","scatter_gatling","gravity_beam",
+    // special challenge rewards
+    "autocannon","lc_ballistic","critical_railgun","corrosion_beam","phase_repeater",
+    "chain_arc","void_cannon","overload_bolt","distortion_pulse",
+  ]);
+
   let html = `<div style="padding:10px;color:#aaa;font:12px monospace">
     <p style="color:#0af;font:bold 14px monospace;margin-bottom:8px">Weapons</p>
-    <p style="margin-bottom:14px;color:#888">Choose a weapon, pick a size and quantity, then buy. (Vengeance Cannon is bespoke — not for sale.)</p>
+    <p style="margin-bottom:14px;color:#888">Choose a weapon, pick a size and quantity, then buy. Special and bespoke weapons are earned through challenges.</p>
     <div style="display:flex;flex-direction:column;gap:10px">`;
   for (const [type, def] of Object.entries(WEAPON_DEFS)) {
-    if (type === "vengeance_cannon") continue;
+    if (NOT_FOR_SALE.has(type)) continue;
     const selSize = selectedSizes[type] || 1;
     const selQty  = selectedQty[type]  || 1;
     const price   = wPrice(type, selSize) * selQty;
@@ -1290,4 +1324,229 @@ function buyAllyShip(shipName, slotIdx) {
   if (!slot) return;
   playerLoadout.allies[slotIdx] = slot;
   renderLoadout(); updateHUD();
+}
+
+// ============================================================
+// V1.6.0 SHOP TABS: MASTERY, CHALLENGES, RECORDS, ACCOUNT
+// ============================================================
+
+function renderShopMastery(container) {
+  const ship = typeof currentShipName !== "undefined" ? currentShipName : "Starlight";
+  const m    = typeof getMastery === "function" ? getMastery(ship) : { xp:0, tokens:0, spent:{} };
+  const lvl  = typeof masteryXpToLevel === "function" ? masteryXpToLevel(m.xp) : 0;
+  const xpNext = typeof masteryXpForNextLevel === "function" ? masteryXpForNextLevel(m.xp) : 200;
+  const totalXp = typeof MASTERY_XP_PER_LEVEL !== "undefined" ? MASTERY_XP_PER_LEVEL * 100 : 20000;
+  const pct = Math.min(100, Math.round(m.xp / (typeof MASTERY_XP_PER_LEVEL !== "undefined" ? MASTERY_XP_PER_LEVEL : 200) % 1 * 100));
+
+  let html = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:680px">
+    <div style="color:#ffcc00;font:bold 16px monospace;margin-bottom:4px">🏆 Ship Mastery — ${ship}</div>
+    <div style="color:#888;margin-bottom:12px">Earn XP by playing. Spend tokens to permanently upgrade this ship.</div>
+    <div style="background:#111;border:1px solid #333;border-radius:6px;padding:10px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="color:#ffcc00">Level ${lvl} / 100</span>
+        <span style="color:#888">${m.tokens} token${m.tokens!==1?"s":""} available</span>
+      </div>
+      <div style="background:#222;border-radius:4px;height:10px;overflow:hidden">
+        <div style="background:#ffcc00;height:100%;width:${pct}%;transition:width 0.3s"></div>
+      </div>
+      <div style="color:#666;font:10px monospace;margin-top:3px">${xpNext} XP to next level</div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px">`;
+
+  const upgrades = typeof MASTERY_TOKEN_UPGRADES !== "undefined" ? MASTERY_TOKEN_UPGRADES : {};
+  Object.entries(upgrades).forEach(([key, def]) => {
+    const spent = m.spent?.[key] || 0;
+    const maxT  = def.maxTokens || 10;
+    const canSpend = m.tokens > 0 && spent < maxT;
+    html += `<div style="background:#0a0e1a;border:1px solid #223;border-radius:6px;padding:10px;width:140px">
+      <div style="color:${def.color};font-weight:bold;margin-bottom:4px">${def.name}</div>
+      <div style="color:#888;font:10px monospace;margin-bottom:6px">${def.desc}</div>
+      <div style="display:flex;gap:2px;margin-bottom:6px">${Array.from({length:maxT},(_,i)=>`<div style="width:10px;height:10px;border-radius:2px;background:${i<spent?def.color:'#222'}"></div>`).join('')}</div>
+      <div style="font:11px monospace;color:#aaa;margin-bottom:6px">${spent}/${maxT} tokens</div>
+      <button onclick="spendMasteryToken?.('${ship}','${key}');renderShopTab()"
+        style="width:100%;padding:4px;background:${canSpend?def.color:'#333'};color:${canSpend?'#000':'#666'};font:11px monospace;border:none;cursor:${canSpend?'pointer':'not-allowed'};border-radius:4px"
+        ${canSpend?'':'disabled'}>Spend Token</button>
+    </div>`;
+  });
+
+  html += `</div></div>`;
+  container.innerHTML = html;
+}
+
+function renderShopChallenges(container) {
+  const fixed   = typeof FIXED_CHALLENGES !== "undefined" ? FIXED_CHALLENGES : [];
+  const daily   = typeof _dailyChallenges !== "undefined" ? _dailyChallenges : [];
+  const done    = typeof unlockedChallengeIds !== "undefined" ? unlockedChallengeIds : [];
+  const dailyDone = typeof _dailyCompleted !== "undefined" ? _dailyCompleted : {};
+
+  const tierColor = { bronze:"#cd7f32", silver:"#aaa", gold:"#ffcc00" };
+
+  let html = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:700px">
+    <div style="color:#ffcc00;font:bold 16px monospace;margin-bottom:12px">📋 Challenges</div>`;
+
+  // Daily section
+  html += `<div style="color:#44ffcc;font:bold 13px monospace;margin-bottom:8px">📅 Daily Challenges</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">`;
+  daily.forEach(ch => {
+    const complete = dailyDone[ch.id];
+    const rw = ch.reward;
+    html += `<div style="background:${complete?'#0a1a0a':'#0a0e1a'};border:1px solid ${complete?'#44ff44':'#223'};border-radius:6px;padding:10px;width:190px">
+      <div style="font-weight:bold;color:${complete?'#44ff44':'#ccc'}">${complete?'✓ ':''} ${ch.title}</div>
+      <div style="color:#888;font:10px monospace;margin:4px 0 6px">${ch.desc}</div>
+      <div style="color:#ffcc00;font:10px monospace">+${rw.type==='credits'?'$'+rw.value.toLocaleString():rw.type}</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // Fixed challenges by group
+  const groups = [...new Set(fixed.map(c=>c.group))];
+  groups.forEach(grp => {
+    const grpChallenges = fixed.filter(c=>c.group===grp);
+    const grpLabel = { shadow:"Shadow Bosses", weapon:"Weapons", title:"Titles", thruster:"Thruster Cosmetics" }[grp] || grp;
+    html += `<div style="color:#0af;font:bold 13px monospace;margin-bottom:8px;text-transform:capitalize">${grpLabel}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">`;
+    grpChallenges.forEach(ch => {
+      const complete = done.includes(ch.id);
+      const tc = tierColor[ch.tier] || "#aaa";
+      const rw = ch.reward;
+      let rwLabel = rw.type==="credits"?`+$${(rw.value||0).toLocaleString()}`:rw.type==="ship"?`Ship: ${rw.value}`:rw.type==="weapon"?`Weapon: ${rw.value}`:rw.type==="title"?`Title: ${rw.value}`:rw.type==="thrusterShape"?`Shape: ${rw.value}`:rw.type==="thrusterColor"?`Color unlock`:"";
+      html += `<div style="background:${complete?'#0a1a0a':'#0a0e1a'};border:1px solid ${complete?'#44ff44':tc+'44'};border-radius:6px;padding:10px;width:190px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+          <span style="font-weight:bold;color:${complete?'#44ff44':'#ccc'}">${complete?'✓ ':''} ${ch.title}</span>
+          <span style="color:${tc};font:9px monospace;text-transform:uppercase">${ch.tier}</span>
+        </div>
+        <div style="color:#888;font:10px monospace;margin:4px 0">${ch.desc}</div>
+        ${ch.hint?`<div style="color:#555;font:10px monospace;font-style:italic;margin-bottom:4px">Hint: ${ch.hint}</div>`:''}
+        <div style="color:#ffcc00;font:10px monospace">→ ${rwLabel}</div>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+function renderShopRecords(container) {
+  const rec = typeof personalRecords !== "undefined" ? personalRecords : {};
+  const schema = typeof RECORDS_SCHEMA !== "undefined" ? RECORDS_SCHEMA : {};
+
+  let html = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:500px">
+    <div style="color:#0af;font:bold 16px monospace;margin-bottom:14px">📊 Personal Records</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">`;
+
+  Object.entries(schema).forEach(([key, def]) => {
+    const val = rec[key] ?? 0;
+    html += `<div style="background:#0a0e1a;border:1px solid #223;border-radius:6px;padding:10px;min-width:160px;flex:1">
+      <div style="color:#888;font:10px monospace;margin-bottom:4px">${def.label}</div>
+      <div style="color:#fff;font:bold 15px monospace">${def.fmt(val)}</div>
+    </div>`;
+  });
+
+  html += `</div></div>`;
+  container.innerHTML = html;
+}
+
+function renderShopAccount(container) {
+  const acct   = typeof currentAccount !== "undefined" ? currentAccount : null;
+  const isGuest = !acct || acct.username === "guest";
+
+  // Thruster customization
+  const ship   = typeof currentShipName !== "undefined" ? currentShipName : "Starlight";
+  const shapes = typeof unlockedThrusterShapes !== "undefined" ? unlockedThrusterShapes : ["classic"];
+  const colors = typeof unlockedThrusterColors !== "undefined" ? unlockedThrusterColors : ["#8084ff"];
+  const curShape = typeof getThrusterShape === "function" ? getThrusterShape(ship) : "classic";
+  const curColor = typeof getThrusterColor === "function" ? getThrusterColor(ship) : "#8084ff";
+  const allShapes = typeof THRUSTER_SHAPES !== "undefined" ? THRUSTER_SHAPES : {};
+  const titles  = typeof unlockedTitles !== "undefined" ? unlockedTitles : [];
+  const equipped = typeof equippedTitle !== "undefined" ? equippedTitle : "";
+
+  let html = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:600px">`;
+
+  // Account section
+  html += `<div style="color:#0af;font:bold 15px monospace;margin-bottom:10px">👤 Account</div>
+    <div style="background:#0a0e1a;border:1px solid #223;border-radius:6px;padding:12px;margin-bottom:16px">`;
+
+  if (isGuest) {
+    html += `<div style="color:#888;margin-bottom:10px">Playing as guest — progress not saved.</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="showLoginFromMenu?.()" style="padding:8px 16px;background:#0af;color:#000;font:bold 12px monospace;border:none;cursor:pointer;border-radius:4px">Login / Register</button>
+      </div>`;
+  } else {
+    html += `<div style="color:#fff;margin-bottom:6px">Logged in as: <span style="color:#0af;font-weight:bold">${acct.username}${acct.isAdmin?" 👑":""}</span></div>
+      <button onclick="if(typeof logoutAccount==='function'){logoutAccount();renderShopTab();}" 
+        style="padding:6px 14px;background:#333;color:#ccc;font:11px monospace;border:none;cursor:pointer;border-radius:4px;margin-top:4px">Logout</button>
+      <button onclick="if(typeof saveGame==='function'){saveGame();}" 
+        style="padding:6px 14px;background:#0a4;color:#fff;font:11px monospace;border:none;cursor:pointer;border-radius:4px;margin-top:4px;margin-left:8px">Save Now</button>`;
+  }
+  html += `</div>`;
+
+  // Titles
+  if (titles.length > 0) {
+    html += `<div style="color:#cc88ff;font:bold 13px monospace;margin-bottom:8px">🎖 Titles</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">`;
+    titles.forEach(t => {
+      const isEq = t === equipped;
+      html += `<button onclick="if(typeof equippedTitle!='undefined'){window.equippedTitle='${t}';renderShopTab();}" 
+        style="padding:5px 12px;background:${isEq?'#cc88ff':'#1a0a2a'};color:${isEq?'#000':'#cc88ff'};font:11px monospace;border:1px solid #cc88ff44;cursor:pointer;border-radius:4px">
+        ${isEq?'✓ ':''} ${t}</button>`;
+    });
+    html += `</div>`;
+  }
+
+  // Thruster shapes
+  html += `<div style="color:#8084ff;font:bold 13px monospace;margin-bottom:8px">💫 Thruster Shape — ${ship}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">`;
+  shapes.forEach(sh => {
+    const def = allShapes[sh] || { name: sh };
+    const isActive = sh === curShape;
+    html += `<button onclick="if(typeof setThrusterShape==='function'){setThrusterShape('${ship}','${sh}');renderShopTab();}"
+      style="padding:5px 12px;background:${isActive?'#8084ff':'#0a0e1a'};color:${isActive?'#000':'#8084ff'};font:11px monospace;border:1px solid #8084ff44;cursor:pointer;border-radius:4px">
+      ${isActive?'✓ ':''} ${def.name||sh}</button>`;
+  });
+  html += `</div>`;
+
+  // Thruster color
+  html += `<div style="color:#8084ff;font:bold 13px monospace;margin-bottom:8px">🎨 Thruster Color — ${ship}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">`;
+  colors.forEach(c => {
+    const isActive = c === curColor;
+    html += `<div onclick="if(typeof setThrusterColor==='function'){setThrusterColor('${ship}','${c}');renderShopTab();}"
+      style="width:32px;height:32px;border-radius:50%;background:${c};cursor:pointer;border:3px solid ${isActive?'#fff':'#333'};box-shadow:${isActive?'0 0 8px '+c:'none'}"></div>`;
+  });
+  html += `</div>`;
+
+  // Leaderboard
+  html += `<div style="color:#ffcc00;font:bold 13px monospace;margin-bottom:8px">🏆 Leaderboard</div>
+    <div id="lbContent" style="background:#0a0e1a;border:1px solid #223;border-radius:6px;padding:10px;color:#888;font:11px monospace">Loading...</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px" id="lbCatBtns">`;
+
+  const cats = typeof LB_CATEGORIES !== "undefined" ? LB_CATEGORIES : [];
+  cats.forEach((c,i) => {
+    html += `<button onclick="loadLBCat('${c.id}')" style="padding:4px 10px;background:#0a0e1a;border:1px solid #333;color:#aaa;font:10px monospace;cursor:pointer;border-radius:4px">${c.label}</button>`;
+  });
+  html += `</div></div>`;
+
+  container.innerHTML = html;
+
+  // Auto-load first leaderboard category
+  if (cats.length > 0) setTimeout(() => loadLBCat(cats[0].id), 50);
+}
+
+async function loadLBCat(catId) {
+  const el = document.getElementById("lbContent");
+  if (!el) return;
+  el.textContent = "Loading...";
+  const data = typeof fetchLeaderboard === "function" ? await fetchLeaderboard(catId) : null;
+  if (!data || !Array.isArray(data)) {
+    el.textContent = "Leaderboard unavailable (offline or not yet set up).";
+    return;
+  }
+  if (data.length === 0) { el.textContent = "No entries yet — be the first!"; return; }
+  el.innerHTML = data.map(e =>
+    `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #111">
+      <span style="color:${e.rank<=3?'#ffcc00':'#aaa'}">${e.rank}. ${e.username}</span>
+      <span style="color:#fff">${e.value?.toLocaleString?.()??e.value}</span>
+    </div>`
+  ).join('');
 }
