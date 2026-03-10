@@ -3959,8 +3959,9 @@ function confirmLeaveGame() {
 }
 
 // ── V1.6.0 Init ──
+// These are defined in saves.js / challenges.js which load before game.js.
+// The typeof guards are a safety net in case of load order issues.
 if (typeof initChallenges === "function") initChallenges();
-// Show login overlay — saves.js is loaded before game.js so buildLoginUI exists
-if (typeof buildLoginUI === "function") buildLoginUI();
+if (typeof buildLoginUI  === "function") buildLoginUI();
 
 gameLoop();
