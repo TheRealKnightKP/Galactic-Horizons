@@ -50,7 +50,9 @@ if (!IS_MOBILE) {
     if(e.code==="KeyQ"&&state==="playing") activateSpecial();
     if(e.code==="KeyR"&&state==="playing") activatePing();
     if(e.code==="KeyT"&&state==="playing") cycleMissileKind();
-    e.preventDefault();
+    // Don't block typing in text inputs / login overlay
+    const tag = document.activeElement?.tagName;
+    if (tag !== "INPUT" && tag !== "TEXTAREA") e.preventDefault();
   });
   document.addEventListener("keyup",   e => { keys[e.code] = false; });
 } else {
@@ -1588,10 +1590,10 @@ function returnToMenuPreserveMoney() {
 
 function endGame(won) {
   state="gameover";
-  if (!won) recordPlayerDeath?.();
-  recordSessionEnd?.();
-  saveGame?.();
-  submitLeaderboard?.();
+  if (!won) window.recordPlayerDeath?.();
+  window.recordSessionEnd?.();
+  window.saveGame?.();
+  window.submitLeaderboard?.();
   document.getElementById("gameOverText").textContent=won?"🏆 Victory!":"💀 Game Over";
   document.getElementById("finalMoney").textContent=money;
   document.getElementById("gameOverMenu").style.display="block";
@@ -1725,9 +1727,11 @@ function applyDamage(target,bullet) {
     }
     // Distortion pulse shield-bypass
     if (bullet.shieldBypassChance && Math.random() < bullet.shieldBypassChance) {
-      if (typeof personalRecords !== "undefined") personalRecords.distortionBypasses = (personalRecords.distortionBypasses||0) + 1;
-      target.hp -= rawDmg * 0.5; // bypass hits hull directly
-      checkChallengeCondition?.("sessionStat", { stat:"distortionBypasses", value: personalRecords.distortionBypasses });
+      target.hp -= rawDmg * 0.5; // bypasses shields, hits hull directly
+      if (typeof personalRecords !== "undefined") {
+        personalRecords.distortionBypasses = (personalRecords.distortionBypasses||0) + 1;
+        window.checkChallengeCondition?.("sessionStat", { stat:"distortionBypasses", value: personalRecords.distortionBypasses });
+      }
     }
   }
 
@@ -2563,7 +2567,7 @@ function updatePlayer() {
   if(player.boosting){
     player.boostTimer--;
     if(player.boostTimer<=0){player.boosting=false;player.boostCooldown=player.boostCooldownMax;}
-    recordBoostFrame?.(); // mastery + challenge tracking
+    window.recordBoostFrame?.(); // mastery + challenge tracking
   } else if(player.boostCooldown>0){
     player.boostCooldown--;
   } else if(keys["ShiftLeft"]||keys["ShiftRight"]){
@@ -2632,7 +2636,7 @@ function updatePlayer() {
       if(currentShipName==="Vengeance"){
         finalBullets.forEach(b=>{ b.vengeanceShot=true; });
       }
-      playerBullets.push(...finalBullets);
+      playerBullets.push(...finalBullets.map(b=>({...b,_isPlayerBullet:true})));
       const rougeM=(player.specialActive&&currentShipName==="Rouge")?1/3:1.0;
       const cometM=(player.specialActive&&currentShipName==="Comet")?1/3:1.0;
       player.shootTimer=Math.round(player.weaponStats.fireInterval*rougeM*cometM);
@@ -2709,24 +2713,30 @@ function updatePlayer() {
     }
     missileTimer=mKind==="micro"?20:mKind==="nuke"?70:40;
     _waveMissileFired = true;
-    recordMissileFired?.();
+    window.recordMissileFired?.();
   }
 
   // Retribution burst: fire 2nd and 3rd shots after delays
-  if(player._burstPending && player._burstPending.length > 0) {
-    player._burstPending = player._burstPending.map(p => ({...p, delay: p.delay - 1}));
-    const ready = player._burstPending.filter(p => p.delay <= 0);
-    player._burstPending = player._burstPending.filter(p => p.delay > 0);
-    ready.forEach(p => {
-      if (player.weaponStats) {
-        const bs = fireBullets(player, player.weaponStats, player.rotation, true);
-        bs.forEach(b => {
-          b.damage = (b.damage||0) * p.mult;
-          if (p.stagger) { b.staggerOnHit = true; b.staggerDur = 45; }
-        });
-        playerBullets.push(...bs);
-      }
-    });
+  if(player._burstPending) {
+    // Normalise: old number format → discard safely
+    if (typeof player._burstPending === "number") { player._burstPending = null; }
+    else if (player._burstPending.length > 0) {
+      player._burstPending = player._burstPending.map(p => ({...p, delay: p.delay - 1}));
+      const ready = player._burstPending.filter(p => p.delay <= 0);
+      player._burstPending = player._burstPending.filter(p => p.delay > 0);
+      if (player._burstPending.length === 0) player._burstPending = null;
+      ready.forEach(p => {
+        if (player.weaponStats) {
+          const bs = fireBullets(player, player.weaponStats, player.rotation, true);
+          bs.forEach(b => {
+            b.damage = (b.damage||0) * p.mult;
+            b._isPlayerBullet = true;
+            if (p.stagger) { b.staggerOnHit = true; b.staggerDur = 45; }
+          });
+          playerBullets.push(...bs);
+        }
+      });
+    }
   }
 
   if (!pdcDisabledThisWave) {
@@ -3383,7 +3393,7 @@ function updateBullets() {
   nukeRings=nukeRings.filter(r=>r.life>0);
   beamFlashes=beamFlashes.filter(f=>f.life>0);
   updateHitEffects(); updateDeathEffects(); updateThrusterParticles();
-  tickAutoSave?.();
+  window.tickAutoSave?.();
   const inBounds=b=>!b.dead&&b.x>-60&&b.x<GAME_W+60&&b.y>-60&&b.y<GAME_H+60;
   playerBullets=playerBullets.filter(inBounds);
   enemyBullets=enemyBullets.filter(inBounds);
@@ -3453,16 +3463,16 @@ function checkCollisions() {
         b.dead=true;
       }
       applyDamage(e,b);
-      if (b.isPlayerBullet !== false) recordShotHit?.(b.category, false);
+      if (b._isPlayerBullet) window.recordShotHit?.(b.category, false);
       if(e.hp<=0){
         spawnDeathEffect(e);
         playExplosion(ENEMIES[e.type]?.size||2);
         e.dead=true;
         money+=e.score;
-        recordCreditsEarned?.(e.score||0);
-        recordKill?.(e);
-        if(e.isShadowComet) { checkShadowVenganceCondition?.(); checkShadowCometDefeat(); }
-        if(e.isShadowVengance) { checkShadowVenganceCondition?.(); checkShadowVenganceDefeat(); }
+        window.recordCreditsEarned?.(e.score||0);
+        window.recordKill?.(e);
+        if(e.isShadowComet) checkShadowCometDefeat();
+        if(e.isShadowVengance) checkShadowVenganceDefeat();
       }
     });
   });
@@ -3490,7 +3500,7 @@ function checkCollisions() {
     if(b.dead)return;
     if(overlaps(b,player)){b.dead=true;applyDamage(player,b);}
     allies.forEach(a=>{
-      if(!a.dead&&overlaps(b,a)){applyDamage(a,b);if(a.hp<=0){spawnDeathEffect(a);a.dead=true;recordAllyDeath?.(a.shipName||a.type);}}
+      if(!a.dead&&overlaps(b,a)){applyDamage(a,b);if(a.hp<=0){spawnDeathEffect(a);a.dead=true;window.recordAllyDeath?.(a.shipName||a.type);}}
     });
   });
   if(player.pdcCount>0&&!pdcDisabledThisWave){
@@ -3905,11 +3915,11 @@ function gameLoop() {
       const _hitless = !playerTookDamageThisWave;
       const _allAlliesAlive = allies.length > 0 && allies.every(a => !a.dead);
       const _noMissiles = !_waveMissileFired;
-      recordCreditsEarned?.(reward);
-      recordWaveEnd?.(currentWave, _hitless, _allAlliesAlive, _noMissiles, _hitless);
-      tickSessionWave?.();
+      window.recordCreditsEarned?.(reward);
+      window.recordWaveEnd?.(currentWave, _hitless, _allAlliesAlive, _noMissiles, _hitless);
+      window.tickSessionWave?.();
       if (typeof infiniteMode !== "undefined" && infiniteMode) {
-        checkChallengeCondition?.("waveReach", { wave: currentWave, infinite: true });
+        window.checkChallengeCondition?.("waveReach", { wave: currentWave, infinite: true });
       }
     }
     if(player.hp<=0){
@@ -3950,9 +3960,7 @@ function confirmLeaveGame() {
 
 // ── V1.6.0 Init ──
 if (typeof initChallenges === "function") initChallenges();
-// Show login overlay on first load
-window.addEventListener("DOMContentLoaded", () => {
-  if (typeof buildLoginUI === "function") buildLoginUI();
-});
+// Show login overlay — saves.js is loaded before game.js so buildLoginUI exists
+if (typeof buildLoginUI === "function") buildLoginUI();
 
 gameLoop();
