@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.6.4";
+const CACHE = "galactic-horizons-v1.6.5";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -116,4 +116,5 @@ Versions:
 -V1.6.2 - Fixing a lot of stuff (10/3/2026)
 -V1.6.3 - Pushing leaderboard live
 -V1.6.4 - Removing special weapons from store
+-V1.6.5 - Fixing special weapons in store
 */
