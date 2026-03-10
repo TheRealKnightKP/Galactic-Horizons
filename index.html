@@ -9,6 +9,11 @@
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js");
     }
+    <script src="data.js"></script>
+   <script src="saves.js"></script>
+   <script src="challenges.js"></script>
+   <script src="shop.js"></script>
+   <script src="game.js"></script>
   </script>
   <link rel="icon" href="data:,">
 </head>
@@ -32,7 +37,7 @@
 
 <div id="mainMenu" class="menu">
   <h1>Galactic Horizons</h1>
-  <p style="color:#555;font-size:11px;margin-top:-10px">v1.5.15</p>
+  <p style="color:#555;font-size:11px;margin-top:-10px">v1.6.0</p>
   <p>WASD/Arrows: Move &nbsp; Mouse: Aim &nbsp; Click/Space: Shoot &nbsp; F: Missile</p>
   <button onclick="startGame(false)">Campaign (20 Waves)</button>
   <button onclick="startGame(true)">Infinite Mode</button>
@@ -77,6 +82,7 @@
 <script src="game.js"></script>
 </body>
 </html>
+
 
 
 
