@@ -119,18 +119,17 @@ function loadGame(username) {
 }
 
 // ============================================================
-// ACCOUNT LOGIN / REGISTER
+// ACCOUNT LOGIN / REGISTER — Cloudflare-backed, localStorage as save cache
 // ============================================================
-function loginAccount(username, password) {
-  // Admin shortcut
+
+// Async wrappers — UI calls these and awaits
+async function loginAccount(username, password) {
+  // Admin shortcut — never hits server
   if (username === ADMIN_USER && password === ADMIN_PASS) {
     currentAccount = { username: ADMIN_USER, isAdmin: true };
-    // Apply admin save (always fresh for testing)
     const adminSave = { ...ADMIN_SAVE, version: SAVE_VERSION };
-    // Give all challenge IDs
-    if (typeof FIXED_CHALLENGES !== "undefined") {
+    if (typeof FIXED_CHALLENGES !== "undefined")
       adminSave.unlockedChallengeIds = FIXED_CHALLENGES.map(c => c.id);
-    }
     adminSave.challengeProgress = {};
     adminSave.masterData = {};
     adminSave.personalRecords = {};
@@ -139,39 +138,65 @@ function loginAccount(username, password) {
     return { ok: true, isAdmin: true };
   }
 
-  // Load existing account
-  const accounts = getAllAccounts();
-  const acct = accounts.find(a => a.username.toLowerCase() === username.toLowerCase());
-  if (!acct) return { ok: false, error: "Account not found" };
-  if (acct.passwordHash !== hashPassword(password)) return { ok: false, error: "Wrong password" };
-
-  currentAccount = { username: acct.username, isAdmin: false };
-  const save = loadGame(acct.username);
-  if (save) applySaveData(save);
-  else {
-    // Fresh account — seed defaults
-    if (typeof ownedShips !== "undefined" && (!ownedShips || ownedShips.length === 0)) {
+  const ph = hashPassword(password);
+  try {
+    const res = await fetch(`${LEADERBOARD_URL}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, passwordHash: ph }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { ok: false, error: data.error || "Login failed" };
+    currentAccount = { username: data.username, isAdmin: false, passwordHash: ph };
+    const save = loadGame(data.username);
+    if (save) applySaveData(save);
+    else if (typeof ownedShips !== "undefined" && (!ownedShips || ownedShips.length === 0)) {
       ownedShips = ["Starlight"];
     }
+    return { ok: true };
+  } catch {
+    // Offline fallback — try localStorage only
+    const accounts = getAllAccounts();
+    const acct = accounts.find(a => a.username.toLowerCase() === username.toLowerCase());
+    if (!acct) return { ok: false, error: "Cannot reach server and no local account found" };
+    if (acct.passwordHash !== ph) return { ok: false, error: "Wrong password" };
+    currentAccount = { username: acct.username, isAdmin: false, passwordHash: ph };
+    const save = loadGame(acct.username);
+    if (save) applySaveData(save);
+    return { ok: true, offline: true };
   }
-  return { ok: true };
 }
 
-function registerAccount(username, password) {
+async function registerAccount(username, password) {
   if (!username || username.length < 3 || username.length > 20)
     return { ok: false, error: "Username must be 3–20 characters" };
   if (!password || password.length < 6)
     return { ok: false, error: "Password must be at least 6 characters" };
-  if (username === ADMIN_USER)
+  if (username.toLowerCase() === ADMIN_USER.toLowerCase())
     return { ok: false, error: "Username reserved" };
+  // Block special chars
+  if (!/^[a-zA-Z0-9_\-]+$/.test(username))
+    return { ok: false, error: "Only letters, numbers, _ and - allowed" };
 
-  const accounts = getAllAccounts();
-  if (accounts.find(a => a.username.toLowerCase() === username.toLowerCase()))
-    return { ok: false, error: "Username already taken" };
-
-  accounts.push({ username, passwordHash: hashPassword(password) });
-  saveAccountList(accounts);
-  return loginAccount(username, password);
+  const ph = hashPassword(password);
+  try {
+    const res = await fetch(`${LEADERBOARD_URL}/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, passwordHash: ph }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { ok: false, error: data.error || "Registration failed" };
+    // Cache locally for offline fallback
+    const accounts = getAllAccounts();
+    if (!accounts.find(a => a.username.toLowerCase() === username.toLowerCase())) {
+      accounts.push({ username, passwordHash: ph });
+      saveAccountList(accounts);
+    }
+    return loginAccount(username, password);
+  } catch {
+    return { ok: false, error: "Cannot reach server. Check your connection." };
+  }
 }
 
 function logoutAccount() {
@@ -179,21 +204,26 @@ function logoutAccount() {
   currentAccount = null;
 }
 
-function deleteAccount(username, password) {
+async function deleteAccount(username, password) {
   if (!username) return { ok: false, error: "No account" };
-  // Admin can't be deleted
   if (username === ADMIN_USER) return { ok: false, error: "Cannot delete admin account" };
-  // Must confirm with password
-  const accounts = getAllAccounts();
-  const acct = accounts.find(a => a.username.toLowerCase() === username.toLowerCase());
-  if (!acct) return { ok: false, error: "Account not found" };
-  if (acct.passwordHash !== hashPassword(password)) return { ok: false, error: "Wrong password" };
-  // Delete save data
-  localStorage.removeItem(getAccountKey(username));
-  // Remove from account list
-  saveAccountList(accounts.filter(a => a.username.toLowerCase() !== username.toLowerCase()));
-  currentAccount = null;
-  return { ok: true };
+  const ph = hashPassword(password);
+  try {
+    const res = await fetch(`${LEADERBOARD_URL}/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, passwordHash: ph }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { ok: false, error: data.error || "Delete failed" };
+    localStorage.removeItem(getAccountKey(username));
+    const accounts = getAllAccounts();
+    saveAccountList(accounts.filter(a => a.username.toLowerCase() !== username.toLowerCase()));
+    currentAccount = null;
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Cannot reach server." };
+  }
 }
 
 // Simple hash — not cryptographic, just obfuscates password in localStorage
@@ -230,14 +260,18 @@ const LB_CATEGORIES = [
 ];
 
 async function submitLeaderboard() {
-  if (!currentAccount || !navigator.onLine) return;
+  if (!currentAccount || currentAccount.username === "guest" || !navigator.onLine) return;
   const entries = {};
   LB_CATEGORIES.forEach(c => { entries[c.id] = c.stat(); });
   try {
     await fetch(`${LEADERBOARD_URL}/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: currentAccount.username, entries }),
+      body: JSON.stringify({
+        username: currentAccount.username,
+        passwordHash: currentAccount.passwordHash || "",
+        entries,
+      }),
     });
   } catch { /* offline — silent fail */ }
 }
@@ -273,7 +307,7 @@ function buildLoginUI() {
         style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;color:#eee;padding:8px;font:13px monospace;margin-bottom:10px;border-radius:4px">
       <input id="loginPass" type="password" placeholder="Password" autocomplete="current-password"
         style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;color:#eee;padding:8px;font:13px monospace;margin-bottom:16px;border-radius:4px">
-      <button onclick="loginSubmit()" style="width:100%;padding:10px;background:#0af;color:#000;font:bold 13px monospace;border:none;cursor:pointer;border-radius:4px">LOGIN</button>
+      <button onclick="loginSubmit()" class="login-submit-btn" style="width:100%;padding:10px;background:#0af;color:#000;font:bold 13px monospace;border:none;cursor:pointer;border-radius:4px">LOGIN</button>
       <div style="text-align:center;margin-top:12px">
         <a onclick="loginGuest()" style="color:#555;font:11px monospace;cursor:pointer;text-decoration:underline">Play as guest (no save)</a>
       </div>
@@ -298,15 +332,25 @@ function loginSetMode(mode) {
   if (btn)  btn.textContent = mode === "login" ? "LOGIN" : "CREATE ACCOUNT";
 }
 
-function loginSubmit() {
-  const user = (document.getElementById("loginUser")?.value || "").trim();
-  const pass = (document.getElementById("loginPass")?.value || "");
+async function loginSubmit() {
+  const user  = (document.getElementById("loginUser")?.value || "").trim();
+  const pass  = (document.getElementById("loginPass")?.value || "");
   const errEl = document.getElementById("loginError");
-  const result = _loginMode === "login" ? loginAccount(user, pass) : registerAccount(user, pass);
+  const submitBtn = document.querySelector("#loginOverlay button.login-submit-btn");
+
+  if (errEl) errEl.textContent = "";
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "..."; }
+
+  const result = await (_loginMode === "login" ? loginAccount(user, pass) : registerAccount(user, pass));
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = _loginMode === "login" ? "LOGIN" : "CREATE ACCOUNT";
+  }
+
   if (result.ok) {
     document.getElementById("loginOverlay")?.remove();
-    if (typeof renderHUD === "function") renderHUD?.();
-    showNotification?.(`Welcome, ${currentAccount.username}${result.isAdmin?" (ADMIN)":""}!`, "#0af");
+    showNotification?.(`Welcome, ${currentAccount.username}${result.isAdmin?" (ADMIN)":""}${result.offline?" (offline)":""}!`, "#0af");
     submitLeaderboard();
   } else {
     if (errEl) errEl.textContent = result.error;
