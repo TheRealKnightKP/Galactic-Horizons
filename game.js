@@ -490,7 +490,7 @@ function drawDeathEffects() {
 // ============================================================
 // GAME STATE
 // ============================================================
-let state="menu", money=5000000, currentWave=0, infiniteMode=false, currentShipName="Starlight";
+let state="menu", money=0, currentWave=0, infiniteMode=false, currentShipName="Starlight";
 let player={}, allies=[], enemies=[], playerBullets=[], enemyBullets=[];
 let missileTimer=0, ownedShips=[], shopOpenedFromMenu=false;
 let waveTransitionTimer=0, waveTransitionText="", beamFlashes=[], nukeRings=[];
@@ -3965,3 +3965,4 @@ if (typeof initChallenges === "function") initChallenges();
 if (typeof buildLoginUI  === "function") buildLoginUI();
 
 gameLoop();
+
