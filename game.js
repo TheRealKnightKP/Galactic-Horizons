@@ -341,12 +341,13 @@ function drawHitEffects() {
       const r=e.maxR*Math.min(1,t*2.5);
       ctx.save(); ctx.globalAlpha=alpha*0.9; ctx.fillStyle=t<0.4?"#ffffff":"#ff7700"; ctx.shadowColor="#ffaa00"; ctx.shadowBlur=12;
       ctx.beginPath(); ctx.arc(e.x,e.y,Math.max(0.5,r),0,Math.PI*2); ctx.fill(); ctx.restore();
+    } else if (e.arc) {
+      ctx.save(); ctx.globalAlpha = e.life/e.maxLife; ctx.strokeStyle = e.color||"#44ffff";
+      ctx.lineWidth = 2; ctx.shadowColor = e.color||"#44ffff"; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.tx, e.ty); ctx.stroke(); ctx.restore();
     }
   });
 }
-
-// ============================================================
-// THRUSTER EFFECTS
 // ============================================================
 const MAX_THRUSTER_PARTICLES = typeof IS_MOBILE !== "undefined" && IS_MOBILE ? 80 : 200;
 
@@ -879,7 +880,11 @@ function setPlayerShip(name) {
   currentShipName=name; playerLoadout.ship=name;
   const d=SHIPS[name];
   let wType;
-  if (d.bespoke||d.weaponType==="none") wType=d.weaponType;
+  if (d.bespoke||d.weaponType==="none") {
+    // Use alt weapon if unlocked and selected
+    if (d.bespokeAlt && playerLoadout.useBespokeAlt) wType = d.bespokeAlt;
+    else wType = d.weaponType;
+  }
   else wType=resolveWType(playerLoadout.mainWeapon,d.weaponType);
   const _wStatsRaw=(wType&&wType!=="none")?getWeaponStats(wType,d.weaponSize):null;
   const _wqMult=(typeof WEAPON_QUALITY_TIERS!=="undefined"&&WEAPON_QUALITY_TIERS[playerLoadout.weaponQualityTier||1]?.damageMult)||1.0;
@@ -3491,6 +3496,55 @@ function checkCollisions() {
       }
       applyDamage(e,b);
       if (b._isPlayerBullet) window.recordShotHit?.(b.category, false);
+
+      // Chain arc — jump to nearby enemies
+      if (b.chainHops > 0) {
+        let hopsLeft = b.chainHops;
+        let lastHit = e;
+        let dmg = (b.damage || 0) * (b.chainDmgMult || 0.55);
+        const alreadyHit = new Set([e]);
+        while (hopsLeft-- > 0) {
+          // Find nearest un-hit alive enemy within range
+          let nearest = null, nearestDist = b.chainRange || 160;
+          enemies.forEach(t => {
+            if (t.dead || alreadyHit.has(t)) return;
+            const d = Math.hypot(t.x+t.w/2 - (lastHit.x+lastHit.w/2), t.y+t.h/2 - (lastHit.y+lastHit.h/2));
+            if (d < nearestDist) { nearestDist = d; nearest = t; }
+          });
+          if (!nearest) break;
+          alreadyHit.add(nearest);
+          // Draw arc visual
+          hitEffects.push({ x: lastHit.x+lastHit.w/2, y: lastHit.y+lastHit.h/2, tx: nearest.x+nearest.w/2, ty: nearest.y+nearest.h/2, life: 8, maxLife: 8, arc: true, color: b.color || "#44ffff" });
+          applyDamage(nearest, { ...b, damage: dmg, chainHops: 0 });
+          dmg *= (b.chainDmgMult || 0.55);
+          lastHit = nearest;
+          if (nearest.hp <= 0) { spawnDeathEffect(nearest); playExplosion(ENEMIES[nearest.type]?.size||2); nearest.dead=true; money+=nearest.score; window.recordCreditsEarned?.(nearest.score||0); window.recordKill?.(nearest); }
+        }
+      }
+
+      // Void / Vortex AOE on non-missile bullet impact
+      if (!b.missile && b.aoeRadius > 0) {
+        const bx = b.x+b.w/2, by = b.y+b.h/2;
+        enemies.forEach(t => {
+          if (t.dead || t === e) return;
+          const d = Math.hypot(t.x+t.w/2-bx, t.y+t.h/2-by);
+          if (d > b.aoeRadius) return;
+          const falloff = 1 - (d / b.aoeRadius) * 0.5;
+          if (b.vortexPull) {
+            t.gravityPullTimer = b.vortexPullDur || 60;
+            t.gravityPullX = bx; t.gravityPullY = by;
+          }
+          applyDamage(t, { ...b, damage: (b.damage||0) * falloff, aoeRadius: 0 });
+          if (t.hp <= 0) { spawnDeathEffect(t); playExplosion(ENEMIES[t.type]?.size||2); t.dead=true; money+=t.score; window.recordCreditsEarned?.(t.score||0); window.recordKill?.(t); }
+        });
+        // Void self-damage in AOE
+        if (b.voidSelfDmg) {
+          const pd = Math.hypot(player.x+player.w/2-bx, player.y+player.h/2-by);
+          if (pd < b.aoeRadius) applyDamage(player, { ...b, damage: (b.damage||0)*(1-pd/b.aoeRadius)*0.5, aoeRadius: 0 });
+        }
+        nukeRings.push({ x:bx, y:by, r:0, maxR:b.aoeRadius, life:30, maxLife:30, color: b.color||"#8800ff" });
+      }
+
       if(e.hp<=0){
         spawnDeathEffect(e);
         playExplosion(ENEMIES[e.type]?.size||2);
