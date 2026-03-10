@@ -1451,10 +1451,34 @@ function renderShopAccount(container) {
       </div>`;
   } else {
     html += `<div style="color:#fff;margin-bottom:6px">Logged in as: <span style="color:#0af;font-weight:bold">${acct.username}${acct.isAdmin?" 👑":""}</span></div>
-      <button onclick="if(typeof logoutAccount==='function'){logoutAccount();renderShopTab();}" 
-        style="padding:6px 14px;background:#333;color:#ccc;font:11px monospace;border:none;cursor:pointer;border-radius:4px;margin-top:4px">Logout</button>
-      <button onclick="if(typeof saveGame==='function'){saveGame();}" 
-        style="padding:6px 14px;background:#0a4;color:#fff;font:11px monospace;border:none;cursor:pointer;border-radius:4px;margin-top:4px;margin-left:8px">Save Now</button>`;
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+        <button onclick="if(typeof logoutAccount==='function'){logoutAccount();renderCommandCenter?.();}" 
+          style="padding:6px 14px;background:#333;color:#ccc;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Logout</button>
+        <button onclick="if(typeof saveGame==='function'){saveGame();showNotification?.('Game saved!','#0af');}" 
+          style="padding:6px 14px;background:#0a4;color:#fff;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Save Now</button>
+        ${acct.isAdmin?'':
+        `<button onclick="window._showDeleteConfirm=true;renderCommandCenter?..()" 
+          style="padding:6px 14px;background:#1a0000;color:#f44;font:11px monospace;border:1px solid #f444;cursor:pointer;border-radius:4px">Delete Account</button>`}
+      </div>
+      ${window._showDeleteConfirm ? `
+        <div style="margin-top:12px;background:#1a0000;border:1px solid #f444;border-radius:6px;padding:12px">
+          <div style="color:#f44;margin-bottom:8px;font-weight:bold">⚠ Delete account permanently?</div>
+          <div style="color:#888;font:10px monospace;margin-bottom:8px">Enter your password to confirm. This cannot be undone.</div>
+          <input id="deletePassInput" type="password" placeholder="Your password"
+            style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;color:#eee;padding:6px;font:12px monospace;margin-bottom:8px;border-radius:4px">
+          <div id="deleteErr" style="color:#f44;font:10px monospace;min-height:14px;margin-bottom:6px"></div>
+          <div style="display:flex;gap:8px">
+            <button onclick="
+              const pw=document.getElementById('deletePassInput')?.value||'';
+              const r=typeof deleteAccount==='function'?deleteAccount('${acct.username}',pw):{ok:false,error:'Not available'};
+              if(r.ok){window._showDeleteConfirm=false;if(typeof buildLoginUI==='function')buildLoginUI();}
+              else{const el=document.getElementById('deleteErr');if(el)el.textContent=r.error;}"
+              style="padding:6px 14px;background:#f44;color:#000;font:bold 11px monospace;border:none;cursor:pointer;border-radius:4px">Confirm Delete</button>
+            <button onclick="window._showDeleteConfirm=false;renderCommandCenter?.()"
+              style="padding:6px 14px;background:#333;color:#ccc;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Cancel</button>
+          </div>
+        </div>` : ''}
+      `;
   }
   html += `</div>`;
 
