@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.6.0";
+const CACHE = "galactic-horizons-v1.6.1";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,6 +7,9 @@ const ASSETS = [
   "./shop.js",
   "./game.js",
   "./manifest.json",
+  "./saves.js",
+  "./worker.js".
+  "./challenges.js",
   "./assets/Galactic_Horizons_SIcon.png",
   "./assets/Galactic_Horizons_Icon.png",
   "./assets/Starlight.png",
@@ -110,4 +113,5 @@ Versions:
 -V1.5.14 - Arena Evolution part 3 update: Enemy capital ship ai
 -V1.5.15 - Fixed ally slots
 -V1.6.0 - Arena Finale Update.
+-V1.6.1 - pushing leaderboard stuff
 */
