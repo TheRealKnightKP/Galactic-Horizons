@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.6.10";
+const CACHE = "galactic-horizons-v1.6.11";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -121,4 +121,5 @@ Versions:
 -V1.6.8 - Trying to fix mobile not updating
 -V1.6.9 - Trying to fix account stuff.
 -V1.6.10 - Arena Finale Update part 2.
+-V1.6.11 - Fixed some stuff
 */
