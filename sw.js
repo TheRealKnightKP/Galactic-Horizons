@@ -7,7 +7,6 @@ const ASSETS = [
   "./game.js",
   "./manifest.json",
   "./saves.js",
-  "./worker.js",
   "./challenges.js",
   "./assets/Galactic_Horizons_SIcon.png",
   "./assets/Galactic_Horizons_Icon.png",
