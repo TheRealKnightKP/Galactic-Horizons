@@ -832,10 +832,7 @@ function renderShipLoadoutPanel(container) {
     html += `<p><b>Main Weapon:</b> <span style="color:#ffcc44">Bespoke — fixed</span></p>`;
     // Bespoke alt selector — show if the alt weapon is unlocked
     if (sd.bespokeAlt) {
-      const altUnlocked = typeof unlockedChallengeIds !== "undefined"
-        ? unlockedChallengeIds.some(id => id.includes(sd.bespokeAlt) || id.includes("bespoke"))
-        || (typeof window._unlockedBespokeAlts !== "undefined" && window._unlockedBespokeAlts?.includes(sd.bespokeAlt))
-        : false;
+      const altUnlocked = typeof weaponInventory !== "undefined" && (weaponInventory[sd.bespokeAlt] > 0);
       const usingAlt = playerLoadout.useBespokeAlt === true;
       const altName = sd.bespokeAltName || WEAPON_DEFS[sd.bespokeAlt]?.name || sd.bespokeAlt;
       if (altUnlocked) {
