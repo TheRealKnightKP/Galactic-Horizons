@@ -252,9 +252,9 @@ function buildLoginUI() {
         <button onclick="loginSetMode('login')" id="btnModeLogin" style="flex:1;background:#0a0e1a;border:1px solid #0af;color:#0af;padding:6px;font:11px monospace;cursor:pointer">Login</button>
         <button onclick="loginSetMode('register')" id="btnModeReg" style="flex:1;background:#0a0e1a;border:1px solid #333;color:#666;padding:6px;font:11px monospace;cursor:pointer">Register</button>
       </div>
-      <input id="loginUser" type="text" placeholder="Username" maxlength="20"
+      <input id="loginUser" type="text" placeholder="Username" maxlength="20" autocomplete="username"
         style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;color:#eee;padding:8px;font:13px monospace;margin-bottom:10px;border-radius:4px">
-      <input id="loginPass" type="password" placeholder="Password"
+      <input id="loginPass" type="password" placeholder="Password" autocomplete="current-password"
         style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;color:#eee;padding:8px;font:13px monospace;margin-bottom:16px;border-radius:4px">
       <button onclick="loginSubmit()" style="width:100%;padding:10px;background:#0af;color:#000;font:bold 13px monospace;border:none;cursor:pointer;border-radius:4px">LOGIN</button>
       <div style="text-align:center;margin-top:12px">
@@ -263,9 +263,11 @@ function buildLoginUI() {
     </div>`;
   document.body.appendChild(overlay);
 
-  // Enter key submits
+  // Enter key submits; focus username field immediately
   overlay.querySelectorAll("input").forEach(inp =>
     inp.addEventListener("keydown", e => { if (e.key === "Enter") loginSubmit(); }));
+  // Slight delay so the browser registers the element before focusing
+  setTimeout(() => document.getElementById("loginUser")?.focus(), 50);
 }
 
 let _loginMode = "login";
@@ -296,6 +298,12 @@ function loginSubmit() {
 
 function loginGuest() {
   currentAccount = { username: "guest", isAdmin: false };
-  document.getElementById("loginOverlay")?.remove();
-  showNotification?.("Playing as guest — progress won't be saved.", "#888");
+  const overlay = document.getElementById("loginOverlay");
+  if (overlay) overlay.remove();
+  showNotification?.("Playing as guest — progress won't be saved. Log in from the Shop to save.", "#888");
+}
+
+// Call this to show the login UI from the shop/menu
+function showLoginFromMenu() {
+  buildLoginUI();
 }
