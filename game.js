@@ -14,6 +14,8 @@ let displayScale = 1;
 
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1);
 
+let _starCanvas = null; // declared early — resizeCanvas nulls it on resize
+
 // Set page background to match space so letterbox bars are invisible
 document.documentElement.style.background = "#000811";
 document.body.style.background = "#000811";
@@ -384,7 +386,6 @@ function drawHitEffects() {
 const MAX_THRUSTER_PARTICLES = typeof IS_MOBILE !== "undefined" && IS_MOBILE ? 80 : 200;
 
 // Pre-render static star background once
-let _starCanvas = null;
 function _buildStarBg() {
   _starCanvas = document.createElement("canvas");
   _starCanvas.width = GAME_W; _starCanvas.height = GAME_H;
