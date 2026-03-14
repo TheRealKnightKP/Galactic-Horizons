@@ -133,6 +133,22 @@ export default {
       return json({ ok: true, accounts });
     }
 
+    // GET /admin/orphans?adminKey=... — list user: entries with no matching acct:
+    if (request.method === "GET" && url.pathname === "/admin/orphans") {
+      if (url.searchParams.get("adminKey") !== "650392026") return json({ error: "Forbidden" }, 403);
+      const userList = await env.LEADERBOARD.list({ prefix: "user:" });
+      const orphans = [];
+      for (const k of userList.keys) {
+        const uname = k.name.replace("user:", "");
+        const acct = await env.LEADERBOARD.get(`acct:${uname}`);
+        if (!acct) {
+          const d = await env.LEADERBOARD.get(k.name, "json");
+          orphans.push({ username: d?.username || uname });
+        }
+      }
+      return json({ ok: true, orphans });
+    }
+
     // POST /admin/delete — TEMP admin force-delete (remove before public launch)
     if (request.method === "POST" && url.pathname === "/admin/delete") {
       let body;
