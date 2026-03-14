@@ -152,7 +152,7 @@ function loadGame(username) {
 
 // Async wrappers — UI calls these and awaits
 async function loginAccount(username, password) {
-  // Admin shortcut — never hits server
+  // Admin shortcut — never hits server, never touches cloud
   if (username === ADMIN_USER && password === ADMIN_PASS) {
     currentAccount = { username: ADMIN_USER, isAdmin: true };
     const adminSave = { ...ADMIN_SAVE, version: SAVE_VERSION };
@@ -162,7 +162,9 @@ async function loginAccount(username, password) {
     adminSave.masterData = {};
     adminSave.personalRecords = {};
     applySaveData(adminSave);
-    saveGame();
+    // Save locally only — never push admin state to cloud
+    const key = getAccountKey(ADMIN_USER);
+    localStorage.setItem(key, JSON.stringify({ ...adminSave }));
     return { ok: true, isAdmin: true };
   }
 
@@ -177,22 +179,23 @@ async function loginAccount(username, password) {
     if (!res.ok) return { ok: false, error: data.error || "Login failed" };
     currentAccount = { username: data.username, isAdmin: false, passwordHash: ph };
 
+    // Reset globals to fresh defaults before applying save
+    // prevents admin bleed-through if someone logged out without reloading
+    if (typeof money !== "undefined") money = 5000;
+    if (typeof ownedShips !== "undefined") ownedShips = ["Starlight"];
+
     // Try cloud save first, fall back to local
     const cloudSave = await _pullSaveFromCloud(data.username, ph);
     const localSave = loadGame(data.username);
     let saveToUse = null;
     if (cloudSave && localSave) {
-      // Use whichever is newer
       saveToUse = (cloudSave.savedAt || 0) >= (localSave.savedAt || 0) ? cloudSave : localSave;
     } else {
       saveToUse = cloudSave || localSave;
     }
     if (saveToUse) {
       applySaveData(saveToUse);
-      // Cache cloud save locally
       localStorage.setItem(getAccountKey(data.username), JSON.stringify(saveToUse));
-    } else if (typeof ownedShips !== "undefined" && (!ownedShips || ownedShips.length === 0)) {
-      ownedShips = ["Starlight"];
     }
     return { ok: true };
   } catch {
@@ -202,6 +205,8 @@ async function loginAccount(username, password) {
     if (!acct) return { ok: false, error: "Cannot reach server and no local account found" };
     if (acct.passwordHash !== ph) return { ok: false, error: "Wrong password" };
     currentAccount = { username: acct.username, isAdmin: false, passwordHash: ph };
+    if (typeof money !== "undefined") money = 5000;
+    if (typeof ownedShips !== "undefined") ownedShips = ["Starlight"];
     const save = loadGame(acct.username);
     if (save) applySaveData(save);
     return { ok: true, offline: true };
