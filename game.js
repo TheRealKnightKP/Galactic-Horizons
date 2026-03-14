@@ -2,29 +2,61 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-let GAME_W = window.innerWidth;
-let GAME_H = window.innerHeight;
+// Fixed logical game world — all game logic uses these constants
+const LOGICAL_W_PC     = 1280;
+const LOGICAL_W_MOBILE = 900;
+const LOGICAL_H        = 720;
+
+let GAME_W = LOGICAL_W_PC;
+let GAME_H = LOGICAL_H;
 const SIZE_SCALE = 0.5;
 let displayScale = 1;
 
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1);
 
+// Set page background to match space so letterbox bars are invisible
+document.documentElement.style.background = "#000811";
+document.body.style.background = "#000811";
+document.body.style.margin = "0";
+document.body.style.overflow = "hidden";
+
 function resizeCanvas() {
-  GAME_W = window.innerWidth;
-  GAME_H = window.innerHeight;
-  displayScale = 1;
+  GAME_W = IS_MOBILE ? LOGICAL_W_MOBILE : LOGICAL_W_PC;
+  GAME_H = LOGICAL_H;
+
+  // Canvas always draws at logical size — no screen-dependent rendering
   canvas.width  = GAME_W;
   canvas.height = GAME_H;
-  canvas.style.width  = GAME_W + "px";
-  canvas.style.height = GAME_H + "px";
+
+  // Scale to fit viewport maintaining aspect ratio (contain)
+  const scaleX = window.innerWidth  / GAME_W;
+  const scaleY = window.innerHeight / GAME_H;
+  displayScale = Math.min(scaleX, scaleY);
+
+  const cssW    = Math.round(GAME_W * displayScale);
+  const cssH    = Math.round(GAME_H * displayScale);
+  const offsetX = Math.round((window.innerWidth  - cssW) / 2);
+  const offsetY = Math.round((window.innerHeight - cssH) / 2);
+
+  canvas.style.position = "fixed";
+  canvas.style.left     = offsetX + "px";
+  canvas.style.top      = offsetY + "px";
+  canvas.style.width    = cssW + "px";
+  canvas.style.height   = cssH + "px";
+  canvas.style.imageRendering = "crisp-edges";
+
+  // Game container covers full viewport for HUD/UI elements
   const container = document.getElementById("gameContainer");
   if (container) {
-    container.style.width    = GAME_W + "px";
-    container.style.height   = GAME_H + "px";
+    container.style.width    = window.innerWidth  + "px";
+    container.style.height   = window.innerHeight + "px";
     container.style.left     = "0px";
     container.style.top      = "0px";
     container.style.position = "fixed";
   }
+
+  // Force star background rebuild at new logical size
+  _starCanvas = null;
 }
 
 window.addEventListener("resize", () => { setTimeout(resizeCanvas, 50); });
@@ -39,8 +71,8 @@ let mobileAim = { active: false, touchId: null, startX: 0, startY: 0, dx: 0, dy:
 if (!IS_MOBILE) {
   canvas.addEventListener("mousemove", e => {
     const r = canvas.getBoundingClientRect();
-    mouse.x = (e.clientX - r.left) / displayScale;
-    mouse.y = (e.clientY - r.top)  / displayScale;
+    mouse.x = (e.clientX - r.left) * (GAME_W / r.width);
+    mouse.y = (e.clientY - r.top)  * (GAME_H / r.height);
   });
   canvas.addEventListener("mousedown", () => { mouse.down = true; initAudio(); });
   canvas.addEventListener("mouseup",   () => mouse.down = false);
@@ -357,9 +389,66 @@ function _buildStarBg() {
   _starCanvas = document.createElement("canvas");
   _starCanvas.width = GAME_W; _starCanvas.height = GAME_H;
   const sc = _starCanvas.getContext("2d");
-  sc.fillStyle = "#000011"; sc.fillRect(0,0,GAME_W,GAME_H);
-  sc.fillStyle = "#ffffff";
-  for (let i = 0; i < 150; i++) sc.fillRect((i*137)%GAME_W,(i*97)%GAME_H,1,1);
+
+  // Base — deep space gradient
+  const grad = sc.createRadialGradient(GAME_W*0.5, GAME_H*0.45, 0, GAME_W*0.5, GAME_H*0.5, GAME_W*0.75);
+  grad.addColorStop(0,   "#05091a");
+  grad.addColorStop(0.5, "#020611");
+  grad.addColorStop(1,   "#000408");
+  sc.fillStyle = grad;
+  sc.fillRect(0, 0, GAME_W, GAME_H);
+
+  // Nebula blobs — subtle color clouds
+  const nebulae = [
+    { x: GAME_W*0.22, y: GAME_H*0.35, r: GAME_W*0.28, c1: "rgba(20,8,60,0.18)",  c2: "rgba(0,0,0,0)" },
+    { x: GAME_W*0.75, y: GAME_H*0.60, r: GAME_W*0.22, c1: "rgba(0,20,50,0.15)",  c2: "rgba(0,0,0,0)" },
+    { x: GAME_W*0.55, y: GAME_H*0.20, r: GAME_W*0.18, c1: "rgba(30,5,40,0.12)",  c2: "rgba(0,0,0,0)" },
+  ];
+  nebulae.forEach(n => {
+    const ng = sc.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r);
+    ng.addColorStop(0, n.c1); ng.addColorStop(1, n.c2);
+    sc.fillStyle = ng; sc.fillRect(0, 0, GAME_W, GAME_H);
+  });
+
+  // Layer 1 — distant dim stars (many, tiny)
+  sc.fillStyle = "rgba(180,190,220,0.45)";
+  for (let i = 0; i < 320; i++) {
+    const x = (i * 367 + 11) % GAME_W;
+    const y = (i * 211 + 53) % GAME_H;
+    sc.fillRect(x, y, 1, 1);
+  }
+
+  // Layer 2 — mid stars (medium brightness, slightly varied size)
+  for (let i = 0; i < 90; i++) {
+    const x = (i * 491 + 137) % GAME_W;
+    const y = (i * 313 + 79)  % GAME_H;
+    const alpha = 0.45 + (i % 5) * 0.09;
+    sc.fillStyle = `rgba(210,220,255,${alpha.toFixed(2)})`;
+    const sz = i % 3 === 0 ? 1.5 : 1;
+    sc.fillRect(x, y, sz, sz);
+  }
+
+  // Layer 3 — bright foreground stars (few, sharp)
+  for (let i = 0; i < 20; i++) {
+    const x = (i * 719 + 233) % GAME_W;
+    const y = (i * 503 + 171) % GAME_H;
+    // Soft glow
+    const glow = sc.createRadialGradient(x, y, 0, x, y, 3);
+    glow.addColorStop(0, "rgba(255,255,255,0.9)");
+    glow.addColorStop(1, "rgba(255,255,255,0)");
+    sc.fillStyle = glow;
+    sc.beginPath(); sc.arc(x, y, 3, 0, Math.PI*2); sc.fill();
+    // Bright core
+    sc.fillStyle = "#ffffff";
+    sc.fillRect(x, y, 1, 1);
+  }
+
+  // Subtle vignette
+  const vig = sc.createRadialGradient(GAME_W/2, GAME_H/2, GAME_H*0.3, GAME_W/2, GAME_H/2, GAME_W*0.75);
+  vig.addColorStop(0, "rgba(0,0,0,0)");
+  vig.addColorStop(1, "rgba(0,0,0,0.35)");
+  sc.fillStyle = vig;
+  sc.fillRect(0, 0, GAME_W, GAME_H);
 }
 
 // Shadow blur disabled on mobile to avoid GPU overdraw
@@ -1053,7 +1142,7 @@ function updateShadowCometCutscene() {
 
 function drawShadowCometCutscene() {
   ctx.fillStyle = "#000011"; ctx.fillRect(0,0,GAME_W,GAME_H);
-  for(let i=0;i<150;i++) ctx.fillRect((i*137)%GAME_W,(i*97)%GAME_H,1,1);
+  if (_starCanvas) ctx.drawImage(_starCanvas, 0, 0);
 
   drawEntity(player);
   if (window._pendingShadowComet) drawEntity(window._pendingShadowComet);
@@ -1267,6 +1356,8 @@ function updateShadowVenganceCutscene() {
 
 function drawShadowVenganceCutscene() {
   ctx.fillStyle = "#110008"; ctx.fillRect(0,0,GAME_W,GAME_H);
+  if (_starCanvas) ctx.drawImage(_starCanvas, 0, 0);
+  ctx.fillStyle="rgba(80,0,0,0.25)"; ctx.fillRect(0,0,GAME_W,GAME_H);
   for(let i=0;i<150;i++) {ctx.fillStyle="rgba(200,0,50,0.6)";ctx.fillRect((i*137)%GAME_W,(i*97)%GAME_H,1,1);}
   drawEntity(player);
   if (window._pendingShadowVengance) drawEntity(window._pendingShadowVengance);
@@ -3778,14 +3869,6 @@ function render() {
     ctx.textAlign="left";return;
   }
   if(state!=="playing")return;
-  if(player.boosting){
-    ctx.save();ctx.globalAlpha=0.18;ctx.strokeStyle="#00ccff";ctx.lineWidth=1;
-    for(let i=0;i<18;i++){
-      const sx=(i*211+Date.now()*0.4)%GAME_W,sy=(i*97)%GAME_H;
-      ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx-40,sy);ctx.stroke();
-    }
-    ctx.restore();
-  }
 
   if(currentShipName==="Vengeance"&&player.revengeActive){
     ctx.save();ctx.globalAlpha=0.07;ctx.fillStyle="#ff0000";ctx.fillRect(0,0,GAME_W,GAME_H);ctx.restore();
