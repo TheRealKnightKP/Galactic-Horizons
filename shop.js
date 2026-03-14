@@ -1682,39 +1682,65 @@ function renderCCLeaderboard(container) {
 async function renderAdminPanel(container) {
   container.innerHTML = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:640px">
     <div style="color:#ffcc00;font:bold 16px monospace;margin-bottom:12px">👑 Admin Panel</div>
-    <div id="adminBody" style="color:#888">Loading accounts...</div>
+    <div id="adminBody" style="color:#888">Loading...</div>
   </div>`;
 
   const ADMIN_KEY = "650392026";
   const WORKER = typeof LEADERBOARD_URL !== "undefined" ? LEADERBOARD_URL : "";
 
   try {
-    const res = await fetch(`${WORKER}/accounts?adminKey=${ADMIN_KEY}`);
-    const data = await res.json();
-    if (!data.ok) { document.getElementById("adminBody").textContent = "Failed: " + (data.error||"unknown"); return; }
+    const [acctRes, orphanRes] = await Promise.all([
+      fetch(`${WORKER}/accounts?adminKey=${ADMIN_KEY}`),
+      fetch(`${WORKER}/admin/orphans?adminKey=${ADMIN_KEY}`),
+    ]);
+    const acctData   = await acctRes.json();
+    const orphanData = await orphanRes.json();
 
-    const accounts = data.accounts || [];
+    const accounts = acctData.accounts || [];
+    const orphans  = orphanData.orphans || [];
+
+    let html = "";
+
+    // ── Registered accounts ──
+    html += `<div style="color:#0af;font:bold 13px monospace;margin-bottom:6px">Registered Accounts (${accounts.length})</div>`;
     if (accounts.length === 0) {
-      document.getElementById("adminBody").textContent = "No accounts registered.";
-      return;
+      html += `<div style="color:#555;margin-bottom:16px">None.</div>`;
+    } else {
+      html += `<div style="background:#0a0e1a;border:1px solid #223;border-radius:6px;overflow:hidden;margin-bottom:16px">`;
+      accounts.forEach((a, i) => {
+        const created = a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "unknown";
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:${i<accounts.length-1?'1px solid #1a1a2a':'none'}">
+          <div>
+            <span style="color:#0af;font-weight:bold">${a.username}</span>
+            <span style="color:#444;font:10px monospace;margin-left:10px">joined ${created}</span>
+          </div>
+          <button onclick="adminDeleteAccount('${a.username}', this)"
+            style="width:auto;padding:4px 10px;background:#1a0000;color:#f44;font:10px monospace;border:1px solid #f444;cursor:pointer;border-radius:3px">
+            🗑 Delete</button>
+        </div>`;
+      });
+      html += `</div>`;
     }
 
-    let html = `<div style="margin-bottom:8px;color:#888;font:10px monospace">${accounts.length} account(s) registered</div>
-      <div style="background:#0a0e1a;border:1px solid #223;border-radius:6px;overflow:hidden">`;
-    accounts.forEach((a, i) => {
-      const created = a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "unknown";
-      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:${i<accounts.length-1?'1px solid #1a1a2a':'none'}">
-        <div>
-          <span style="color:#0af;font-weight:bold">${a.username}</span>
-          <span style="color:#444;font:10px monospace;margin-left:10px">joined ${created}</span>
-        </div>
-        <button onclick="adminDeleteAccount('${a.username}', this)"
-          style="width:auto;padding:4px 10px;background:#1a0000;color:#f44;font:10px monospace;border:1px solid #f444;cursor:pointer;border-radius:3px">
-          🗑 Delete</button>
-      </div>`;
-    });
-    html += `</div>
-      <div style="margin-top:12px;color:#555;font:10px monospace">⚠ /admin/delete is a TEMP endpoint — remove before public launch.</div>`;
+    // ── Orphaned leaderboard entries ──
+    html += `<div style="color:#f84;font:bold 13px monospace;margin-bottom:6px">Orphaned Leaderboard Entries (${orphans.length})</div>`;
+    if (orphans.length === 0) {
+      html += `<div style="color:#555;margin-bottom:16px">None — all clean.</div>`;
+    } else {
+      html += `<div style="color:#666;font:10px monospace;margin-bottom:6px">These have leaderboard scores but no registered account.</div>
+        <div style="background:#0a0e1a;border:1px solid #332200;border-radius:6px;overflow:hidden;margin-bottom:16px">`;
+      orphans.forEach((a, i) => {
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:${i<orphans.length-1?'1px solid #1a1a2a':'none'}">
+          <span style="color:#f84">${a.username}</span>
+          <button onclick="adminDeleteOrphan('${a.username}', this)"
+            style="width:auto;padding:4px 10px;background:#1a0000;color:#f44;font:10px monospace;border:1px solid #f444;cursor:pointer;border-radius:3px">
+            🗑 Delete</button>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    html += `<div style="color:#555;font:10px monospace">⚠ /admin/delete and /admin/orphans are TEMP endpoints — remove before public launch.</div>`;
     document.getElementById("adminBody").innerHTML = html;
   } catch(e) {
     document.getElementById("adminBody").textContent = "Error reaching server.";
@@ -1746,7 +1772,32 @@ async function adminDeleteAccount(username, btn) {
   }
 }
 
-// Inject "Command Center" button into main menu and clean up shop footer on load
+async function adminDeleteOrphan(username, btn) {
+  if (!confirm(`Delete orphaned leaderboard entry for "${username}"?`)) return;
+  btn.disabled = true; btn.textContent = "...";
+  const ADMIN_KEY = "650392026";
+  const WORKER = typeof LEADERBOARD_URL !== "undefined" ? LEADERBOARD_URL : "";
+  try {
+    const res = await fetch(`${WORKER}/admin/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adminKey: ADMIN_KEY, username }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showNotification?.(`Orphan "${username}" deleted.`, "#f84");
+      setCCTab("admin");
+    } else {
+      btn.disabled = false; btn.textContent = "🗑 Delete";
+      showNotification?.("Delete failed: " + (data.error||"unknown"), "#f44");
+    }
+  } catch {
+    btn.disabled = false; btn.textContent = "🗑 Delete";
+    showNotification?.("Error reaching server.", "#f44");
+  }
+}
+
+// Inject "Command Center" button into main menu
 window.addEventListener("DOMContentLoaded", () => {
   // Add Command Center button to main menu
   const menu = document.getElementById("mainMenu");
