@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.6.19";
+const CACHE = "galactic-horizons-v1.6.20";
 const ASSETS = [
   "./index.html",
   "./style.css",
