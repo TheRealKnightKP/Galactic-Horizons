@@ -107,6 +107,34 @@ function saveGame() {
     console.warn("Save failed:", e);
     showNotification?.("⚠ Save failed — storage full?", "#ff4400");
   }
+  // Push to cloud silently if online and not admin
+  if (navigator.onLine && currentAccount.passwordHash) {
+    _pushSaveToCloud(data).catch(() => {});
+  }
+}
+
+async function _pushSaveToCloud(data) {
+  if (!currentAccount?.passwordHash) return;
+  try {
+    await fetch(`${LEADERBOARD_URL}/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: currentAccount.username,
+        passwordHash: currentAccount.passwordHash,
+        saveData: data,
+      }),
+    });
+  } catch { /* silent fail */ }
+}
+
+async function _pullSaveFromCloud(username, passwordHash) {
+  try {
+    const res = await fetch(`${LEADERBOARD_URL}/save?username=${encodeURIComponent(username)}&passwordHash=${encodeURIComponent(passwordHash)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.saveData || null;
+  } catch { return null; }
 }
 
 function loadGame(username) {
@@ -148,9 +176,22 @@ async function loginAccount(username, password) {
     const data = await res.json();
     if (!res.ok) return { ok: false, error: data.error || "Login failed" };
     currentAccount = { username: data.username, isAdmin: false, passwordHash: ph };
-    const save = loadGame(data.username);
-    if (save) applySaveData(save);
-    else if (typeof ownedShips !== "undefined" && (!ownedShips || ownedShips.length === 0)) {
+
+    // Try cloud save first, fall back to local
+    const cloudSave = await _pullSaveFromCloud(data.username, ph);
+    const localSave = loadGame(data.username);
+    let saveToUse = null;
+    if (cloudSave && localSave) {
+      // Use whichever is newer
+      saveToUse = (cloudSave.savedAt || 0) >= (localSave.savedAt || 0) ? cloudSave : localSave;
+    } else {
+      saveToUse = cloudSave || localSave;
+    }
+    if (saveToUse) {
+      applySaveData(saveToUse);
+      // Cache cloud save locally
+      localStorage.setItem(getAccountKey(data.username), JSON.stringify(saveToUse));
+    } else if (typeof ownedShips !== "undefined" && (!ownedShips || ownedShips.length === 0)) {
       ownedShips = ["Starlight"];
     }
     return { ok: true };
@@ -199,9 +240,14 @@ async function registerAccount(username, password) {
   }
 }
 
+// Returns { ok, error } — callers should check before proceeding
 function logoutAccount() {
+  if (!navigator.onLine) {
+    return { ok: false, error: "You're offline. Connect to the internet before logging out." };
+  }
   if (currentAccount) saveGame();
   currentAccount = null;
+  return { ok: true };
 }
 
 async function deleteAccount(username, password) {
