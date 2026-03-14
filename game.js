@@ -2,13 +2,17 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// Fixed logical game world — all game logic uses these constants
-const LOGICAL_W_PC     = 1280;
-const LOGICAL_W_MOBILE = 900;
+// Logical height is fixed — width adapts to screen aspect ratio within bounds.
+// This keeps asset sizes consistent while allowing modest map width variation.
 const LOGICAL_H        = 720;
+const LOGICAL_H_MOBILE = 420; // landscape mobile — ships stay big, map stays readable
+const LOGICAL_W_MIN_PC     = 1024;
+const LOGICAL_W_MAX_PC     = 1600;
+const LOGICAL_W_MIN_MOBILE = 560;
+const LOGICAL_W_MAX_MOBILE = 900;
 
-let GAME_W = LOGICAL_W_PC;
-let GAME_H = LOGICAL_H;
+let GAME_W = 1280;
+let GAME_H = 720;
 const SIZE_SCALE = 0.5;
 let displayScale = 1;
 
@@ -16,48 +20,51 @@ const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) |
 
 let _starCanvas = null; // declared early — resizeCanvas nulls it on resize
 
-// Set page background to match space so letterbox bars are invisible
+// Set page background to match space so any bars are invisible
 document.documentElement.style.background = "#000811";
 document.body.style.background = "#000811";
 document.body.style.margin = "0";
 document.body.style.overflow = "hidden";
 
 function resizeCanvas() {
-  GAME_W = IS_MOBILE ? LOGICAL_W_MOBILE : LOGICAL_W_PC;
-  GAME_H = LOGICAL_H;
+  const screenW = window.innerWidth;
+  const screenH = window.innerHeight;
+  const aspect  = screenW / screenH;
 
-  // Canvas always draws at logical size — no screen-dependent rendering
+  if (IS_MOBILE) {
+    // Mobile landscape: fixed height 420, width follows aspect ratio but clamped
+    GAME_H = LOGICAL_H_MOBILE;
+    GAME_W = Math.round(Math.max(LOGICAL_W_MIN_MOBILE, Math.min(LOGICAL_W_MAX_MOBILE, GAME_H * aspect)));
+  } else {
+    // PC: fixed height 720, width follows aspect ratio but clamped
+    GAME_H = LOGICAL_H;
+    GAME_W = Math.round(Math.max(LOGICAL_W_MIN_PC, Math.min(LOGICAL_W_MAX_PC, GAME_H * aspect)));
+  }
+
+  // Canvas draws at logical size
   canvas.width  = GAME_W;
   canvas.height = GAME_H;
 
-  // Scale to fit viewport maintaining aspect ratio (contain)
-  const scaleX = window.innerWidth  / GAME_W;
-  const scaleY = window.innerHeight / GAME_H;
-  displayScale = Math.min(scaleX, scaleY);
-
-  const cssW    = Math.round(GAME_W * displayScale);
-  const cssH    = Math.round(GAME_H * displayScale);
-  const offsetX = Math.round((window.innerWidth  - cssW) / 2);
-  const offsetY = Math.round((window.innerHeight - cssH) / 2);
-
+  // Scale canvas to fill the screen (stretch to fit — no letterbox)
   canvas.style.position = "fixed";
-  canvas.style.left     = offsetX + "px";
-  canvas.style.top      = offsetY + "px";
-  canvas.style.width    = cssW + "px";
-  canvas.style.height   = cssH + "px";
-  canvas.style.imageRendering = "crisp-edges";
+  canvas.style.left     = "0px";
+  canvas.style.top      = "0px";
+  canvas.style.width    = screenW + "px";
+  canvas.style.height   = screenH + "px";
 
-  // Game container covers full viewport for HUD/UI elements
+  displayScale = screenW / GAME_W;
+
+  // Game container covers full viewport
   const container = document.getElementById("gameContainer");
   if (container) {
-    container.style.width    = window.innerWidth  + "px";
-    container.style.height   = window.innerHeight + "px";
+    container.style.width    = screenW + "px";
+    container.style.height   = screenH + "px";
     container.style.left     = "0px";
     container.style.top      = "0px";
     container.style.position = "fixed";
   }
 
-  // Force star background rebuild at new logical size
+  // Rebuild star background at new logical size
   _starCanvas = null;
 }
 
@@ -72,9 +79,8 @@ let mobileAim = { active: false, touchId: null, startX: 0, startY: 0, dx: 0, dy:
 
 if (!IS_MOBILE) {
   canvas.addEventListener("mousemove", e => {
-    const r = canvas.getBoundingClientRect();
-    mouse.x = (e.clientX - r.left) * (GAME_W / r.width);
-    mouse.y = (e.clientY - r.top)  * (GAME_H / r.height);
+    mouse.x = e.clientX * (GAME_W / window.innerWidth);
+    mouse.y = e.clientY * (GAME_H / window.innerHeight);
   });
   canvas.addEventListener("mousedown", () => { mouse.down = true; initAudio(); });
   canvas.addEventListener("mouseup",   () => mouse.down = false);
