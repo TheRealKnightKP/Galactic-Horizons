@@ -464,7 +464,7 @@ const SHIP_SPECIALS = {
   Nemesis:    { name:"Overclock",        cooldown:720,  duration:300, desc:"2× speed and −50% damage taken for 5s." },
   Prometheus: { name:"Torpedo Salvo",    cooldown:1800, duration:300, desc:"Fires 1/4 of missiles in sequence over 5s. No ammo cost." },
   Leviathan:  { name:"Fleet Vanguard",   cooldown:1800, duration:240, desc:"All allies: invincible + 2× RPM + 50% damage for 4s." },
-  Dominion:   { name:"Overcharge",       cooldown:2700, duration:1,   desc:"Next railgun: instant, 3× damage, full pen. 45s cooldown." },
+  Dominion:   { name:"Overcharge",       cooldown:1200, duration:1,   desc:"Next railgun: instant, 3× damage, full pen. 20s cooldown." },
   Comet:      { name:"Ghost Mode",       cooldown:480,  duration:300, desc:"3× RPM, guns auto-aim, 100% dodge for 5s." },
   Retribution:{ name:"Ultimate Power", cooldown:1800, duration:600, desc:"Summon fully-upgraded Comet+Vengeance allies for 10s. +50% speed, base 50% dodge, 95% boosted dodge." },
   Vengeance:  { name:"Revenge",          cooldown:300,  duration:-1,  desc:"90% dodge, 2× dmg & speed. Costs 5hp/s. Toggle off to deactivate." },
