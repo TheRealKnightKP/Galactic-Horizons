@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.6.14";
+const CACHE = "galactic-horizons-v1.6.15";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -125,4 +125,5 @@ Versions:
 -V1.6.12 - Fixed bespoke weapon stuff
 -V1.6.13 - Fixing saves and Dominion boost
 -V1.6.14 - Fixing ghost accounts
+-V1.6.15 - Fixed screen resolution and rendering problems and improved background
 */
