@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.6.17";
+const CACHE = "galactic-horizons-v1.6.18";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -128,4 +128,5 @@ Versions:
 -V1.6.15 - Fixed screen resolution and rendering problems and improved background
 -V1.6.16 - Fixed error in game.js
 -V1.6.17 - Fixing?
+-V1.6.18 fixig resolution
 */
