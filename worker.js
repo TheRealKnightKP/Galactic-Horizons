@@ -96,6 +96,57 @@ export default {
       return json({ ok: true });
     }
 
+    // POST /save — store cloud save
+    if (request.method === "POST" && url.pathname === "/save") {
+      let body;
+      try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
+      const { username, passwordHash, saveData } = body;
+      if (!username || !passwordHash || !saveData) return json({ error: "missing fields" }, 400);
+      if (username.toLowerCase() === ADMIN_USER) return json({ error: "Admin save not allowed" }, 403);
+      const acct = await env.LEADERBOARD.get(`acct:${username.toLowerCase()}`, "json");
+      if (!acct || acct.passwordHash !== passwordHash) return json({ error: "Auth failed" }, 401);
+      await env.LEADERBOARD.put(`save:${username.toLowerCase()}`, JSON.stringify({ ...saveData, savedAt: Date.now() }));
+      return json({ ok: true });
+    }
+
+    // GET /save?username=X&passwordHash=Y
+    if (request.method === "GET" && url.pathname === "/save") {
+      const uname = url.searchParams.get("username");
+      const ph    = url.searchParams.get("passwordHash");
+      if (!uname || !ph) return json({ error: "missing fields" }, 400);
+      const acct = await env.LEADERBOARD.get(`acct:${uname.toLowerCase()}`, "json");
+      if (!acct || acct.passwordHash !== ph) return json({ error: "Auth failed" }, 401);
+      const saveData = await env.LEADERBOARD.get(`save:${uname.toLowerCase()}`, "json");
+      return json({ ok: true, saveData: saveData || null });
+    }
+
+    // GET /accounts?adminKey=650392026 — list all accounts
+    if (request.method === "GET" && url.pathname === "/accounts") {
+      if (url.searchParams.get("adminKey") !== "650392026") return json({ error: "Forbidden" }, 403);
+      const list = await env.LEADERBOARD.list({ prefix: "acct:" });
+      const accounts = await Promise.all(
+        list.keys.map(async k => {
+          const d = await env.LEADERBOARD.get(k.name, "json");
+          return { username: d?.username || k.name.replace("acct:",""), createdAt: d?.createdAt || null };
+        })
+      );
+      return json({ ok: true, accounts });
+    }
+
+    // POST /admin/delete — TEMP admin force-delete (remove before public launch)
+    if (request.method === "POST" && url.pathname === "/admin/delete") {
+      let body;
+      try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
+      const { adminKey, username } = body;
+      if (adminKey !== "650392026") return json({ error: "Forbidden" }, 403);
+      if (!username) return json({ error: "missing username" }, 400);
+      if (username.toLowerCase() === ADMIN_USER) return json({ error: "Cannot delete admin" }, 403);
+      await env.LEADERBOARD.delete(`acct:${username.toLowerCase()}`);
+      await env.LEADERBOARD.delete(`user:${username.toLowerCase()}`);
+      await env.LEADERBOARD.delete(`save:${username.toLowerCase()}`);
+      return json({ ok: true });
+    }
+
     // GET /top?cat=kills&n=10
     if (request.method === "GET" && url.pathname === "/top") {
       const cat = url.searchParams.get("cat");
