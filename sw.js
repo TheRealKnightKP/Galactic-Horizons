@@ -123,4 +123,5 @@ Versions:
 -V1.6.10 - Arena Finale Update part 2.
 -V1.6.11 - Fixed some stuff
 -V1.6.12 - Fixed bespoke weapon stuff
+-V1.6.13 - Fixing saves and Dominion boost
 */
