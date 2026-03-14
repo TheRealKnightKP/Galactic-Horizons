@@ -2078,7 +2078,8 @@ function activateSpecial() {
     if(player.dominionOvercharged)return;
     player.dominionOvercharged=true;
     player.specialCooldown=sp.cooldown;
-    showSpecialToast("⚡ OVERCHARGE READY");
+    player.shootTimer=Math.max(player.shootTimer, 25); // brief window to release fire button
+    showSpecialToast("⚡ OVERCHARGE READY — fire to release");
     return;
   }
   player.specialActive=true;
