@@ -1481,8 +1481,13 @@ function renderShopAccount(container) {
       </div>`;
   } else {
     html += `<div style="color:#fff;margin-bottom:6px">Logged in as: <span style="color:#0af;font-weight:bold">${acct.username}${acct.isAdmin?" 👑":""}</span></div>
+      <div id="logoutErrMsg" style="color:#f84;font:10px monospace;min-height:14px;margin-bottom:4px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
-        <button onclick="if(typeof logoutAccount==='function'){logoutAccount();renderCommandCenter?.();}" 
+        <button onclick="(()=>{
+          const r=typeof logoutAccount==='function'?logoutAccount():{ok:false,error:'Not available'};
+          if(!r.ok){const el=document.getElementById('logoutErrMsg');if(el)el.textContent=r.error;return;}
+          if(!confirm('⚠ Warning: You will need an internet connection to log back in. Log out now?'))return;
+          if(typeof buildLoginUI==='function')buildLoginUI();renderCommandCenter?.();})()"
           style="padding:6px 14px;background:#333;color:#ccc;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Logout</button>
         <button onclick="if(typeof saveGame==='function'){saveGame();showNotification?.('Game saved!','#0af');}" 
           style="padding:6px 14px;background:#0a4;color:#fff;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Save Now</button>
@@ -1618,12 +1623,14 @@ function renderCommandCenter() {
   const panel = document.getElementById("cmdCenterMenu");
   if (!panel) return;
 
+  const isAdmin = (typeof currentAccount !== "undefined") && currentAccount?.isAdmin;
   const tabs = [
     { id:"ccTabChallenges", label:"🏆 Challenges", tab:"challenges" },
     { id:"ccTabMastery",    label:"⚡ Mastery",    tab:"mastery"    },
     { id:"ccTabRecords",    label:"📊 Records",    tab:"records"    },
     { id:"ccTabLeaderboard",label:"🌐 Leaderboard",tab:"leaderboard"},
     { id:"ccTabAccount",    label:"👤 Account",    tab:"account"    },
+    ...(isAdmin ? [{ id:"ccTabAdmin", label:"👑 Admin", tab:"admin" }] : []),
   ];
 
   const tabBar = tabs.map(t =>
@@ -1649,6 +1656,7 @@ function renderCommandCenter() {
   else if (_ccTab === "records")     renderShopRecords(body);
   else if (_ccTab === "leaderboard") renderCCLeaderboard(body);
   else if (_ccTab === "account")     renderShopAccount(body);
+  else if (_ccTab === "admin")       renderAdminPanel(body);
 }
 
 function renderCCLeaderboard(container) {
@@ -1668,6 +1676,74 @@ function renderCCLeaderboard(container) {
   </div>`;
   container.innerHTML = html;
   if (cats.length > 0) setTimeout(() => loadLBCat(cats[0].id), 50);
+}
+
+// ── ADMIN PANEL (temp — remove /admin/delete before public launch) ──────────
+async function renderAdminPanel(container) {
+  container.innerHTML = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:640px">
+    <div style="color:#ffcc00;font:bold 16px monospace;margin-bottom:12px">👑 Admin Panel</div>
+    <div id="adminBody" style="color:#888">Loading accounts...</div>
+  </div>`;
+
+  const ADMIN_KEY = "650392026";
+  const WORKER = typeof LEADERBOARD_URL !== "undefined" ? LEADERBOARD_URL : "";
+
+  try {
+    const res = await fetch(`${WORKER}/accounts?adminKey=${ADMIN_KEY}`);
+    const data = await res.json();
+    if (!data.ok) { document.getElementById("adminBody").textContent = "Failed: " + (data.error||"unknown"); return; }
+
+    const accounts = data.accounts || [];
+    if (accounts.length === 0) {
+      document.getElementById("adminBody").textContent = "No accounts registered.";
+      return;
+    }
+
+    let html = `<div style="margin-bottom:8px;color:#888;font:10px monospace">${accounts.length} account(s) registered</div>
+      <div style="background:#0a0e1a;border:1px solid #223;border-radius:6px;overflow:hidden">`;
+    accounts.forEach((a, i) => {
+      const created = a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "unknown";
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:${i<accounts.length-1?'1px solid #1a1a2a':'none'}">
+        <div>
+          <span style="color:#0af;font-weight:bold">${a.username}</span>
+          <span style="color:#444;font:10px monospace;margin-left:10px">joined ${created}</span>
+        </div>
+        <button onclick="adminDeleteAccount('${a.username}', this)"
+          style="width:auto;padding:4px 10px;background:#1a0000;color:#f44;font:10px monospace;border:1px solid #f444;cursor:pointer;border-radius:3px">
+          🗑 Delete</button>
+      </div>`;
+    });
+    html += `</div>
+      <div style="margin-top:12px;color:#555;font:10px monospace">⚠ /admin/delete is a TEMP endpoint — remove before public launch.</div>`;
+    document.getElementById("adminBody").innerHTML = html;
+  } catch(e) {
+    document.getElementById("adminBody").textContent = "Error reaching server.";
+  }
+}
+
+async function adminDeleteAccount(username, btn) {
+  if (!confirm(`Delete account "${username}" permanently? This cannot be undone.`)) return;
+  btn.disabled = true; btn.textContent = "...";
+  const ADMIN_KEY = "650392026";
+  const WORKER = typeof LEADERBOARD_URL !== "undefined" ? LEADERBOARD_URL : "";
+  try {
+    const res = await fetch(`${WORKER}/admin/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adminKey: ADMIN_KEY, username }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showNotification?.(`Account "${username}" deleted.`, "#f44");
+      setCCTab("admin"); // refresh
+    } else {
+      btn.disabled = false; btn.textContent = "🗑 Delete";
+      showNotification?.("Delete failed: " + (data.error||"unknown"), "#f44");
+    }
+  } catch {
+    btn.disabled = false; btn.textContent = "🗑 Delete";
+    showNotification?.("Error reaching server.", "#f44");
+  }
 }
 
 // Inject "Command Center" button into main menu and clean up shop footer on load
