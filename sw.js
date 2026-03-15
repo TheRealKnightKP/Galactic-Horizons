@@ -131,4 +131,5 @@ Versions:
 -V1.6.18 - fixing resolution
 -V1.6.19 - Fixing money
 -V1.6.20 - Fixing everythig about accounts again
+-V1.6.21 - Fixing some save stuff and menu stuff idk
 */
