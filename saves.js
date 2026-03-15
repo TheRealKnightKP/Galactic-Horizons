@@ -403,6 +403,10 @@ async function loginSubmit() {
     document.getElementById("loginOverlay")?.remove();
     showNotification?.(`Welcome, ${currentAccount.username}${result.isAdmin?" (ADMIN)":""}${result.offline?" (offline)":""}!`, "#0af");
     submitLeaderboard();
+    // Refresh Command Center if it's open so account tab updates
+    if (document.getElementById("cmdCenterMenu")?.style.display !== "none") {
+      window.renderCommandCenter?.();
+    }
   } else {
     if (errEl) errEl.textContent = result.error;
   }
@@ -419,3 +423,33 @@ function loginGuest() {
 function showLoginFromMenu() {
   buildLoginUI();
 }
+
+// ============================================================
+// AUTO-SAVE ON EXIT — covers all close/background scenarios
+// ============================================================
+function _exitSave() {
+  if (!currentAccount || currentAccount.username === "guest" || currentAccount.isAdmin) return;
+  saveGame(); // saves locally immediately (sync-safe)
+  // Best-effort cloud push — navigator.sendBeacon is fire-and-forget,
+  // survives page unload better than fetch()
+  if (navigator.onLine && currentAccount.passwordHash) {
+    try {
+      const data = buildSaveData();
+      const payload = JSON.stringify({
+        username: currentAccount.username,
+        passwordHash: currentAccount.passwordHash,
+        saveData: data,
+      });
+      navigator.sendBeacon(`${LEADERBOARD_URL}/save`, new Blob([payload], { type: "application/json" }));
+    } catch { /* silent */ }
+  }
+}
+
+// beforeunload — desktop browsers, Android Chrome
+window.addEventListener("beforeunload", _exitSave);
+// pagehide — iOS Safari (beforeunload unreliable there)
+window.addEventListener("pagehide", _exitSave);
+// visibilitychange — app goes to background on mobile
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") _exitSave();
+});
