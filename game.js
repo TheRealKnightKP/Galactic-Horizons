@@ -991,7 +991,7 @@ function setPlayerShip(name) {
   const baseArmor=Math.round(d.armor*armorMult);
   const baseHp=Math.round(d.hp*armorMult);
   const engTier=ENGINE_UPGRADE_TIERS[playerLoadout.engineTier||1];
-  const spriteOffset=(name==="Dominion")?0:Math.PI;
+  const spriteOffset=Math.PI;
   const baseSpeed=d.speed*engTier.speedMult;
   const isComet=name==="Comet"||name==="Vengeance"||name==="Retribution";
   const boostDuration=Math.round((isComet?120:60)*engTier.boostDurMult);
@@ -1578,7 +1578,7 @@ function createEnemyObject(name, spawnX, spawnY) {
     speed: d.speed, fireRate: d.fireRate,
     shootTimer: Math.floor(Math.random()*d.fireRate),
     img: getImage(d.image), color: d.color, score: d.score,
-    spriteAngleOffset: (name==="Dominion"||name==="Dreadnaught") ? 0 : Math.PI,
+    spriteAngleOffset: Math.PI,
     stunTimer: 0, vx: 0, vy: 0,
     surroundAngle: Math.random()*Math.PI*2,
   };
@@ -2426,7 +2426,7 @@ function deployFromCapital() {
   capitalShipObj._deployGraceCleared = false; // must fly away before recall is possible
 
   // Build the deployed ship at capital's position
-  const spriteOffset = (deployKey==="Dominion") ? 0 : Math.PI;
+  const spriteOffset = Math.PI;
   const engTier = ENGINE_UPGRADE_TIERS[playerLoadout.engineTier||1];
   const sn = deployKey;
   const dDef = SHIPS[sn];
@@ -3702,11 +3702,14 @@ function drawEntity(obj) {
   const hasImg=obj.img&&obj.img.complete&&obj.img.naturalWidth>0;
   const cx=obj.x+obj.w/2,cy=obj.y+obj.h/2;
   ctx.save();ctx.translate(cx,cy);ctx.rotate((obj.rotation||0)+(obj.spriteAngleOffset||0));
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   if(hasImg){
     const nw=obj.img.naturalWidth, nh=obj.img.naturalHeight;
     if(nw>0&&nh>0){
-      // Fit image inside hitbox while preserving natural aspect ratio
-      const scale=Math.min(obj.w/nw, obj.h/nh);
+      // Draw at 2× hitbox size so detail is visible — hitbox stays the same
+      const VISUAL_SCALE = 2.0;
+      const scale=Math.min(obj.w/nw, obj.h/nh) * VISUAL_SCALE;
       const dw=nw*scale, dh=nh*scale;
       ctx.drawImage(obj.img,-dw/2,-dh/2,dw,dh);
     } else {
