@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.7.0";
+const CACHE = "galactic-horizons-v1.7.1";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -133,4 +133,5 @@ Versions:
 -V1.6.20 - Fixing everythig about accounts again
 -V1.6.21 - Fixing some save stuff and menu stuff idk
 -V1.7.0 - The Assets update: Adding the original assets for all ships. (15/3/2026)
+-V1.7.1 - Fixing assets
 */
