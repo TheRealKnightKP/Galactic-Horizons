@@ -155,7 +155,7 @@ const ALLY_SHIP_DEFS = {
   AllyTempest: { price: 280000, weaponSize: 5, hp: 2000, shields: 2200, armorType: "subcapital", image: "Tempest.png", color: "#00ffcc", w: 110, h: 60, doubleShot: true, pdc: 2, pdcSize: 5, slotSize: "heavy" },
   AllyBulwark: { price: 220000, weaponSize: 0, hp: 1750, shields: 1200, armorType: "subcapital", image: "Bulwark.png",    color: "#4488ff", w: 110, h: 60, pdc: 6, pdcSize: 4, isHeavyAlly: true, slotSize: "heavy" },
   // ── Capital ally ──
-  AllyNemesis: { price: 800000, weaponSize: 8, hp: 1500, shields: 1800, armorType: "capital",    image: "Galactic_Horizons_Nemesis.png",       color: "#ffff44", w: 130, h: 68, doubleShot: true, bespoke: true, weaponType: "ballistic_cannon", pdc: 3, pdcSize: 3, slotSize: "capital" },
+  AllyNemesis: { price: 800000, weaponSize: 8, hp: 1500, shields: 1800, armorType: "capital",    image: "Nemesis.png",       color: "#ffff44", w: 130, h: 68, doubleShot: true, bespoke: true, weaponType: "ballistic_cannon", pdc: 3, pdcSize: 3, slotSize: "capital" },
   // Secret ship allies — spawned by Retribution Ultimate Power
   CometAlly:    { price: 999999, weaponSize: 5, hp: 100,  shields: 90,   armorType: "light",   image: "Comet.png",        color: "#ff2200", w: 52,  h: 32, slotSize: "small" },
   VenganceAlly: { price: 999999, weaponSize: 8, hp: 200,  shields: 400,  armorType: "medium",  image: "Galactic_Horizons_Vengeance.png",        color: "#ff0044", w: 72,  h: 44, slotSize: "medium" },
@@ -190,7 +190,7 @@ const NO_SHIELD_FACES = new Set(["Starlight","Falcon","Comet","Vengeance","Retri
 
 const SHIPS = {
   // --- LIGHT ---
-  Starlight:  { price: 0,         hp: 90,    shields: 120,  armor: 100, missiles: 2,  speed: 2.8,  weaponType: "laser_repeater",    weaponSize: 1,  bespoke: false, doubleShot: true, pdc: 0,  pdcSize: 0,                         image: "Galactic_Horizons_Starlight.png",        color: "#88aaff", size: 1,  missileType: 1, armorType: "light",      allySlots: ["small","small","small","small"] },
+  Starlight:  { price: 0,         hp: 90,    shields: 120,  armor: 100, missiles: 2,  speed: 2.8,  weaponType: "laser_repeater",    weaponSize: 1,  bespoke: false, doubleShot: true, pdc: 0,  pdcSize: 0,                         image: "Starlight.png",        color: "#88aaff", size: 1,  missileType: 1, armorType: "light",      allySlots: ["small","small","small","small"] },
   Falcon:     { price: 20000,     hp: 70,    shields: 100,  armor: 100, missiles: 3,  speed: 3.8,  weaponType: "laser_repeater",    weaponSize: 2,  bespoke: false, pdc: 0,  pdcSize: 0,                         image: "Galactic_Horizons_Falcon.png",          color: "#ffbb00", size: 1,  missileType: 1, armorType: "light",      allySlots: ["small","small","small","small"] },
   // --- MEDIUM ---
   Rouge:      { price: 55000,     hp: 300,   shields: 450,  armor: 100, missiles: 12, speed: 1.7,  weaponType: "laser_repeater",    weaponSize: 3,  bespoke: false, pdc: 1,  pdcSize: 0,                         image: "Galactic_Horizons_Rougue.png",          color: "#ff8844", size: 2,  missileType: 2, armorType: "medium",     allySlots: ["small","small","medium","medium"] },
@@ -202,7 +202,7 @@ const SHIPS = {
   Bulwark:    { price: 30000,     hp: 1750,  shields: 1200, armor: 100, missiles: 16, speed: 0.75, weaponType: "none",              weaponSize: 0,  bespoke: true,  pdc: 10, pdcSize: 4,                         image: "Bulwark.png",       color: "#4488ff", size: 6,  missileType: 3, armorType: "subcapital", allySlots: ["small","small","medium","medium","heavy","heavy","heavy"] },
   Tempest:    { price: 380000,    hp: 2000,  shields: 2200, armor: 100, missiles: 32, speed: 0.70, weaponType: "laser_repeater",    weaponSize: 5,  bespoke: false, doubleShot: true, pdc: 4, pdcSizes: [5,5,4,4], image: "Tempest.png", color: "#00ffcc", size: 7,  missileType: 1, armorType: "subcapital", allySlots: ["small","small","medium","medium","medium","heavy","heavy","heavy"] },
   // --- CAPITAL ---
-  Nemesis:    { price: 280000,    hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Galactic_Horizons_Nemesis.png",          color: "#ffff44", size: 6,  missileType: 3, armorType: "capital",    allySlots: ["small","medium","medium","heavy","heavy","heavy","heavy"],
+  Nemesis:    { price: 280000,    hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Nemesis.png",          color: "#ffff44", size: 6,  missileType: 3, armorType: "capital",    allySlots: ["small","medium","medium","heavy","heavy","heavy","heavy"],
     bespokeAlt: "vortex_cannon",   bespokeAltName: "Vortex Cannon" },
   Prometheus: { price: 500000,    hp: 5000,  shields: 4000, armor: 100, missiles: 30, speed: 0.6,  weaponType: "ballistic_gatling", weaponSize: 7,  bespoke: true,  pdc: 6,  pdcSize: 4,                         image: "Polaris.png",          color: "#ff44ff", size: 7,  missileType: 3, armorType: "capital",    allySlots: ["small","small","medium","medium","heavy","heavy","heavy","heavy","heavy"],
     bespokeAlt: "scatter_gatling", bespokeAltName: "Scatter Gatling" },
