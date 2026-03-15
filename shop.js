@@ -1524,7 +1524,7 @@ function renderShopAccount(container) {
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">`;
     titles.forEach(t => {
       const isEq = t === equipped;
-      html += `<button onclick="if(typeof equippedTitle!='undefined'){window.equippedTitle='${t}';renderShopTab();}" 
+      html += `<button onclick="if(typeof equippedTitle!='undefined'){window.equippedTitle='${t}';renderCommandCenter?.();}" 
         style="padding:5px 12px;background:${isEq?'#cc88ff':'#1a0a2a'};color:${isEq?'#000':'#cc88ff'};font:11px monospace;border:1px solid #cc88ff44;cursor:pointer;border-radius:4px">
         ${isEq?'✓ ':''} ${t}</button>`;
     });
@@ -1537,7 +1537,7 @@ function renderShopAccount(container) {
   shapes.forEach(sh => {
     const def = allShapes[sh] || { name: sh };
     const isActive = sh === curShape;
-    html += `<button onclick="if(typeof setThrusterShape==='function'){setThrusterShape('${ship}','${sh}');renderShopTab();}"
+    html += `<button onclick="if(typeof setThrusterShape==='function'){setThrusterShape('${ship}','${sh}');renderCommandCenter?.();}"
       style="padding:5px 12px;background:${isActive?'#8084ff':'#0a0e1a'};color:${isActive?'#000':'#8084ff'};font:11px monospace;border:1px solid #8084ff44;cursor:pointer;border-radius:4px">
       ${isActive?'✓ ':''} ${def.name||sh}</button>`;
   });
@@ -1548,7 +1548,7 @@ function renderShopAccount(container) {
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">`;
   colors.forEach(c => {
     const isActive = c === curColor;
-    html += `<div onclick="if(typeof setThrusterColor==='function'){setThrusterColor('${ship}','${c}');renderShopTab();}"
+    html += `<div onclick="if(typeof setThrusterColor==='function'){setThrusterColor('${ship}','${c}');renderCommandCenter?.();}"
       style="width:32px;height:32px;border-radius:50%;background:${c};cursor:pointer;border:3px solid ${isActive?'#fff':'#333'};box-shadow:${isActive?'0 0 8px '+c:'none'}"></div>`;
   });
   html += `</div>`;
@@ -1573,19 +1573,32 @@ function renderShopAccount(container) {
 async function loadLBCat(catId) {
   const el = document.getElementById("lbContent");
   if (!el) return;
+  // Highlight active button
+  document.querySelectorAll("[id^='lbBtn_']").forEach(b => {
+    const active = b.id === `lbBtn_${catId}`;
+    b.style.borderColor = active ? "#ffcc00" : "#333";
+    b.style.color       = active ? "#ffcc00" : "#aaa";
+    b.style.background  = active ? "#1a1400" : "#0a0e1a";
+  });
   el.textContent = "Loading...";
   const data = typeof fetchLeaderboard === "function" ? await fetchLeaderboard(catId) : null;
-  if (!data || !Array.isArray(data)) {
-    el.textContent = "Leaderboard unavailable (offline or not yet set up).";
+  if (!data) {
+    el.textContent = "Leaderboard unavailable — check your connection.";
+    return;
+  }
+  if (!Array.isArray(data)) {
+    el.textContent = "Unexpected response from server.";
     return;
   }
   if (data.length === 0) { el.textContent = "No entries yet — be the first!"; return; }
-  el.innerHTML = data.map(e =>
-    `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #111">
-      <span style="color:${e.rank<=3?'#ffcc00':'#aaa'}">${e.rank}. ${e.username}</span>
+  const myUser = (typeof currentAccount !== "undefined" && currentAccount?.username) || "";
+  el.innerHTML = data.map(e => {
+    const isMe = e.username?.toLowerCase() === myUser.toLowerCase();
+    return `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #111;${isMe?'background:#0a1a0a;':''}">
+      <span style="color:${e.rank===1?'#ffd700':e.rank===2?'#c0c0c0':e.rank===3?'#cd7f32':isMe?'#44ff88':'#aaa'}">${e.rank}. ${e.username}${isMe?' (you)':''}</span>
       <span style="color:#fff">${e.value?.toLocaleString?.()??e.value}</span>
-    </div>`
-  ).join('');
+    </div>`;
+  }).join('');
 }
 
 // ============================================================
@@ -1666,6 +1679,7 @@ function renderCCLeaderboard(container) {
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
   cats.forEach(c => {
     html += `<button onclick="loadLBCat('${c.id}')"
+      id="lbBtn_${c.id}"
       style="padding:5px 12px;background:#0a0e1a;border:1px solid #333;color:#aaa;font:11px monospace;cursor:pointer;border-radius:4px">
       ${c.label}</button>`;
   });
@@ -1675,7 +1689,7 @@ function renderCCLeaderboard(container) {
     </div>
   </div>`;
   container.innerHTML = html;
-  if (cats.length > 0) setTimeout(() => loadLBCat(cats[0].id), 50);
+  if (cats.length > 0) loadLBCat(cats[0].id);
 }
 
 // ── ADMIN PANEL (temp — remove /admin/delete before public launch) ──────────
