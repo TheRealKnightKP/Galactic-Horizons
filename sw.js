@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.7.3";
+const CACHE = "galactic-horizons-v1.7.4";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -143,5 +143,6 @@ Versions:
 -V1.7.0 - The Assets update: Adding the original assets for all ships. (15/3/2026)
 -V1.7.1 - Fixing assets
 -V1.7.2 - Fixig asset quality and size and Dominion orentaition
--V1.7.3 - Fixed sw.js asset cache list to match actual asset filenames
+-V1.7.3 - SW model names fixed
+-V1.7.4 - Fixed model size
 */
