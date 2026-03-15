@@ -3707,9 +3707,8 @@ function drawEntity(obj) {
   if(hasImg){
     const nw=obj.img.naturalWidth, nh=obj.img.naturalHeight;
     if(nw>0&&nh>0){
-      // Draw at 2× hitbox size so detail is visible — hitbox stays the same
-      const VISUAL_SCALE = 2.0;
-      const scale=Math.min(obj.w/nw, obj.h/nh) * VISUAL_SCALE;
+      // Draw at natural size fitting hitbox, high quality smoothing
+      const scale=Math.min(obj.w/nw, obj.h/nh);
       const dw=nw*scale, dh=nh*scale;
       ctx.drawImage(obj.img,-dw/2,-dh/2,dw,dh);
     } else {
