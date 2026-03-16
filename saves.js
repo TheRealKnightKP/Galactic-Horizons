@@ -401,6 +401,7 @@ async function loginSubmit() {
 
   if (result.ok) {
     document.getElementById("loginOverlay")?.remove();
+    document.getElementById("topMenu").style.display = "block";
     showNotification?.(`Welcome, ${currentAccount.username}${result.isAdmin?" (ADMIN)":""}${result.offline?" (offline)":""}!`, "#0af");
     submitLeaderboard();
     // Refresh Command Center if it's open so account tab updates
@@ -416,6 +417,7 @@ function loginGuest() {
   currentAccount = { username: "guest", isAdmin: false };
   const overlay = document.getElementById("loginOverlay");
   if (overlay) overlay.remove();
+  document.getElementById("topMenu").style.display = "block";
   showNotification?.("Playing as guest — progress won't be saved. Log in from the Shop to save.", "#888");
 }
 
