@@ -126,13 +126,27 @@ function enterUniverse(world) {
         uniLoadQuadrant(q);
         uniState = "flying";
         if (typeof state !== "undefined") state = "playing";
-        _buildUniMobileUI();
+        _buildUniUI();
         return;
       }
     }
   }
 
-  // Default: show map
+  // Default: spawn at first station in starter system
+  const defaultAreas = Object.values(_uniCurrentSystem.areas);
+  for (const area of defaultAreas) {
+    const stationQuad = area.quadrants.find(q => q.type === "station");
+    if (stationQuad) {
+      _uniCurrentArea = area;
+      uniLoadQuadrant(stationQuad);
+      uniState = "flying";
+      if (typeof state !== "undefined") state = "playing";
+      _buildUniUI();
+      return;
+    }
+  }
+
+  // Fallback if no station found: show map
   uniState = "map";
   if (typeof state !== "undefined") state = "menu";
   _startUniMapLoop();
@@ -142,7 +156,7 @@ function enterUniverse(world) {
 
 function exitUniverse() {
   _stopUniMapLoop();
-  _hideUniMobileUI();
+  _hideUniUI();
   uniState = "inactive";
   window.gameMode = "arena";
   if (typeof state !== "undefined") state = "menu";
@@ -737,7 +751,7 @@ function _uniUpdateQuantum() {
         uniLoadQuadrant(_uniQuantumTarget.quadrant);
         uniState = "flying";
         if (typeof state !== "undefined") state = "playing";
-        _buildUniMobileUI();
+        _buildUniUI();
       } else {
         uniState = "map";
         _startUniMapLoop();
@@ -1629,130 +1643,91 @@ function _uniMapBack() {
   else exitUniverse();
 }
 
-// ── MOBILE UI ─────────────────────────────────────────────────
-// Build dock/mine/map buttons for mobile. Arena mobile controls (joysticks, boost, missile)
-// already work via game.js — we just need universe-specific buttons.
 
-function _buildUniMobileUI() {
-  if (!IS_MOBILE) return;
-  _hideUniMobileUI();
+// ── UNIVERSE UI ───────────────────────────────────────────────
+// Buttons for both mobile and desktop. Hides Arena-specific buttons.
+
+let _uniUI = null;
+
+function _buildUniUI() {
+  _hideUniUI();
+
+  // Hide Arena-specific buttons that don't apply to Universe
+  ["formationBtn","deployBtn","mobileSpecialBtn"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = "none";
+  });
+  // Hide Arena HUD and inGameBack
+  const hud = document.getElementById("hud"); if (hud) hud.style.display = "none";
+  const igb = document.getElementById("inGameBack"); if (igb) igb.style.display = "none";
+
+  // Show Arena mobile joysticks + boost + missile (those still work for flying/combat)
+  if (typeof IS_MOBILE !== "undefined" && IS_MOBILE) {
+    const arenaUI = document.getElementById("mobileUI");
+    if (arenaUI) arenaUI.style.display = "block";
+  }
 
   const ui = document.createElement("div");
-  ui.id = "uniMobileUI";
+  ui.id = "uniUI";
   ui.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:998;touch-action:none";
 
-  // Map button
+  const btnCss = "pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer;font:bold 12px monospace;border-radius:8px;text-align:center;";
+
+  // MAP button
   const mapBtn = document.createElement("div");
+  mapBtn.id = "uniMapBtn";
   mapBtn.textContent = "MAP";
-  mapBtn.style.cssText = "position:absolute;top:40px;right:10px;padding:8px 16px;background:rgba(0,170,255,0.18);border:2px solid rgba(0,170,255,0.7);border-radius:8px;color:#0af;font:bold 12px monospace;pointer-events:all;touch-action:none;user-select:none";
-  mapBtn.addEventListener("touchstart", e => {
-    e.preventDefault();
-    if (!_uniInCombat && uniState === "flying") {
-      uniState = "map"; if (typeof state !== "undefined") state = "menu";
-      _uniMapLevel = "quadrant"; _startUniMapLoop();
-    }
-  }, { passive: false });
+  mapBtn.style.cssText = "position:absolute;top:38px;right:10px;padding:8px 18px;" + btnCss + "background:rgba(0,170,255,0.18);border:2px solid rgba(0,170,255,0.7);color:#0af";
+  const mapAction = () => { if (!_uniInCombat && uniState === "flying") { uniState = "map"; if (typeof state !== "undefined") state = "menu"; _uniMapLevel = "quadrant"; _startUniMapLoop(); } };
+  mapBtn.addEventListener("click", mapAction);
+  mapBtn.addEventListener("touchstart", e => { e.preventDefault(); mapAction(); }, { passive: false });
   ui.appendChild(mapBtn);
 
-  // Dock button (shows when near station)
+  // DOCK button
   const dockBtn = document.createElement("div");
   dockBtn.id = "uniDockBtn";
   dockBtn.textContent = "DOCK";
-  dockBtn.style.cssText = "position:absolute;top:80px;right:10px;padding:8px 16px;background:rgba(0,255,100,0.18);border:2px solid rgba(0,255,100,0.7);border-radius:8px;color:#0f0;font:bold 12px monospace;pointer-events:all;touch-action:none;user-select:none;display:none";
-  dockBtn.addEventListener("touchstart", e => {
-    e.preventDefault();
-    if (uniStation && uniStation._playerNear && !_uniInCombat) {
-      if (typeof keys !== "undefined") keys["KeyE"] = true;
-      setTimeout(() => { if (typeof keys !== "undefined") keys["KeyE"] = false; }, 50);
-    }
-  }, { passive: false });
+  dockBtn.style.cssText = "position:absolute;top:76px;right:10px;padding:8px 18px;display:none;" + btnCss + "background:rgba(0,255,100,0.18);border:2px solid rgba(0,255,100,0.7);color:#0f0";
+  const dockAction = () => { if (uniStation && uniStation._playerNear && !_uniInCombat) { if (typeof keys !== "undefined") keys["KeyE"] = true; setTimeout(() => { if (typeof keys !== "undefined") keys["KeyE"] = false; }, 50); } };
+  dockBtn.addEventListener("click", dockAction);
+  dockBtn.addEventListener("touchstart", e => { e.preventDefault(); dockAction(); }, { passive: false });
   ui.appendChild(dockBtn);
 
-  // Mine button (shows when mining ship near asteroid)
+  // MINE button
   const mineBtn = document.createElement("div");
   mineBtn.id = "uniMineBtn";
   mineBtn.textContent = "MINE";
-  mineBtn.style.cssText = "position:absolute;top:120px;right:10px;padding:8px 16px;background:rgba(255,170,0,0.18);border:2px solid rgba(255,170,0,0.7);border-radius:8px;color:#ffaa00;font:bold 12px monospace;pointer-events:all;touch-action:none;user-select:none;display:none";
-  mineBtn.addEventListener("touchstart", e => {
-    e.preventDefault();
-    if (typeof keys !== "undefined") keys["KeyH"] = true;
-  }, { passive: false });
-  mineBtn.addEventListener("touchend", e => {
-    e.preventDefault();
-    if (typeof keys !== "undefined") keys["KeyH"] = false;
-  }, { passive: false });
+  mineBtn.style.cssText = "position:absolute;top:114px;right:10px;padding:8px 18px;display:none;" + btnCss + "background:rgba(255,170,0,0.18);border:2px solid rgba(255,170,0,0.7);color:#ffaa00";
+  mineBtn.addEventListener("mousedown", () => { if (typeof keys !== "undefined") keys["KeyH"] = true; });
+  mineBtn.addEventListener("mouseup", () => { if (typeof keys !== "undefined") keys["KeyH"] = false; });
+  mineBtn.addEventListener("touchstart", e => { e.preventDefault(); if (typeof keys !== "undefined") keys["KeyH"] = true; }, { passive: false });
+  mineBtn.addEventListener("touchend", e => { e.preventDefault(); if (typeof keys !== "undefined") keys["KeyH"] = false; }, { passive: false });
   ui.appendChild(mineBtn);
 
+  // EXIT button
+  const exitBtn = document.createElement("div");
+  exitBtn.id = "uniExitBtn";
+  exitBtn.textContent = "EXIT";
+  exitBtn.style.cssText = "position:absolute;top:38px;left:10px;padding:6px 14px;" + btnCss + "background:rgba(255,60,60,0.12);border:1.5px solid rgba(255,60,60,0.5);color:#f66;font-size:11px";
+  const exitAction = () => { if (confirm("Leave Universe Mode? Progress is saved.")) exitUniverse(); };
+  exitBtn.addEventListener("click", exitAction);
+  exitBtn.addEventListener("touchstart", e => { e.preventDefault(); exitAction(); }, { passive: false });
+  ui.appendChild(exitBtn);
+
   document.body.appendChild(ui);
-  _uniMobileUI = ui;
-
-  // Show Arena mobile controls too (joysticks, boost, missile)
-  const arenaUI = document.getElementById("mobileUI");
-  if (arenaUI) arenaUI.style.display = "block";
+  _uniUI = ui;
 }
 
-function _hideUniMobileUI() {
-  if (_uniMobileUI) { _uniMobileUI.remove(); _uniMobileUI = null; }
+function _hideUniUI() {
+  if (_uniUI) { _uniUI.remove(); _uniUI = null; }
+  ["formationBtn","deployBtn","mobileSpecialBtn"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = "";
+  });
 }
 
-// Update mobile button visibility each frame
-function _uniUpdateMobileButtons() {
-  if (!IS_MOBILE || !_uniMobileUI) return;
+function _uniUpdateButtons() {
+  if (!_uniUI) return;
   const dockBtn = document.getElementById("uniDockBtn");
   const mineBtn = document.getElementById("uniMineBtn");
   if (dockBtn) dockBtn.style.display = (uniStation && uniStation._playerNear && !_uniInCombat) ? "block" : "none";
   if (mineBtn) mineBtn.style.display = (typeof player !== "undefined" && player && player.miningPower > 0 && uniAsteroids.length > 0) ? "block" : "none";
 }
-
-// ══════════════════════════════════════════════════════════════
-// GAME.JS INTEGRATION — TODO LIST
-// These changes must be made to game.js for universe.js to work:
-// ══════════════════════════════════════════════════════════════
-//
-// 1. Add globals at the top of game.js:
-//    window.gameMode = "arena";  // "arena" | "universe"
-//    window.camX = 0;
-//    window.camY = 0;
-//    window.quadW = GAME_W;
-//    window.quadH = GAME_H;
-//
-// 2. In updatePlayer(), change position clamping:
-//    BEFORE: player.x = Math.max(0, Math.min(GAME_W - player.w, ...));
-//    AFTER:  const boundW = window.gameMode === "universe" ? window.quadW : GAME_W;
-//            const boundH = window.gameMode === "universe" ? window.quadH : GAME_H;
-//            player.x = Math.max(0, Math.min(boundW - player.w, ...));
-//            player.y = Math.max(0, Math.min(boundH - player.h, ...));
-//
-// 3. Add camera update at end of updatePlayer():
-//    if (window.gameMode === "universe") {
-//      window.camX = Math.max(0, Math.min(window.quadW - GAME_W, player.x + player.w/2 - GAME_W/2));
-//      window.camY = Math.max(0, Math.min(window.quadH - GAME_H, player.y + player.h/2 - GAME_H/2));
-//    }
-//
-// 4. In render(), wrap entity drawing with camera offset:
-//    if (window.gameMode === "universe") ctx.translate(-window.camX, -window.camY);
-//    ... all existing drawing code ...
-//    if (window.gameMode === "universe") ctx.translate(window.camX, window.camY);
-//    // Then call uniRenderOverlay() for asteroids, stations, HUD
-//    if (window.gameMode === "universe" && typeof uniRenderOverlay === "function") uniRenderOverlay();
-//
-// 5. In gameLoop(), skip arena-specific logic in universe mode:
-//    if (state === "playing") {
-//      if (window.gameMode === "universe") {
-//        updatePlayer(); updateEnemies(); updateBullets(); checkCollisions();
-//        updateHitEffects(); updateDeathEffects(); updateThrusterParticles();
-//        if (typeof uniUpdate === "function") uniUpdate();
-//        if (typeof _uniCheckMapKey === "function") _uniCheckMapKey();
-//        if (typeof _uniUpdateMobileButtons === "function") _uniUpdateMobileButtons();
-//      } else {
-//        // existing arena gameLoop code
-//      }
-//    }
-//
-// 6. In render(), skip arena HUD in universe mode:
-//    if (window.gameMode !== "universe") { drawBoostHUD(); drawSpecialHUD(); ... }
-//
-// 7. In updateEnemies(), skip Dreadnaught/beam/reinforcement logic for universe patrols:
-//    enemies with e._uniPatrol && !e.aggroed should be skipped by updateEnemies
-//    enemies with e._uniPatrol && e.aggroed should fight normally (arena AI works)
-//    enemies with e.isPassive && e.aggroed are handled by uniUpdate (flee logic)
