@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.5";
+const CACHE = "galactic-horizons-v1.8.6";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -166,5 +166,6 @@ Versions:
 -V1.8.2 - Added the first vertical slice playable form of Universe
 -V1.8.3 - Added universe.js to sw.js
 -V1.8.4 - Fixed menu, movement, and other stuff on universe mode
--V1.8.5
+-V1.8.5 - Ghost update
+-V1.8.6 - added parallax dots and cam fixes
 */
