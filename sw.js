@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.2";
+const CACHE = "galactic-horizons-v1.8.3";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -8,6 +8,7 @@ const ASSETS = [
   "./manifest.json",
   "./saves.js",
   "./challenges.js",
+  "./universe.js",
   "./universe_data.js",
   "./universe_saves.js",
   "./universe_menu.js",
@@ -163,4 +164,5 @@ Versions:
 -V1.8.0 - Universe Mode foundation: Menu restructure (Account/Arena/Universe top level), universe_data.js (data schema), universe_saves.js (seed-based save system), universe_menu.js (world creation/select/delete). No gameplay yet — Phase 0.5 next. (16/3/2026)
 -V1.8.1 - Moved Account/Admin from Command Center to top-level Account panel. Stripped all emojis from game UI.
 -V1.8.2 - Added the first vertical slice playable form of Universe
+-V1.8.3 - Added universe.js to sw.js
 */
