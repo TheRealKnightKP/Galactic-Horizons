@@ -225,14 +225,14 @@ function buildMobileControls() {
 
   const formationBtn = document.createElement("div");
   formationBtn.id = "formationBtn";
-  formationBtn.textContent = "◀ BEHIND";
+  formationBtn.textContent = "< BEHIND";
   formationBtn.style.cssText = "position:absolute;bottom:28px;left:50%;transform:translateX(-50%);padding:8px 20px;background:rgba(0,170,255,0.18);border:2px solid rgba(0,170,255,0.7);border-radius:16px;color:#0af;font:bold 15px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
   formationBtn.addEventListener("touchstart", e => { e.preventDefault(); cycleFormation(); }, { passive: false });
   ui.appendChild(formationBtn);
 
   const deployBtn = document.createElement("div");
   deployBtn.id = "deployBtn";
-  deployBtn.textContent = "⚓ DEPLOY";
+  deployBtn.textContent = "DEPLOY";
   deployBtn.style.cssText = "position:absolute;bottom:70px;left:50%;transform:translateX(-50%);padding:7px 18px;background:rgba(255,170,0,0.18);border:2px solid rgba(255,170,0,0.7);border-radius:14px;color:#ffaa00;font:bold 14px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10;display:none";
   deployBtn.addEventListener("touchstart", e => {
     e.preventDefault();
@@ -951,14 +951,14 @@ function drawShadowCometCutscene() {
   if (window._pendingShadowComet) drawEntity(window._pendingShadowComet);
   ctx.textAlign = "center";
   if (shadowCometCutsceneState === "intercepted") {
-    showSpecialToast("⚠ Allies were intercepted. Turrets disabled.");
+    showSpecialToast("Allies were intercepted. Turrets disabled.");
     if (window._pendingShadowComet) {
       const sc = window._pendingShadowComet;
       ctx.save(); ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(sc.x + sc.w/2 - 80, sc.y - 34, 160, 22);
       ctx.fillStyle = "#ff4444"; ctx.font = "bold 13px monospace"; ctx.fillText("Shadow Comet", sc.x + sc.w/2, sc.y - 18); ctx.restore();
     }
   } else if (shadowCometCutsceneState === "dialogue") {
-    showSpecialToast("⚠ Allies were intercepted. Turrets disabled.");
+    showSpecialToast("Allies were intercepted. Turrets disabled.");
     ctx.save(); ctx.fillStyle = "rgba(0,0,0,0.82)"; ctx.fillRect(GAME_W/2 - 260, GAME_H/2 - 44, 520, 64);
     ctx.strokeStyle = "#ff4444"; ctx.lineWidth = 1.5; ctx.strokeRect(GAME_W/2 - 260, GAME_H/2 - 44, 520, 64);
     ctx.fillStyle = "#ff4444"; ctx.font = "bold 12px monospace"; ctx.fillText("Shadow Comet", GAME_W/2, GAME_H/2 - 28);
@@ -1019,9 +1019,9 @@ function checkShadowCometDefeat() {
   const reward = infiniteMode ? generateInfiniteWave(currentWave).reward : (WAVES[currentWave-1]?.reward || 35000);
   money += reward; shadowCometKills++; shadowCometActive = false; pdcDisabledThisWave = false;
   let unlockMsg = "";
-  if (!ownedShips.includes("Comet")) { ownedShips.push("Comet"); cometUnlocked = true; unlockMsg = "🌠 COMET UNLOCKED"; }
-  else if (!isCometFullyUpgraded()) { fullUpgradeComet(); unlockMsg = "⚡ COMET FULLY UPGRADED"; }
-  else if (shadowCometNoHitWave && !ownedShips.includes("Vengeance")) { ownedShips.push("Vengeance"); vengeanaceUnlocked = true; unlockMsg = "⚔ VENGEANCE UNLOCKED — Perfect run!"; }
+  if (!ownedShips.includes("Comet")) { ownedShips.push("Comet"); cometUnlocked = true; unlockMsg = "COMET UNLOCKED"; }
+  else if (!isCometFullyUpgraded()) { fullUpgradeComet(); unlockMsg = "COMET FULLY UPGRADED"; }
+  else if (shadowCometNoHitWave && !ownedShips.includes("Vengeance")) { ownedShips.push("Vengeance"); vengeanaceUnlocked = true; unlockMsg = "VENGEANCE UNLOCKED — Perfect run!"; }
   if (unlockMsg) {
     const el = document.createElement("div"); el.textContent = unlockMsg;
     el.style.cssText = "position:fixed;top:28%;left:50%;transform:translateX(-50%);background:#0a0a0a;color:#ff4400;font:bold 24px monospace;padding:20px 36px;border:2px solid #ff4400;z-index:9999;border-radius:8px;pointer-events:none;text-align:center";
@@ -1102,14 +1102,14 @@ function drawShadowVenganceCutscene() {
   if (window._pendingShadowVengance) drawEntity(window._pendingShadowVengance);
   ctx.textAlign = "center";
   if (shadowVenganceCutsceneState === "intercepted") {
-    showSpecialToast("⚠ Allies were intercepted. Turrets disabled.");
+    showSpecialToast("Allies were intercepted. Turrets disabled.");
     if (window._pendingShadowVengance) {
       const sv = window._pendingShadowVengance;
       ctx.save(); ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(sv.x + sv.w/2 - 90, sv.y - 34, 180, 22);
       ctx.fillStyle = "#cc0033"; ctx.font = "bold 13px monospace"; ctx.fillText("Shadow Vengeance", sv.x + sv.w/2, sv.y - 18); ctx.restore();
     }
   } else if (shadowVenganceCutsceneState === "dialogue") {
-    showSpecialToast("⚠ Allies were intercepted. Turrets disabled.");
+    showSpecialToast("Allies were intercepted. Turrets disabled.");
     ctx.save(); ctx.fillStyle = "rgba(0,0,0,0.85)"; ctx.fillRect(GAME_W/2 - 300, GAME_H/2 - 50, 600, 76);
     ctx.strokeStyle = "#cc0033"; ctx.lineWidth = 1.5; ctx.strokeRect(GAME_W/2 - 300, GAME_H/2 - 50, 600, 76);
     ctx.fillStyle = "#cc0033"; ctx.font = "bold 12px monospace"; ctx.fillText("Shadow Vengeance", GAME_W/2, GAME_H/2 - 32);
@@ -1177,16 +1177,16 @@ function checkShadowVenganceDefeat() {
   const reward = infiniteMode ? generateInfiniteWave(currentWave).reward : (WAVES[currentWave-1]?.reward || 800000);
   money += reward; shadowVenganceActive = false; pdcDisabledThisWave = false;
   let unlockMsg = "";
-  if (!ownedShips.includes("Vengeance")) { ownedShips.push("Vengeance"); vengeanaceUnlocked = true; unlockMsg = "⚔ VENGEANCE UNLOCKED"; }
+  if (!ownedShips.includes("Vengeance")) { ownedShips.push("Vengeance"); vengeanaceUnlocked = true; unlockMsg = "VENGEANCE UNLOCKED"; }
   else {
     const _vengUpgrades = countVenganceUpgrades();
     const _over50pct = _vengUpgrades.total / Math.max(1, _vengUpgrades.max) > 0.5;
     fullUpgradeVengance();
     if (_over50pct && shadowVenganceNoHitWave) {
-      if (!ownedShips.includes("Retribution")) { ownedShips.push("Retribution"); retributionUnlocked = true; unlockMsg = "🔥 RETRIBUTION UNLOCKED — Vengeance mastered + Perfect run!"; }
-      else unlockMsg = "🔥 RETRIBUTION already owned. Vengeance fully upgraded!";
-    } else if (_over50pct) unlockMsg = "⚡ VENGEANCE FULLY UPGRADED — Beat it hitless for RETRIBUTION!";
-    else unlockMsg = "⚡ VENGEANCE FULLY UPGRADED";
+      if (!ownedShips.includes("Retribution")) { ownedShips.push("Retribution"); retributionUnlocked = true; unlockMsg = "RETRIBUTION UNLOCKED — Vengeance mastered + Perfect run!"; }
+      else unlockMsg = "RETRIBUTION already owned. Vengeance fully upgraded!";
+    } else if (_over50pct) unlockMsg = "VENGEANCE FULLY UPGRADED — Beat it hitless for RETRIBUTION!";
+    else unlockMsg = "VENGEANCE FULLY UPGRADED";
   }
   if (unlockMsg) {
     const el = document.createElement("div"); el.textContent = unlockMsg;
@@ -1325,7 +1325,7 @@ function showWavesConfirm(infinite) {
     el.style.cssText="position:fixed;inset:0;background:rgba(0,0,20,0.92);display:flex;align-items:center;justify-content:center;z-index:9000";
     const box=document.createElement("div");
     box.style.cssText="background:#090914;border:2px solid #0af;border-radius:12px;padding:32px 40px;text-align:center;font-family:monospace;max-width:420px";
-    box.innerHTML='<div style="color:#0af;font:bold 22px monospace;margin-bottom:10px">⚠ Enter Waves Mode?</div><div style="color:#aaa;font:14px monospace;margin-bottom:18px;line-height:1.6">Once you enter, your credits carry over<br>between waves but there\'s no turning back.<br>Configure your ship in <b style="color:#fff">Loadout</b> before entering.</div><div style="display:flex;gap:12px;justify-content:center"><button id="wc_yes" style="padding:10px 28px;font:bold 15px monospace;background:rgba(0,170,255,0.18);border:2px solid #0af;color:#0af;border-radius:8px;cursor:pointer">Let\'s go!</button><button id="wc_no" style="padding:10px 28px;font:bold 15px monospace;background:rgba(255,60,60,0.12);border:2px solid #f44;color:#f44;border-radius:8px;cursor:pointer">Go Back</button></div>';
+    box.innerHTML='<div style="color:#0af;font:bold 22px monospace;margin-bottom:10px">Enter Waves Mode?</div><div style="color:#aaa;font:14px monospace;margin-bottom:18px;line-height:1.6">Once you enter, your credits carry over<br>between waves but there\'s no turning back.<br>Configure your ship in <b style="color:#fff">Loadout</b> before entering.</div><div style="display:flex;gap:12px;justify-content:center"><button id="wc_yes" style="padding:10px 28px;font:bold 15px monospace;background:rgba(0,170,255,0.18);border:2px solid #0af;color:#0af;border-radius:8px;cursor:pointer">Let\'s go!</button><button id="wc_no" style="padding:10px 28px;font:bold 15px monospace;background:rgba(255,60,60,0.12);border:2px solid #f44;color:#f44;border-radius:8px;cursor:pointer">Go Back</button></div>';
     el.appendChild(box); document.body.appendChild(el);
   }
   el.style.display="flex";
@@ -1339,7 +1339,7 @@ function returnToMenuPreserveMoney() {
 
 function endGame(won) {
   state="gameover"; if (!won) window.recordPlayerDeath?.(); window.recordSessionEnd?.(); window.saveGame?.(); window.submitLeaderboard?.();
-  document.getElementById("gameOverText").textContent=won?"🏆 Victory!":"💀 Game Over";
+  document.getElementById("gameOverText").textContent=won?"Victory!":"Game Over";
   document.getElementById("finalMoney").textContent=money;
   document.getElementById("gameOverMenu").style.display="block"; document.getElementById("hud").style.display="none"; document.getElementById("inGameBack").style.display="none";
   if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="none";}
@@ -1620,12 +1620,12 @@ function activateSpecial() {
   if(!player||state!=="playing")return;
   const sp=typeof SHIP_SPECIALS!=="undefined"?SHIP_SPECIALS[currentShipName]:null; if(!sp)return;
   if (currentShipName === "Vengeance") {
-    if (player.revengeActive) { player.revengeActive = false; player.specialActive = false; player.revengeCooldown = 300; showSpecialToast("⏸ Revenge Deactivated"); }
-    else { if (player.revengeCooldown > 0) return; player.revengeActive = true; player.specialActive = true; showSpecialToast("⚡ REVENGE MODE"); }
+    if (player.revengeActive) { player.revengeActive = false; player.specialActive = false; player.revengeCooldown = 300; showSpecialToast("Revenge Deactivated"); }
+    else { if (player.revengeCooldown > 0) return; player.revengeActive = true; player.specialActive = true; showSpecialToast("REVENGE MODE"); }
     return;
   }
   if(player.specialCooldown>0||(player.specialActive&&currentShipName!=="Dominion"))return;
-  if(currentShipName==="Dominion"){ if(player.dominionOvercharged)return; player.dominionOvercharged=true; player.specialCooldown=sp.cooldown; player.shootTimer=Math.max(player.shootTimer, 25); showSpecialToast("⚡ OVERCHARGE READY — fire to release"); return; }
+  if(currentShipName==="Dominion"){ if(player.dominionOvercharged)return; player.dominionOvercharged=true; player.specialCooldown=sp.cooldown; player.shootTimer=Math.max(player.shootTimer, 25); showSpecialToast("OVERCHARGE READY — fire to release"); return; }
   player.specialActive=true; player.specialTimer=sp.duration;
   switch(currentShipName){
     case"Starlight":break; case"Comet":break;
@@ -1635,13 +1635,13 @@ function activateSpecial() {
     case"Leviathan":allies.forEach(a=>{a.vanguardActive=true;a.vanguardRPM=true;});break;
     case"Retribution":spawnRetributionAllies();break;
   }
-  showSpecialToast("▶ "+sp.name);
+  showSpecialToast("> "+sp.name);
 }
 
 function updateSpecial() {
   if (currentShipName === "Vengeance") {
     if (player.revengeCooldown > 0) player.revengeCooldown--;
-    if (player.revengeActive) { player.hp -= 5/60; if (player.hp <= 1) { player.revengeActive = false; player.specialActive = false; player.revengeCooldown = 300; showSpecialToast("⚠ Revenge auto-deactivated!"); } }
+    if (player.revengeActive) { player.hp -= 5/60; if (player.hp <= 1) { player.revengeActive = false; player.specialActive = false; player.revengeCooldown = 300; showSpecialToast("Revenge auto-deactivated!"); } }
     return;
   }
   if(player.specialCooldown>0)player.specialCooldown--;
@@ -1682,24 +1682,24 @@ function activatePing() {
   const pcx=player.x+player.w/2,pcy=player.y+player.h/2;
   let closest=null,closestD=1e9;
   enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-pcx,e.y+e.h/2-pcy);if(d<closestD){closestD=d;closest=e;}});
-  if(closest){pingTarget=closest;showSpecialToast("🎯 PING: "+closest.type);}
+  if(closest){pingTarget=closest;showSpecialToast("PING: "+closest.type);}
 }
 
 function drawSpecialHUD() {
   if (currentShipName === "Vengeance") {
     const bx=8,by=GAME_H-82,bw=166,bh=26;
-    if (player.revengeActive) { const pulse=0.7+0.3*Math.abs(Math.sin(Date.now()/150)); ctx.fillStyle="rgba(200,0,50,"+(0.25*pulse)+")";ctx.fillRect(bx,by,bw,bh); ctx.globalAlpha=pulse;ctx.fillStyle="#ff2244";ctx.font="bold 12px monospace"; ctx.fillText("⚡ REVENGE — TAP TO END",bx+5,by+17);ctx.globalAlpha=1; }
+    if (player.revengeActive) { const pulse=0.7+0.3*Math.abs(Math.sin(Date.now()/150)); ctx.fillStyle="rgba(200,0,50,"+(0.25*pulse)+")";ctx.fillRect(bx,by,bw,bh); ctx.globalAlpha=pulse;ctx.fillStyle="#ff2244";ctx.font="bold 12px monospace"; ctx.fillText("REVENGE — TAP TO END",bx+5,by+17);ctx.globalAlpha=1; }
     else if (player.revengeCooldown > 0) { const frac = 1 - player.revengeCooldown/300; ctx.fillStyle="rgba(50,50,50,0.4)";ctx.fillRect(bx,by,bw,bh); ctx.fillStyle="rgba(90,90,90,0.7)";ctx.fillRect(bx,by,bw*frac,bh); ctx.fillStyle="#666";ctx.font="bold 12px monospace"; ctx.fillText("Revenge CD "+(player.revengeCooldown/60).toFixed(1)+"s",bx+5,by+17); }
     else { ctx.fillStyle="rgba(200,0,50,0.22)";ctx.fillRect(bx,by,bw,bh); ctx.fillStyle="#ff2244";ctx.font="bold 12px monospace"; ctx.fillText((IS_MOBILE?"TAP":"[Q] ")+"REVENGE",bx+5,by+17); }
     return;
   }
   const sp=typeof SHIP_SPECIALS!=="undefined"?SHIP_SPECIALS[currentShipName]:null; if(!sp)return;
   const bx=8,by=GAME_H-82,bw=166,bh=26;
-  if(player.dominionOvercharged){ ctx.fillStyle="rgba(255,150,0,0.28)";ctx.fillRect(bx,by,bw,bh); const pulse=0.7+0.3*Math.abs(Math.sin(Date.now()/200)); ctx.globalAlpha=pulse;ctx.fillStyle="#ffaa00";ctx.font="bold 12px monospace"; ctx.fillText("⚡ OVERCHARGE READY",bx+5,by+18);ctx.globalAlpha=1; }
+  if(player.dominionOvercharged){ ctx.fillStyle="rgba(255,150,0,0.28)";ctx.fillRect(bx,by,bw,bh); const pulse=0.7+0.3*Math.abs(Math.sin(Date.now()/200)); ctx.globalAlpha=pulse;ctx.fillStyle="#ffaa00";ctx.font="bold 12px monospace"; ctx.fillText("OVERCHARGE READY",bx+5,by+18);ctx.globalAlpha=1; }
   else if(player.specialActive){ const frac=player.specialTimer/Math.max(1,sp.duration); ctx.fillStyle="rgba(255,100,0,0.18)";ctx.fillRect(bx,by,bw,bh); ctx.fillStyle="rgba(255,130,0,0.7)";ctx.fillRect(bx,by,bw*frac,bh); ctx.fillStyle="#ff8800";ctx.font="bold 12px monospace";ctx.fillText(sp.name,bx+5,by+17); }
   else if(player.specialCooldown>0){ const frac=1-player.specialCooldown/Math.max(1,sp.cooldown); ctx.fillStyle="rgba(50,50,50,0.4)";ctx.fillRect(bx,by,bw,bh); ctx.fillStyle="rgba(90,90,90,0.7)";ctx.fillRect(bx,by,bw*frac,bh); ctx.fillStyle="#666";ctx.font="bold 12px monospace"; ctx.fillText(sp.name+" "+(player.specialCooldown/60).toFixed(1)+"s",bx+5,by+17); }
   else { ctx.fillStyle="rgba(255,100,0,0.22)";ctx.fillRect(bx,by,bw,bh); ctx.fillStyle="#ff8800";ctx.font="bold 12px monospace"; ctx.fillText((IS_MOBILE?"TAP":"[Q] ")+sp.name,bx+5,by+17); }
-  if(pingTarget&&!pingTarget.dead){ ctx.fillStyle="rgba(255,200,0,0.15)";ctx.fillRect(bx,by+bh+2,bw,20); ctx.fillStyle="#ffcc00";ctx.font="12px monospace"; ctx.fillText("🎯 "+pingTarget.type,bx+5,by+bh+16); }
+  if(pingTarget&&!pingTarget.dead){ ctx.fillStyle="rgba(255,200,0,0.15)";ctx.fillRect(bx,by+bh+2,bw,20); ctx.fillStyle="#ffcc00";ctx.font="12px monospace"; ctx.fillText(""+pingTarget.type,bx+5,by+bh+16); }
 }
 
 // ============================================================
@@ -1752,7 +1752,7 @@ function deployFromCapital() {
   };
   initShieldFaces(deployedObj);
   deployedShipKey = deployKey; isDeployed = true; player = deployedObj; currentShipName = deployKey;
-  updateHUD(); showNotification("⚓ DEPLOYED — fly back to capital to re-enter", "#0af");
+  updateHUD(); showNotification("DEPLOYED — fly back to capital to re-enter", "#0af");
 }
 
 function recallToCapital() {
@@ -1760,7 +1760,7 @@ function recallToCapital() {
   capitalShipObj.missileRack = [...(player.missileRack||[])]; capitalShipObj.missiles = capitalShipObj.missileRack.length;
   player = capitalShipObj; capitalShipObj._isCapitalAutopilot = false; capitalShipObj = null;
   isDeployed = false; currentShipName = playerLoadout.ship;
-  updateHUD(); showNotification("⚓ RETURNED TO CAPITAL", "#0af");
+  updateHUD(); showNotification("RETURNED TO CAPITAL", "#0af");
 }
 
 function updateCapitalAutopilot() {
@@ -1804,7 +1804,7 @@ function updateCapitalAutopilot() {
   if (cap._deployGraceCleared && distFromCapital < 80) recallToCapital();
   if (cap.hp <= 0) {
     capitalDestroyed = true; capitalNoRespawn = 2; capitalShipObj = null; isDeployed = false;
-    spawnDeathEffect(cap); playExplosion(8); showSpecialToast("💀 CAPITAL DESTROYED — Ejected! Allies won't respawn for 2 waves.");
+    spawnDeathEffect(cap); playExplosion(8); showSpecialToast("CAPITAL DESTROYED — Ejected! Allies won't respawn for 2 waves.");
   }
 }
 
@@ -1813,7 +1813,7 @@ function handleDeployedShipDeath() {
   player = capitalShipObj; capitalShipObj._isCapitalAutopilot = false; capitalShipObj = null;
   isDeployed = false; deployedShipAvail = false; currentShipName = playerLoadout.ship;
   player.hp = Math.min(player.maxHp, player.hp); updateHUD();
-  showSpecialToast("⚓ DEPLOYED SHIP LOST — Controlling capital. No re-deploy this wave.");
+  showSpecialToast("DEPLOYED SHIP LOST — Controlling capital. No re-deploy this wave.");
 }
 
 function drawCapitalStatusHUD() {
@@ -1821,7 +1821,7 @@ function drawCapitalStatusHUD() {
   const cap = capitalShipObj, panelW = 160, panelH = 56, px = GAME_W - panelW - 8, py = 8;
   ctx.fillStyle = "rgba(0,8,20,0.82)"; ctx.strokeStyle = capitalDestroyed ? "#f44" : "#0af"; ctx.lineWidth = 1.5;
   ctx.fillRect(px, py, panelW, panelH); ctx.strokeRect(px, py, panelW, panelH);
-  ctx.fillStyle = capitalDestroyed ? "#f44" : "#0af"; ctx.font = "bold 10px monospace"; ctx.fillText("⚓ CAPITAL", px+6, py+13);
+  ctx.fillStyle = capitalDestroyed ? "#f44" : "#0af"; ctx.font = "bold 10px monospace"; ctx.fillText("CAPITAL", px+6, py+13);
   if (capitalDestroyed) { ctx.fillStyle = "#f44"; ctx.font = "bold 11px monospace"; ctx.fillText("DESTROYED", px+6, py+30); return; }
   const hpFrac = Math.max(0, cap.hp/cap.maxHp);
   ctx.fillStyle = "#333"; ctx.fillRect(px+6, py+18, panelW-12, 7);
@@ -1835,9 +1835,9 @@ function drawCapitalStatusHUD() {
 
 function drawEnemyCapFormationHUD() {
   const hasEnemyCap = enemies.some(e => !e.dead && (ENEMIES[e.type]?.size||0) >= 6 && e.type !== "Dreadnaught"); if (!hasEnemyCap) return;
-  const LABELS = { vanguard:"⚔ VANGUARD", rearguard:"🛡 REARGUARD", surround:"⬡ SURROUND", hunt:"🎯 HUNT CAPITAL", intercept:"✂ INTERCEPT", pincer:"⇅ PINCER", standalone:"⚡ 1v1 SPLIT", siege:"◎ SIEGE", wolfpack:"🐺 WOLF PACK" };
+  const LABELS = { vanguard:"VANGUARD", rearguard:"REARGUARD", surround:"SURROUND", hunt:"HUNT CAPITAL", intercept:"INTERCEPT", pincer:"PINCER", standalone:"1v1 SPLIT", siege:"SIEGE", wolfpack:"WOLF PACK" };
   const COLORS = { vanguard:"#ff4444", rearguard:"#4488ff", surround:"#ff8800", hunt:"#ff44ff", intercept:"#ff8800", pincer:"#ffff00", standalone:"#ffff44", siege:"#00aaff", wolfpack:"#ff2200" };
-  const label = LABELS[_enemyCapFormation] || "▶ HOLDING", color = COLORS[_enemyCapFormation] || "#666";
+  const label = LABELS[_enemyCapFormation] || "> HOLDING", color = COLORS[_enemyCapFormation] || "#666";
   const panelW = 148, panelH = 28, px = GAME_W - panelW - 8, py = isDeployed ? 72 : 8;
   ctx.fillStyle = "rgba(0,0,0,0.72)"; ctx.strokeStyle = color; ctx.lineWidth = 1;
   ctx.fillRect(px, py, panelW, panelH); ctx.strokeRect(px, py, panelW, panelH);
@@ -2141,9 +2141,9 @@ function updateEnemies() {
           dreadnaughtReinforceTriggered = true;
           const rList = _dwd.reinforceEnemies || [];
           rList.forEach(name=>{ const spx = GAME_W*0.5+Math.random()*GAME_W*0.4; const spy = 40+Math.random()*(GAME_H-80); const re = createEnemyObject(name, spx, spy); if(re) enemies.push(re); });
-          showSpecialToast("⚠ DREADNAUGHT CALLS REINFORCEMENTS!");
+          showSpecialToast("DREADNAUGHT CALLS REINFORCEMENTS!");
         }
-        if(!dreadnaughtEnraged && e.hp <= e.maxHp * 0.25) { dreadnaughtEnraged = true; e.beamTimer = Math.min(e.beamTimer, 90); showSpecialToast("💀 DREADNAUGHT ENRAGED!"); }
+        if(!dreadnaughtEnraged && e.hp <= e.maxHp * 0.25) { dreadnaughtEnraged = true; e.beamTimer = Math.min(e.beamTimer, 90); showSpecialToast("DREADNAUGHT ENRAGED!"); }
         if(dreadnaughtEnraged) e._enragedBeamCD = 360;
       }
       return;
@@ -2280,7 +2280,7 @@ function checkCollisions() {
   });
   if(isDeployed && capitalShipObj && !capitalDestroyed) {
     enemyBullets.forEach(b=>{ if(b.dead||b.visualOnly)return; if(overlaps(b,capitalShipObj)){ if(Math.random()<(capitalShipObj.dodgeBase||0)) return; applyDamage(capitalShipObj, b); b.dead=true;
-      if(capitalShipObj.hp<=0) { capitalDestroyed=true; capitalNoRespawn=2; spawnDeathEffect(capitalShipObj); playExplosion(8); capitalShipObj=null; isDeployed=false; showSpecialToast("💀 CAPITAL DESTROYED — Ejected! Allies won't respawn for 2 waves."); }
+      if(capitalShipObj.hp<=0) { capitalDestroyed=true; capitalNoRespawn=2; spawnDeathEffect(capitalShipObj); playExplosion(8); capitalShipObj=null; isDeployed=false; showSpecialToast("CAPITAL DESTROYED — Ejected! Allies won't respawn for 2 waves."); }
     } });
   }
   enemyBullets.forEach(b=>{ if(b.dead)return; if(overlaps(b,player)){b.dead=true;applyDamage(player,b);} allies.forEach(a=>{ if(!a.dead&&overlaps(b,a)){applyDamage(a,b);if(a.hp<=0){spawnDeathEffect(a);a.dead=true;window.recordAllyDeath?.(a.shipName||a.type);}} }); });
@@ -2349,7 +2349,7 @@ function drawBeamFlashes() { beamFlashes.forEach(f=>{ const alpha=f.life/f.maxLi
 function drawBeamWarnings() {
   enemies.forEach(e=>{ if(e.type!=="Dreadnaught"||!e.beamWarningAngles)return; const ecx=e.x+e.w/2,ecy=e.y+e.h/2; const secs=Math.ceil(e.beamTimer/60); const pulse=0.35+0.55*Math.abs(Math.sin(Date.now()/120));
     e.beamWarningAngles.forEach(angle=>{ const cos=Math.cos(angle),sin=Math.sin(angle); const ep=rayEndpoint(ecx,ecy,cos,sin); ctx.save();ctx.globalAlpha=pulse;ctx.strokeStyle="#ff2200";ctx.lineWidth=10; ctx.setLineDash([24,14]);ctx.shadowColor="#ff4400";ctx.shadowBlur=30; ctx.beginPath();ctx.moveTo(ecx,ecy);ctx.lineTo(ep.x,ep.y);ctx.stroke(); ctx.setLineDash([]);ctx.restore(); });
-    ctx.save();ctx.globalAlpha=0.9;ctx.fillStyle="#ff2200";ctx.font="bold 26px monospace";ctx.textAlign="center"; ctx.fillText("⚠ DREADNAUGHT BEAM — MOVE! ("+secs+"s)",GAME_W/2,60); ctx.textAlign="left";ctx.restore();
+    ctx.save();ctx.globalAlpha=0.9;ctx.fillStyle="#ff2200";ctx.font="bold 26px monospace";ctx.textAlign="center"; ctx.fillText("DREADNAUGHT BEAM — MOVE! ("+secs+"s)",GAME_W/2,60); ctx.textAlign="left";ctx.restore();
   });
 }
 
@@ -2375,7 +2375,7 @@ function render() {
   }
   if(state!=="playing")return;
   if(currentShipName==="Vengeance"&&player.revengeActive){ ctx.save();ctx.globalAlpha=0.07;ctx.fillStyle="#ff0000";ctx.fillRect(0,0,GAME_W,GAME_H);ctx.restore(); }
-  if(pdcDisabledThisWave){ ctx.save();ctx.globalAlpha=0.7;ctx.fillStyle="#ff2200";ctx.font="bold 13px monospace"; ctx.fillText("⚠ TURRETS DISABLED",10,GAME_H-30);ctx.restore(); }
+  if(pdcDisabledThisWave){ ctx.save();ctx.globalAlpha=0.7;ctx.fillStyle="#ff2200";ctx.font="bold 13px monospace"; ctx.fillText("TURRETS DISABLED",10,GAME_H-30);ctx.restore(); }
   drawThrusterParticles(); enemies.forEach(drawEntity); allies.forEach(drawEntity);
   if(isDeployed && capitalShipObj && !capitalDestroyed) drawEntity(capitalShipObj);
   drawEntity(player); drawRailgunCharge(); drawAimArrow(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings(); drawBoostHUD(); drawSpecialHUD(); drawCapitalStatusHUD(); drawEnemyCapFormationHUD();
@@ -2402,7 +2402,7 @@ function cycleMissileKind() {
   const mk = (typeof MISSILE_KINDS !== "undefined" && MISSILE_KINDS[player.missileActiveKind]) || {};
   const kc = player.missileActiveKind==="nuke"?"#ff4400":player.missileActiveKind==="emp"?"#44ffcc":player.missileActiveKind==="micro"?"#ffcc44":player.missileActiveKind==="cluster"?"#ff88ff":"#aaddff";
   const count = player.missileRack.filter(e=>e.kind===player.missileActiveKind).length;
-  showNotification("▶ " + (mk.name || player.missileActiveKind) + " ×" + count, kc);
+  showNotification("> " + (mk.name || player.missileActiveKind) + " ×" + count, kc);
 }
 
 function updateHUD() {
@@ -2419,11 +2419,11 @@ function updateHUD() {
     else if (!player.missileActiveKind || !rack.some(e=>e.kind===player.missileActiveKind)) player.missileActiveKind = rack[0]?.kind || null;
     const curKind = player.missileActiveKind; const curName = curKind ? (mkDefs[curKind]?.name || curKind) : "—";
     const counts = {}; rack.forEach(e => { counts[e.kind] = (counts[e.kind]||0)+1; });
-    const countStr = Object.entries(counts).map(([k,n]) => { const nm = mkDefs[k]?.name || k; return (k === curKind ? "▶ " : "") + nm + ":" + n; }).join("  ");
+    const countStr = Object.entries(counts).map(([k,n]) => { const nm = mkDefs[k]?.name || k; return (k === curKind ? "> " : "") + nm + ":" + n; }).join("  ");
     const el = document.getElementById("missiles"); if (el) el.textContent = rack.length > 0 ? ("Current: " + curName + "  |  " + countStr) : "0";
   }
   const dBtn = document.getElementById("deployBtn");
-  if (dBtn) { const showDeploy = isCapitalShip() || isDeployed; dBtn.style.display = showDeploy ? "block" : "none"; dBtn.textContent = isDeployed ? "⚓ RECALL" : "⚓ DEPLOY"; dBtn.style.opacity = (!isDeployed && !deployedShipAvail) ? "0.4" : "1"; }
+  if (dBtn) { const showDeploy = isCapitalShip() || isDeployed; dBtn.style.display = showDeploy ? "block" : "none"; dBtn.textContent = isDeployed ? "RECALL" : "DEPLOY"; dBtn.style.opacity = (!isDeployed && !deployedShipAvail) ? "0.4" : "1"; }
 }
 
 function setPlayerMissileKind(k) { if(player) player.missileKind=k; }
@@ -2435,7 +2435,7 @@ function cycleFormation() {
   const deployedExtra = (isCapitalShip() && isDeployed) ? ["defend_deployed"] : [];
   const modes = [...base, ...capitalExtra, ...deployedExtra];
   const idx = modes.indexOf(allyFormation); allyFormation = modes[(idx+1) % modes.length];
-  const labels = { behind:"◀ BEHIND", front:"▶ FRONT", surround:"⬟ SURROUND", standalone:"⚔ STANDALONE", defend_capital:"🛡 DEF. CAPITAL", defend_deployed:"🎯 DEF. DEPLOYED" };
+  const labels = { behind:"< BEHIND", front:"> FRONT", surround:"SURROUND", standalone:"STANDALONE", defend_capital:"DEF. CAPITAL", defend_deployed:"DEF. DEPLOYED" };
   const btn = document.getElementById("formationBtn"); if(btn) btn.textContent = labels[allyFormation] || allyFormation;
   let toast = document.getElementById("formationToast");
   if(!toast){ toast = document.createElement("div"); toast.id = "formationToast"; toast.style.cssText = "position:fixed;top:50px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#0af;font:bold 16px monospace;padding:6px 18px;border:1px solid #0af;border-radius:4px;z-index:9999;pointer-events:none;transition:opacity 0.4s"; document.body.appendChild(toast); }
@@ -2457,7 +2457,7 @@ function gameLoop() {
     updateThrusterParticles();
     if(waveReinforceTimer>0){waveReinforceTimer--;if(waveReinforceTimer<=0&&!waveReinforceDone){
       waveReinforceDone=true; const wd=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
-      if(wd&&wd.reinforceEnemies){ wd.reinforceEnemies.forEach(name=>{ const re=createEnemyObject(name, GAME_W, 80+Math.random()*(GAME_H-160)); if(re) enemies.push(re); }); showSpecialToast("⚠ REINFORCEMENTS!"); }
+      if(wd&&wd.reinforceEnemies){ wd.reinforceEnemies.forEach(name=>{ const re=createEnemyObject(name, GAME_W, 80+Math.random()*(GAME_H-160)); if(re) enemies.push(re); }); showSpecialToast("REINFORCEMENTS!"); }
     }}
     if(enemies.length===0&&!shadowCometActive&&!shadowVenganceActive){
       const reward=infiniteMode?generateInfiniteWave(currentWave).reward:(WAVES[currentWave-1]?.reward||0);
