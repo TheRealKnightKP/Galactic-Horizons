@@ -1,136 +1,132 @@
 // ============================================================
-// universe.js — Phase 0.5: Vertical Slice
-// The Universe Mode game loop, rendering, and gameplay.
-// Depends on: game.js (canvas, input, drawEntity, audio),
-//             universe_data.js, universe_saves.js
+// universe.js v2 — Thin Universe Layer
+// Handles: map UI, station UI, mining, fuel, cargo, quantum travel
+// Delegates: flying, combat, rendering, particles to game.js
+//
+// game.js additions required (at bottom of this file as TODO):
+//   - gameMode global ("arena" | "universe")
+//   - camX, camY, quadW, quadH globals for camera
+//   - Camera offset in render()
+//   - Universe hooks in gameLoop()
+//   - Clamp player to quadW/quadH in universe mode
 // ============================================================
 
-// ── UNIVERSE STATE ────────────────────────────────────────────
-let uniState = "inactive"; // inactive | map | flying | docked | quantum | combat
-let _uniLoopId = null;
+// ── STATE ─────────────────────────────────────────────────────
+let uniState = "inactive"; // inactive | map | flying | docked | quantum
 let _uniFrameCount = 0;
+let _uniMapLoopId = null;
 
-// Active universe data (set by startUniverseMode in universe_menu.js)
-// window._activeUniverse holds the regenerated universe
+let _uniCurrentSystem = null;
+let _uniCurrentArea = null;
+let _uniCurrentQuadrant = null;
+let _uniQuadrantContents = null;
 
-// Current location tracking
-let _uniCurrentSystem = null;  // system object
-let _uniCurrentArea = null;    // area object
-let _uniCurrentQuadrant = null; // quadrant object
-let _uniQuadrantContents = null; // generated contents for current quadrant
+// Station
+let uniStation = null;
+let _uniDockedStation = null;
+let _uniStationTab = "trading";
+let _uniTradeSelected = 0;
 
-// Player ship in universe (separate from Arena player)
-let uniPlayer = null;
-let uniBullets = [];       // player bullets
-let uniEnemyBullets = [];  // enemy bullets
-let uniEnemies = [];       // active patrol enemies
-let uniAsteroids = [];     // active asteroids in quadrant
-let uniPOIs = [];          // active POIs in quadrant
-let uniStation = null;     // station entity if quadrant has one
-let uniBeamFlashes = [];
-let uniHitEffects = [];
-let uniDeathEffects = [];
-
-// Combat state
-let _uniInCombat = false;
-let _uniDisengageTimer = 0; // frames since last player attack
-const UNI_DISENGAGE_TIME = 600; // 10 seconds at 60fps
-
-// Mining state
+// Mining
 let _uniMiningTarget = null;
 let _uniMiningProgress = 0;
-const UNI_MINE_RATE = 1.5; // hp per frame when mining
+const UNI_MINE_RATE = 1.5;
 
-// Quantum travel
-let _uniQuantumTarget = null; // { systemId, areaId, quadrantId }
+// Combat tracking (universe layer watches, game.js does actual combat)
+let _uniInCombat = false;
+let _uniDisengageTimer = 0;
+const UNI_DISENGAGE_TIME = 600; // 10s at 60fps
+
+// Quantum
+let _uniQuantumTarget = null;
 let _uniQuantumTimer = 0;
-const UNI_QUANTUM_DURATION = 120; // 2 seconds cutscene
+const UNI_QUANTUM_DURATION = 120;
 
-// Map UI state
-let _uniMapLevel = "system"; // system | area | quadrant
+// Map UI
+let _uniMapLevel = "system";
 let _uniMapSelectedSystem = null;
 let _uniMapSelectedArea = null;
 let _uniMapHover = null;
 
 // Fuel
-const UNI_FUEL_DRAIN_RATE = 0.001; // per frame while flying
-const UNI_QUANTUM_FUEL_BASE = 5;   // base fuel per quantum jump
+const UNI_FUEL_DRAIN = 0.001;
+const UNI_QUANTUM_FUEL = 5;
 
-// ── UNIVERSE ENTRY/EXIT ───────────────────────────────────────
+// Quadrant sizes by type (variable — mining big, stations small)
+const UNI_QUAD_SIZES = {
+  station:         { w: 2000, h: 1400 },
+  outpost:         { w: 1800, h: 1200 },
+  mining:          { w: 4000, h: 3000 },
+  patrol:          { w: 3200, h: 2400 },
+  open:            { w: 3600, h: 2800 },
+  mission:         { w: 2800, h: 2000 },
+  debris:          { w: 3600, h: 2600 },
+  wormhole_tunnel: { w: 1600, h: 1000 },
+  sun_zone:        { w: 2400, h: 2400 },
+};
+
+// Universe-specific entities that sit alongside game.js's enemies array
+let uniAsteroids = [];
+let uniPOIs = [];
+
+// ── ENTER UNIVERSE ────────────────────────────────────────────
 
 function enterUniverse(world) {
   if (!world || !window._activeUniverse) return;
   const uni = window._activeUniverse;
   const p = world.player;
 
-  // Tell Arena to stand down
-  if (typeof state !== "undefined") state = "menu";
+  // Tell game.js we're in universe mode
+  if (typeof window.gameMode === "undefined") window.gameMode = "universe";
+  else window.gameMode = "universe";
 
-  // Set current location
   _uniCurrentSystem = uni.systems[p.currentSystemId] || uni.systems["solara"];
   _uniMapSelectedSystem = _uniCurrentSystem.id;
 
-  // Build player ship from owned ships
+  // Build player using Arena's setPlayerShip — gives us full combat: boost, missiles, turrets, specials
   const shipData = p.ownedShips[p.activeShipIdx || 0];
-  if (!shipData) { console.error("No ship!"); return; }
+  if (!shipData) return;
   const shipKey = shipData.key;
-  const arenaDef = typeof SHIPS !== "undefined" ? SHIPS[shipKey] : null;
   const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[shipKey] : null;
 
-  const sizeNum = arenaDef?.size || 2;
-  const sw = Math.round((40 + sizeNum * 16) * (typeof SIZE_SCALE !== "undefined" ? SIZE_SCALE : 0.5));
-  const sh = Math.round((24 + sizeNum * 8) * (typeof SIZE_SCALE !== "undefined" ? SIZE_SCALE : 0.5));
+  if (typeof playerLoadout !== "undefined") playerLoadout.ship = shipKey;
+  if (typeof setPlayerShip === "function") setPlayerShip(shipKey);
 
-  uniPlayer = {
-    x: 200, y: typeof GAME_H !== "undefined" ? GAME_H / 2 : 360,
-    w: sw, h: sh,
-    vx: 0, vy: 0,
-    rotation: 0,
-    spriteAngleOffset: Math.PI,
-    speed: (arenaDef?.speed || 2) * 0.8,
-    hp: shipData.hp || arenaDef?.hp || 500,
-    maxHp: arenaDef?.hp || 500,
-    shields: shipData.shields || arenaDef?.shields || 300,
-    maxShields: arenaDef?.shields || 300,
-    armor: shipData.armor || arenaDef?.armor || 100,
-    maxArmor: arenaDef?.armor || 100,
-    armorType: arenaDef?.armorType || "light",
-    img: typeof getImage === "function" ? getImage(arenaDef?.image || "Starlight.png") : null,
-    color: arenaDef?.color || "#4488ff",
-    shipName: shipKey,
-    shipKey: shipKey,
-
-    // Universe stats
-    fuel: shipData.fuel || uniStats?.fuelMax || 50,
-    fuelMax: uniStats?.fuelMax || 50,
-    fuelEfficiency: uniStats?.fuelEfficiency || 1.0,
-    cargo: shipData.cargo || [],
-    cargoCapacity: uniStats?.cargoCapacity || 2,
-    miningPower: uniStats?.miningPower || 0,
-    scanRange: uniStats?.scanRange || 100,
-
-    // Combat
-    weaponType: arenaDef?.weaponType || "laser_repeater",
-    weaponSize: arenaDef?.weaponSize || 2,
-    weaponStats: null,
-    shootTimer: 0,
-    doubleShot: arenaDef?.doubleShot || false,
-  };
-
-  // Get weapon stats
-  if (typeof getWeaponStats === "function" && uniPlayer.weaponType !== "none") {
-    uniPlayer.weaponStats = getWeaponStats(uniPlayer.weaponType, uniPlayer.weaponSize);
+  // Augment game.js player with universe stats
+  if (typeof player !== "undefined" && player) {
+    player.fuel = shipData.fuel || uniStats?.fuelMax || 50;
+    player.fuelMax = uniStats?.fuelMax || 50;
+    player.fuelEfficiency = uniStats?.fuelEfficiency || 1.0;
+    player.cargo = shipData.cargo ? [...shipData.cargo] : [];
+    player.cargoCapacity = uniStats?.cargoCapacity || 2;
+    player.miningPower = uniStats?.miningPower || 0;
+    player.scanRange = uniStats?.scanRange || 100;
+    // Restore saved HP if any
+    if (shipData.hp !== null && shipData.hp !== undefined) player.hp = shipData.hp;
+    if (shipData.shields !== null && shipData.shields !== undefined) player.shields = shipData.shields;
   }
 
-  // If player was in a quadrant, load it. Otherwise show map.
+  // Clear arena entities
+  if (typeof enemies !== "undefined") enemies = [];
+  if (typeof playerBullets !== "undefined") playerBullets = [];
+  if (typeof enemyBullets !== "undefined") enemyBullets = [];
+  if (typeof allies !== "undefined") allies = [];
+  if (typeof hitEffects !== "undefined") hitEffects = [];
+  if (typeof deathEffects !== "undefined") deathEffects = [];
+  uniAsteroids = [];
+  uniPOIs = [];
+  uniStation = null;
+
+  // If player was in a quadrant, load it
   if (p.currentQuadrantId && p.currentAreaId) {
     _uniCurrentArea = _uniCurrentSystem.areas[p.currentAreaId] || null;
     if (_uniCurrentArea) {
       const q = _uniCurrentArea.quadrants.find(q => q.id === p.currentQuadrantId);
       if (q) {
-        loadQuadrant(q);
+        uniLoadQuadrant(q);
         uniState = "flying";
-        startUniLoop();
+        if (typeof state !== "undefined") state = "playing";
+        _buildUniMobileUI();
         return;
       }
     }
@@ -138,725 +134,264 @@ function enterUniverse(world) {
 
   // Default: show map
   uniState = "map";
-  startUniLoop();
+  if (typeof state !== "undefined") state = "menu";
+  _startUniMapLoop();
 }
 
+// ── EXIT UNIVERSE ─────────────────────────────────────────────
+
 function exitUniverse() {
-  stopUniLoop();
+  _stopUniMapLoop();
+  _hideUniMobileUI();
   uniState = "inactive";
+  window.gameMode = "arena";
+  if (typeof state !== "undefined") state = "menu";
 
   // Save player state back to world
   const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
-  if (world && uniPlayer) {
+  if (world && typeof player !== "undefined" && player) {
     const ship = world.player.ownedShips[world.player.activeShipIdx || 0];
     if (ship) {
-      ship.fuel = uniPlayer.fuel;
-      ship.cargo = [...uniPlayer.cargo];
-      ship.hp = uniPlayer.hp;
-      ship.shields = uniPlayer.shields;
-      ship.armor = uniPlayer.armor;
+      ship.fuel = player.fuel;
+      ship.cargo = player.cargo ? [...player.cargo] : [];
+      ship.hp = player.hp;
+      ship.shields = player.shields;
     }
-    world.player.credits = window._activeUniverse?.player?.credits || world.player.credits;
     world.player.currentSystemId = _uniCurrentSystem?.id || "solara";
     world.player.currentAreaId = _uniCurrentArea?.id || null;
     world.player.currentQuadrantId = _uniCurrentQuadrant?.id || null;
   }
 
-  if (typeof autoSaveUniverse === "function") autoSaveUniverse();
+  // Reset camera
+  if (typeof window.camX !== "undefined") { window.camX = 0; window.camY = 0; }
+  if (typeof window.quadW !== "undefined") { window.quadW = typeof GAME_W !== "undefined" ? GAME_W : 1280; }
+  if (typeof window.quadH !== "undefined") { window.quadH = typeof GAME_H !== "undefined" ? GAME_H : 720; }
 
-  // Clear state
-  uniPlayer = null;
-  uniBullets = [];
-  uniEnemyBullets = [];
-  uniEnemies = [];
+  // Reset entities
   uniAsteroids = [];
   uniPOIs = [];
   uniStation = null;
-  _uniCurrentQuadrant = null;
-  _uniQuadrantContents = null;
   _uniInCombat = false;
 
-  // Return to universe menu
+  if (typeof autoSaveUniverse === "function") autoSaveUniverse();
   if (typeof exitUniverseToMenu === "function") exitUniverseToMenu();
 }
 
-// ── GAME LOOP ─────────────────────────────────────────────────
-
-function startUniLoop() {
-  if (_uniLoopId) return;
-  // Hide arena UI
-  const hud = document.getElementById("hud");
-  if (hud) hud.style.display = "none";
-  const igb = document.getElementById("inGameBack");
-  if (igb) igb.style.display = "none";
-  const mUI = document.getElementById("mobileUI");
-  if (mUI) mUI.style.display = "none";
-
-  _uniLoopId = requestAnimationFrame(uniLoop);
-}
-
-function stopUniLoop() {
-  if (_uniLoopId) {
-    cancelAnimationFrame(_uniLoopId);
-    _uniLoopId = null;
-  }
-}
-
-function uniLoop() {
-  _uniFrameCount++;
-  const gw = typeof GAME_W !== "undefined" ? GAME_W : 1280;
-  const gh = typeof GAME_H !== "undefined" ? GAME_H : 720;
-  const c = typeof ctx !== "undefined" ? ctx : null;
-  if (!c) { _uniLoopId = requestAnimationFrame(uniLoop); return; }
-
-  switch (uniState) {
-    case "map":       uniUpdateMap(); uniRenderMap(c, gw, gh); break;
-    case "flying":    uniUpdateFlying(); uniRenderFlying(c, gw, gh); break;
-    case "combat":    uniUpdateFlying(); uniRenderFlying(c, gw, gh); break;
-    case "docked":    uniRenderDocked(c, gw, gh); break;
-    case "quantum":   uniUpdateQuantum(); uniRenderQuantum(c, gw, gh); break;
-    default: break;
-  }
-
-  _uniLoopId = requestAnimationFrame(uniLoop);
-}
-
-// ── MAP VIEW ──────────────────────────────────────────────────
-// Shows system → area → quadrant selection
-
-function uniUpdateMap() {
-  // Map input handled by click events on canvas
-}
-
-function uniRenderMap(c, gw, gh) {
-  // Background
-  c.fillStyle = "#020611";
-  c.fillRect(0, 0, gw, gh);
-
-  const uni = window._activeUniverse;
-  if (!uni) return;
-
-  c.textAlign = "center";
-
-  if (_uniMapLevel === "system") {
-    renderSystemMap(c, gw, gh, uni);
-  } else if (_uniMapLevel === "area") {
-    renderAreaMap(c, gw, gh, uni);
-  } else if (_uniMapLevel === "quadrant") {
-    renderQuadrantMap(c, gw, gh, uni);
-  }
-
-  // Back button hint
-  c.textAlign = "left";
-  c.fillStyle = "#666";
-  c.font = "12px monospace";
-  if (_uniMapLevel === "system") {
-    c.fillText("[ESC] Exit Universe", 10, gh - 10);
-  } else {
-    c.fillText("[ESC] Back", 10, gh - 10);
-  }
-
-  // Location info
-  c.textAlign = "right";
-  c.fillStyle = "#555";
-  c.font = "11px monospace";
-  const locStr = _uniCurrentSystem ? "Current: " + _uniCurrentSystem.name : "";
-  c.fillText(locStr, gw - 10, gh - 10);
-  c.textAlign = "left";
-}
-
-function renderSystemMap(c, gw, gh, uni) {
-  c.fillStyle = "#0af";
-  c.font = "bold 22px monospace";
-  c.fillText("STARMAP", gw / 2, 40);
-
-  const systems = Object.values(uni.systems);
-  const cols = 3, rows = Math.ceil(systems.length / cols);
-  const cellW = (gw - 100) / cols, cellH = (gh - 120) / rows;
-  const startX = 50, startY = 70;
-
-  // Draw connections first
-  c.strokeStyle = "rgba(100,100,150,0.3)";
-  c.lineWidth = 1;
-  for (const sys of systems) {
-    const si = systems.indexOf(sys);
-    const sx = startX + (si % cols) * cellW + cellW / 2;
-    const sy = startY + Math.floor(si / cols) * cellH + cellH / 2;
-    for (const connId of sys.connections) {
-      const ci = systems.findIndex(s => s.id === connId);
-      if (ci < 0 || ci <= si) continue;
-      const cx = startX + (ci % cols) * cellW + cellW / 2;
-      const cy = startY + Math.floor(ci / cols) * cellH + cellH / 2;
-      c.beginPath(); c.moveTo(sx, sy); c.lineTo(cx, cy); c.stroke();
-    }
-  }
-
-  // Draw system nodes
-  _uniMapHover = null;
-  const mx = typeof mouse !== "undefined" ? mouse.x : 0;
-  const my = typeof mouse !== "undefined" ? mouse.y : 0;
-
-  for (let i = 0; i < systems.length; i++) {
-    const sys = systems[i];
-    const x = startX + (i % cols) * cellW + cellW / 2;
-    const y = startY + Math.floor(i / cols) * cellH + cellH / 2;
-    const r = 28;
-
-    const hovered = Math.hypot(mx - x, my - y) < r + 10;
-    if (hovered) _uniMapHover = sys.id;
-
-    const isCurrent = _uniCurrentSystem && sys.id === _uniCurrentSystem.id;
-    const factionColor = sys.faction === "harvester" ? "#ff8800" : sys.faction === "eldritch" ? "#cc0033" : sys.faction === "civilian" ? "#4488ff" : "#888";
-
-    // Node circle
-    c.beginPath();
-    c.arc(x, y, r, 0, Math.PI * 2);
-    c.fillStyle = hovered ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.5)";
-    c.fill();
-    c.strokeStyle = isCurrent ? "#0f0" : factionColor;
-    c.lineWidth = isCurrent ? 3 : 2;
-    c.stroke();
-
-    // Sun health indicator
-    const sunFrac = (sys.sunHealth || 100) / 100;
-    if (sunFrac < 1) {
-      c.beginPath();
-      c.arc(x, y, r - 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sunFrac);
-      c.strokeStyle = sunFrac > 0.5 ? "#ffcc00" : sunFrac > 0.2 ? "#ff6600" : "#ff0000";
-      c.lineWidth = 2;
-      c.stroke();
-    }
-
-    // System name
-    c.fillStyle = isCurrent ? "#0f0" : hovered ? "#fff" : "#aaa";
-    c.font = "bold 11px monospace";
-    c.fillText(sys.name, x, y + r + 16);
-
-    // Danger level
-    c.fillStyle = "#666";
-    c.font = "9px monospace";
-    c.fillText("Danger: " + sys.dangerLevel, x, y + r + 28);
-
-    // Current marker
-    if (isCurrent) {
-      c.fillStyle = "#0f0";
-      c.font = "bold 9px monospace";
-      c.fillText("YOU ARE HERE", x, y - r - 8);
-    }
-  }
-
-  // Instructions
-  c.fillStyle = "#555";
-  c.font = "11px monospace";
-  c.fillText("Click a system to view its areas", gw / 2, gh - 30);
-}
-
-function renderAreaMap(c, gw, gh, uni) {
-  const sys = uni.systems[_uniMapSelectedSystem];
-  if (!sys) { _uniMapLevel = "system"; return; }
-
-  c.fillStyle = "#0af";
-  c.font = "bold 20px monospace";
-  c.fillText(sys.name + " - Areas", gw / 2, 40);
-
-  const areas = Object.values(sys.areas);
-  const cols = Math.min(4, areas.length);
-  const rows = Math.ceil(areas.length / cols);
-  const cellW = (gw - 80) / cols, cellH = Math.min(110, (gh - 140) / rows);
-  const startX = 40, startY = 70;
-
-  const mx = typeof mouse !== "undefined" ? mouse.x : 0;
-  const my = typeof mouse !== "undefined" ? mouse.y : 0;
-  _uniMapHover = null;
-
-  for (let i = 0; i < areas.length; i++) {
-    const area = areas[i];
-    const col = i % cols, row = Math.floor(i / cols);
-    const x = startX + col * cellW;
-    const y = startY + row * cellH;
-    const w = cellW - 8, h = cellH - 8;
-
-    const hovered = mx > x && mx < x + w && my > y && my < y + h;
-    if (hovered) _uniMapHover = area.id;
-
-    const typeColor = area.type === "planet" ? "#4488ff" : area.type === "belt" ? "#aa8844" :
-                      area.type === "wormhole" ? "#aa44ff" : area.type === "sun" ? "#ffcc00" :
-                      area.type === "moon" ? "#8888aa" : area.type === "anomaly" ? "#ff4488" : "#666";
-
-    c.fillStyle = hovered ? "rgba(255,255,255,0.06)" : "rgba(10,14,26,0.8)";
-    c.fillRect(x, y, w, h);
-    c.strokeStyle = typeColor;
-    c.lineWidth = hovered ? 2 : 1;
-    c.strokeRect(x, y, w, h);
-
-    c.fillStyle = "#fff";
-    c.font = "bold 12px monospace";
-    c.textAlign = "left";
-    c.fillText(area.name, x + 8, y + 20);
-
-    c.fillStyle = typeColor;
-    c.font = "10px monospace";
-    c.fillText(area.type.toUpperCase(), x + 8, y + 34);
-
-    c.fillStyle = "#666";
-    c.font = "9px monospace";
-    c.fillText(area.quadrants.length + " quadrants", x + 8, y + 48);
-
-    if (area.type === "wormhole" && area.targetSystem) {
-      c.fillStyle = "#aa44ff";
-      c.fillText("-> " + area.targetSystem, x + 8, y + 62);
-    }
-  }
-
-  c.textAlign = "center";
-  c.fillStyle = "#555";
-  c.font = "11px monospace";
-  c.fillText("Click an area to view quadrants", gw / 2, gh - 30);
-}
-
-function renderQuadrantMap(c, gw, gh, uni) {
-  const sys = uni.systems[_uniMapSelectedSystem];
-  if (!sys) { _uniMapLevel = "system"; return; }
-  const area = sys.areas[_uniMapSelectedArea];
-  if (!area) { _uniMapLevel = "area"; return; }
-
-  c.fillStyle = "#0af";
-  c.font = "bold 18px monospace";
-  c.fillText(area.name + " - Quadrants", gw / 2, 40);
-
-  const quads = area.quadrants;
-  const cols = Math.min(4, quads.length);
-  const rows = Math.ceil(quads.length / cols);
-  const cellW = (gw - 80) / cols, cellH = Math.min(120, (gh - 140) / rows);
-  const startX = 40, startY = 70;
-
-  const mx = typeof mouse !== "undefined" ? mouse.x : 0;
-  const my = typeof mouse !== "undefined" ? mouse.y : 0;
-  _uniMapHover = null;
-
-  for (let i = 0; i < quads.length; i++) {
-    const q = quads[i];
-    const col = i % cols, row = Math.floor(i / cols);
-    const x = startX + col * cellW;
-    const y = startY + row * cellH;
-    const w = cellW - 8, h = cellH - 8;
-
-    const hovered = mx > x && mx < x + w && my > y && my < y + h;
-    if (hovered) _uniMapHover = q.id;
-
-    const qDef = typeof QUADRANT_TYPES !== "undefined" ? QUADRANT_TYPES[q.type] : null;
-    const typeColor = q.type === "station" ? "#00ff88" : q.type === "mining" ? "#ffaa00" :
-                      q.type === "patrol" ? "#ff4444" : q.type === "debris" ? "#aa8844" :
-                      q.type === "wormhole_tunnel" ? "#aa44ff" : q.type === "sun_zone" ? "#ffcc00" :
-                      q.type === "mission" ? "#ff8844" : "#446688";
-
-    c.fillStyle = hovered ? "rgba(255,255,255,0.06)" : "rgba(10,14,26,0.8)";
-    c.fillRect(x, y, w, h);
-    c.strokeStyle = typeColor;
-    c.lineWidth = hovered ? 2 : 1;
-    c.strokeRect(x, y, w, h);
-
-    c.textAlign = "left";
-    c.fillStyle = "#fff";
-    c.font = "bold 11px monospace";
-    c.fillText(q.name || q.id, x + 8, y + 18);
-
-    c.fillStyle = typeColor;
-    c.font = "10px monospace";
-    c.fillText(q.type.toUpperCase(), x + 8, y + 32);
-
-    if (qDef) {
-      c.fillStyle = "#666";
-      c.font = "9px monospace";
-      let flags = [];
-      if (qDef.hasStation) flags.push("STATION");
-      if (qDef.hasAsteroids) flags.push("ASTEROIDS");
-      if (qDef.hasPatrols) flags.push("PATROLS");
-      c.fillText(flags.join(" | ") || "EMPTY SPACE", x + 8, y + 46);
-    }
-
-    // Travel button hint
-    if (hovered) {
-      c.fillStyle = "rgba(0,255,100,0.15)";
-      c.fillRect(x + 4, y + h - 24, w - 8, 18);
-      c.fillStyle = "#0f0";
-      c.font = "bold 10px monospace";
-      c.textAlign = "center";
-      c.fillText("CLICK TO TRAVEL", x + w / 2, y + h - 10);
-      c.textAlign = "left";
-    }
-  }
-
-  c.textAlign = "center";
-  c.fillStyle = "#555";
-  c.font = "11px monospace";
-  c.fillText("Click a quadrant to quantum travel there", gw / 2, gh - 30);
-
-  // Fuel cost estimate
-  c.fillStyle = "#888";
-  c.font = "10px monospace";
-  if (uniPlayer) c.fillText("Fuel: " + Math.floor(uniPlayer.fuel) + " / " + uniPlayer.fuelMax, gw / 2, gh - 48);
-}
-
-// ── MAP CLICK HANDLING ────────────────────────────────────────
-
-function _uniHandleMapClick() {
-  if (uniState !== "map" || !_uniMapHover) return;
-
-  if (_uniMapLevel === "system") {
-    _uniMapSelectedSystem = _uniMapHover;
-    _uniMapLevel = "area";
-  } else if (_uniMapLevel === "area") {
-    _uniMapSelectedArea = _uniMapHover;
-    _uniMapLevel = "quadrant";
-  } else if (_uniMapLevel === "quadrant") {
-    // Travel to this quadrant
-    const sys = window._activeUniverse?.systems[_uniMapSelectedSystem];
-    if (!sys) return;
-    const area = sys.areas[_uniMapSelectedArea];
-    if (!area) return;
-    const quad = area.quadrants.find(q => q.id === _uniMapHover);
-    if (!quad) return;
-
-    // Check if wormhole tunnel — means system change
-    if (quad.type === "wormhole_tunnel" && quad.toSystem) {
-      beginWormholeTravel(quad);
-      return;
-    }
-
-    // Check fuel
-    const fuelCost = UNI_QUANTUM_FUEL_BASE / (uniPlayer?.fuelEfficiency || 1);
-    if (uniPlayer && uniPlayer.fuel < fuelCost) {
-      // Not enough fuel — flash warning
-      return;
-    }
-
-    // Begin quantum travel
-    _uniQuantumTarget = {
-      systemId: _uniMapSelectedSystem,
-      areaId: _uniMapSelectedArea,
-      quadrant: quad,
-    };
-    if (uniPlayer) uniPlayer.fuel -= fuelCost;
-    _uniQuantumTimer = UNI_QUANTUM_DURATION;
-    uniState = "quantum";
-  }
-}
-
-function _uniHandleMapBack() {
-  if (_uniMapLevel === "quadrant") _uniMapLevel = "area";
-  else if (_uniMapLevel === "area") _uniMapLevel = "system";
-  else exitUniverse();
-}
-
-// ── WORMHOLE TRAVEL ───────────────────────────────────────────
-
-function beginWormholeTravel(quad) {
-  const fuelCost = (typeof FUEL_COSTS !== "undefined" ? FUEL_COSTS.wormholeFlat : 10) / (uniPlayer?.fuelEfficiency || 1);
-  if (uniPlayer && uniPlayer.fuel < fuelCost) return;
-  if (uniPlayer) uniPlayer.fuel -= fuelCost;
-
-  const toSys = quad.toSystem;
-  const uni = window._activeUniverse;
-  if (!uni || !uni.systems[toSys]) return;
-
-  _uniCurrentSystem = uni.systems[toSys];
-  _uniMapSelectedSystem = toSys;
-  _uniMapLevel = "area";
-
-  // TODO: Phase 1+ — playable wormhole obstacle course
-  // For now, just instant travel with a quick flash
-  _uniQuantumTimer = 60; // shorter for wormholes
-  _uniQuantumTarget = { systemId: toSys, areaId: null, quadrant: null, isWormhole: true };
-  uniState = "quantum";
-}
-
-// ── QUANTUM TRAVEL ────────────────────────────────────────────
-
-function uniUpdateQuantum() {
-  _uniQuantumTimer--;
-  if (_uniQuantumTimer <= 0) {
-    if (_uniQuantumTarget && _uniQuantumTarget.quadrant) {
-      const sys = window._activeUniverse?.systems[_uniQuantumTarget.systemId];
-      if (sys) {
-        _uniCurrentSystem = sys;
-        _uniCurrentArea = sys.areas[_uniQuantumTarget.areaId] || null;
-        loadQuadrant(_uniQuantumTarget.quadrant);
-        uniState = "flying";
-      } else {
-        uniState = "map";
-      }
-    } else {
-      // Wormhole — back to map in new system
-      uniState = "map";
-    }
-    _uniQuantumTarget = null;
-    if (typeof autoSaveUniverse === "function") autoSaveUniverse();
-  }
-}
-
-function uniRenderQuantum(c, gw, gh) {
-  const t = 1 - (_uniQuantumTimer / UNI_QUANTUM_DURATION);
-  c.fillStyle = "#000";
-  c.fillRect(0, 0, gw, gh);
-
-  // Streaking stars effect
-  const starCount = 60;
-  for (let i = 0; i < starCount; i++) {
-    const sx = ((i * 137 + _uniFrameCount * 12) % gw);
-    const sy = ((i * 97 + 50) % gh);
-    const len = 20 + t * 80;
-    c.strokeStyle = "rgba(150,180,255," + (0.3 + t * 0.5) + ")";
-    c.lineWidth = 1;
-    c.beginPath();
-    c.moveTo(sx, sy);
-    c.lineTo(sx - len, sy);
-    c.stroke();
-  }
-
-  // Center flash
-  const flashR = t * gw * 0.3;
-  const grad = c.createRadialGradient(gw / 2, gh / 2, 0, gw / 2, gh / 2, flashR);
-  grad.addColorStop(0, "rgba(100,180,255," + (0.3 * t) + ")");
-  grad.addColorStop(1, "rgba(0,0,0,0)");
-  c.fillStyle = grad;
-  c.beginPath();
-  c.arc(gw / 2, gh / 2, flashR, 0, Math.PI * 2);
-  c.fill();
-
-  // Text
-  c.textAlign = "center";
-  c.fillStyle = "#0af";
-  c.font = "bold 18px monospace";
-  const destName = _uniQuantumTarget?.quadrant?.name || _uniQuantumTarget?.systemId || "Unknown";
-  c.fillText("QUANTUM TRAVEL", gw / 2, gh / 2 - 15);
-  c.fillStyle = "#fff";
-  c.font = "14px monospace";
-  c.fillText(destName, gw / 2, gh / 2 + 10);
-  c.textAlign = "left";
-}
-
 // ── LOAD QUADRANT ─────────────────────────────────────────────
+// Sets up camera bounds, populates game.js enemies + universe asteroids/POIs/station
 
-function loadQuadrant(quad) {
+function uniLoadQuadrant(quad) {
   _uniCurrentQuadrant = quad;
-  uniBullets = [];
-  uniEnemyBullets = [];
-  uniEnemies = [];
-  uniAsteroids = [];
-  uniPOIs = [];
-  uniStation = null;
-  uniBeamFlashes = [];
-  uniHitEffects = [];
-  uniDeathEffects = [];
   _uniInCombat = false;
   _uniDisengageTimer = 0;
   _uniMiningTarget = null;
   _uniMiningProgress = 0;
 
-  // Generate quadrant contents
+  // Set quadrant size for camera system
+  const qSize = UNI_QUAD_SIZES[quad.type] || { w: 2800, h: 2000 };
+  window.quadW = qSize.w;
+  window.quadH = qSize.h;
+  window.camX = 0;
+  window.camY = 0;
+
+  // Clear game.js entities
+  if (typeof enemies !== "undefined") enemies = [];
+  if (typeof playerBullets !== "undefined") playerBullets = [];
+  if (typeof enemyBullets !== "undefined") enemyBullets = [];
+  if (typeof hitEffects !== "undefined") hitEffects = [];
+  if (typeof deathEffects !== "undefined") deathEffects = [];
+  uniAsteroids = [];
+  uniPOIs = [];
+  uniStation = null;
+
+  // Generate contents from seed
   const dangerLevel = _uniCurrentSystem?.dangerLevel || 1;
   _uniQuadrantContents = typeof generateQuadrantContents === "function"
-    ? generateQuadrantContents(quad, dangerLevel)
-    : { asteroids: [], pois: [], patrolSpawns: [] };
+    ? generateQuadrantContents(quad, dangerLevel) : { asteroids: [], pois: [], patrolSpawns: [] };
 
-  // Apply deltas for depleted asteroids, discovered POIs
   const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
 
-  // Spawn asteroids
+  // Spawn asteroids (universe-specific, not game.js enemies)
   _uniQuadrantContents.asteroids.forEach(ast => {
     const deltaKey = _uniCurrentSystem.id + ":" + (_uniCurrentArea?.id || "") + ":" + quad.id + ":" + ast.id;
-    const depleted = world ? (typeof getDelta === "function" ? getDelta(world, deltaKey, "depleted") : undefined) : undefined;
-    if (depleted) return; // skip depleted asteroids
+    if (world && typeof getDelta === "function" && getDelta(world, deltaKey, "depleted")) return;
+    // Scale positions to quadrant size
+    const scaleX = qSize.w / 1280;
+    const scaleY = qSize.h / 720;
     uniAsteroids.push({
       ...ast,
+      x: ast.x * scaleX,
+      y: ast.y * scaleY,
       w: 30 + Math.floor(ast.maxHealth / 5),
       h: 30 + Math.floor(ast.maxHealth / 5),
       color: ast.oreType === "gold" ? "#ffcc44" : ast.oreType === "quantanium" ? "#44ffcc" :
              ast.oreType === "scrap" ? "#888" : ast.oreType === "electronics" ? "#88aaff" : "#aa8866",
-      rotation: 0,
     });
   });
 
   // Spawn POIs
   _uniQuadrantContents.pois.forEach(poi => {
     const deltaKey = _uniCurrentSystem.id + ":" + (_uniCurrentArea?.id || "") + ":" + quad.id + ":" + poi.id;
-    const discovered = world ? (typeof getDelta === "function" ? getDelta(world, deltaKey, "discovered") : undefined) : undefined;
-    uniPOIs.push({ ...poi, discovered: !!discovered, w: 20, h: 20 });
+    const discovered = world && typeof getDelta === "function" ? getDelta(world, deltaKey, "discovered") : false;
+    const scaleX = qSize.w / 1280;
+    const scaleY = qSize.h / 720;
+    uniPOIs.push({ ...poi, x: poi.x * scaleX, y: poi.y * scaleY, discovered: !!discovered, w: 24, h: 24 });
   });
 
-  // Spawn station if applicable
+  // Spawn station
   if (quad.station) {
-    const gw = typeof GAME_W !== "undefined" ? GAME_W : 1280;
-    const gh = typeof GAME_H !== "undefined" ? GAME_H : 720;
     uniStation = {
-      x: gw * 0.7, y: gh * 0.4,
-      w: 60, h: 60,
+      x: qSize.w * 0.5 - 40, y: qSize.h * 0.35,
+      w: 80, h: 80,
       color: "#00ff88",
       name: quad.station.name,
       data: quad.station,
-      dockRange: 120,
+      dockRange: 150,
+      _playerNear: false,
     };
   }
 
-  // Spawn patrol
+  // Spawn patrols into game.js enemies array (they use Arena combat automatically)
   _uniQuadrantContents.patrolSpawns.forEach(ps => {
     const template = typeof PATROL_TEMPLATES !== "undefined" ? PATROL_TEMPLATES[ps.templateKey] : null;
     if (!template) return;
+    const scaleX = qSize.w / 1280;
+    const scaleY = qSize.h / 720;
     template.ships.forEach((shipName, idx) => {
-      const eDef = typeof ENEMIES !== "undefined" ? ENEMIES[shipName] : null;
-      if (!eDef) return;
-      const sizeNum = eDef.size || 2;
-      const ew = Math.round((32 + sizeNum * 18) * (typeof SIZE_SCALE !== "undefined" ? SIZE_SCALE : 0.5));
-      const eh = Math.round((20 + sizeNum * 10) * (typeof SIZE_SCALE !== "undefined" ? SIZE_SCALE : 0.5));
-      uniEnemies.push({
-        type: shipName,
-        x: ps.x + idx * 60,
-        y: ps.y + (idx % 2 === 0 ? -30 : 30),
-        w: ew, h: eh,
-        hp: eDef.hp, maxHp: eDef.hp,
-        shields: eDef.shields, maxShields: eDef.shields,
-        armor: eDef.armor || 200, maxArmor: eDef.armor || 200,
-        armorType: eDef.armorType || "light",
-        speed: eDef.speed,
-        fireRate: eDef.fireRate,
-        shootTimer: Math.floor(Math.random() * eDef.fireRate),
-        img: typeof getImage === "function" ? getImage(eDef.image) : null,
-        color: eDef.color,
-        score: eDef.score || 50,
-        spriteAngleOffset: Math.PI,
-        rotation: Math.PI,
-        turnSpeed: 0.04,
-        vx: 0, vy: 0,
-        aggroRange: ps.aggroRange || 300,
-        aggroed: false,
-        patrolX: ps.x + idx * 60,
-        patrolY: ps.y + (idx % 2 === 0 ? -30 : 30),
-        patrolAngle: Math.random() * Math.PI * 2,
-        isPassive: template.hasPassive && idx === 0, // first ship in passive patrols is the passive one
-        faction: template.faction,
-      });
+      const e = typeof createEnemyObject === "function"
+        ? createEnemyObject(shipName, ps.x * scaleX + idx * 60, ps.y * scaleY + (idx % 2 === 0 ? -30 : 30))
+        : null;
+      if (!e) return;
+      e.aggroRange = ps.aggroRange || 300;
+      e.aggroed = false;
+      e.patrolX = e.x;
+      e.patrolY = e.y;
+      e.patrolAngle = Math.random() * Math.PI * 2;
+      e.isPassive = template.hasPassive && idx === 0;
+      e.faction = template.faction;
+      e._uniPatrol = true; // flag so game.js knows this is a universe patrol
+      if (typeof enemies !== "undefined") enemies.push(e);
     });
   });
 
   // Place player
-  if (uniPlayer) {
-    const gw = typeof GAME_W !== "undefined" ? GAME_W : 1280;
-    const gh = typeof GAME_H !== "undefined" ? GAME_H : 720;
-    uniPlayer.x = 100;
-    uniPlayer.y = gh / 2 - uniPlayer.h / 2;
-    uniPlayer.vx = 0;
-    uniPlayer.vy = 0;
+  if (typeof player !== "undefined" && player) {
+    player.x = 100;
+    player.y = qSize.h / 2 - player.h / 2;
+    player.vx = 0;
+    player.vy = 0;
   }
 }
 
-// ── FLYING / COMBAT UPDATE ────────────────────────────────────
+// ── UNIVERSE UPDATE (called from game.js gameLoop) ────────────
+// This is the main universe tick. game.js calls this every frame
+// when gameMode === "universe" and state === "playing".
 
-function uniUpdateFlying() {
-  if (!uniPlayer) return;
-  const gw = typeof GAME_W !== "undefined" ? GAME_W : 1280;
-  const gh = typeof GAME_H !== "undefined" ? GAME_H : 720;
-  const k = typeof keys !== "undefined" ? keys : {};
-  const m = typeof mouse !== "undefined" ? mouse : { x: gw / 2, y: gh / 2, down: false };
-  const mj = typeof mobileJoy !== "undefined" ? mobileJoy : { active: false, dx: 0, dy: 0 };
-  const isMobile = typeof IS_MOBILE !== "undefined" && IS_MOBILE;
-  const ma = typeof mobileAim !== "undefined" ? mobileAim : { shooting: false };
-
-  // Movement
-  const accel = uniPlayer.speed * 0.18;
-  const friction = 0.88;
-
-  if (isMobile && mj.active) {
-    uniPlayer.vx += mj.dx * accel;
-    uniPlayer.vy += mj.dy * accel;
-  }
-  if (k["ArrowUp"] || k["KeyW"]) uniPlayer.vy -= accel;
-  if (k["ArrowDown"] || k["KeyS"]) uniPlayer.vy += accel;
-  if (k["ArrowLeft"] || k["KeyA"]) uniPlayer.vx -= accel;
-  if (k["ArrowRight"] || k["KeyD"]) uniPlayer.vx += accel;
-
-  uniPlayer.vx *= friction;
-  uniPlayer.vy *= friction;
-  const spd = Math.hypot(uniPlayer.vx, uniPlayer.vy);
-  if (spd > uniPlayer.speed) {
-    uniPlayer.vx *= uniPlayer.speed / spd;
-    uniPlayer.vy *= uniPlayer.speed / spd;
-  }
-
-  uniPlayer.x = Math.max(0, Math.min(gw - uniPlayer.w, uniPlayer.x + uniPlayer.vx));
-  uniPlayer.y = Math.max(0, Math.min(gh - uniPlayer.h, uniPlayer.y + uniPlayer.vy));
-  uniPlayer.rotation = Math.atan2(m.y - uniPlayer.y - uniPlayer.h / 2, m.x - uniPlayer.x - uniPlayer.w / 2);
+function uniUpdate() {
+  if (uniState !== "flying" || typeof player === "undefined" || !player) return;
+  _uniFrameCount++;
 
   // Fuel drain
-  uniPlayer.fuel = Math.max(0, uniPlayer.fuel - UNI_FUEL_DRAIN_RATE / (uniPlayer.fuelEfficiency || 1));
+  player.fuel = Math.max(0, player.fuel - UNI_FUEL_DRAIN / (player.fuelEfficiency || 1));
 
-  // Shield regen
-  if (uniPlayer.shields < uniPlayer.maxShields) {
-    uniPlayer.shields = Math.min(uniPlayer.maxShields, uniPlayer.shields + 0.05);
+  // Track combat state based on aggroed enemies
+  const aggroedCount = (typeof enemies !== "undefined" ? enemies : []).filter(e => e._uniPatrol && e.aggroed).length;
+  if (aggroedCount > 0 && !_uniInCombat) {
+    _uniInCombat = true;
+    _uniDisengageTimer = 0;
   }
-
-  // Shooting
-  const isShooting = isMobile ? ma.shooting : (k["Space"] || m.down);
-  uniPlayer.shootTimer--;
-  if (isShooting && uniPlayer.shootTimer <= 0 && uniPlayer.weaponStats) {
-    const bullets = typeof fireBullets === "function"
-      ? fireBullets(uniPlayer, uniPlayer.weaponStats, uniPlayer.rotation, true)
-      : [];
-    uniBullets.push(...bullets);
-    uniPlayer.shootTimer = uniPlayer.weaponStats.fireInterval || 15;
-    _uniDisengageTimer = 0; // reset disengage timer on attack
-  }
-
-  // Update disengage timer
-  if (_uniInCombat) {
+  if (_uniInCombat && aggroedCount === 0) {
     _uniDisengageTimer++;
-    if (_uniDisengageTimer >= UNI_DISENGAGE_TIME) {
+    if (_uniDisengageTimer > 120) { // 2 seconds after last enemy dies
       _uniInCombat = false;
-      uniState = "flying";
     }
   }
 
-  // Update bullets
-  uniBullets.forEach(b => { b.x += b.vx || 0; b.y += b.vy || 0; });
-  uniEnemyBullets.forEach(b => { b.x += b.vx || 0; b.y += b.vy || 0; });
-  uniBullets = uniBullets.filter(b => b.x > -60 && b.x < gw + 60 && b.y > -60 && b.y < gh + 60);
-  uniEnemyBullets = uniEnemyBullets.filter(b => b.x > -60 && b.x < gw + 60 && b.y > -60 && b.y < gh + 60);
+  // Aggro check — enemies aggro when player is within range
+  if (typeof enemies !== "undefined") {
+    const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
+    enemies.forEach(e => {
+      if (!e._uniPatrol || e.aggroed || e.dead) return;
+      const ecx = e.x + e.w / 2, ecy = e.y + e.h / 2;
+      if (Math.hypot(pcx - ecx, pcy - ecy) < (e.aggroRange || 300)) {
+        e.aggroed = true;
+        _uniInCombat = true;
+        _uniDisengageTimer = 0;
+      }
+    });
 
-  // Update beams
-  uniBeamFlashes.forEach(f => f.life--);
-  uniBeamFlashes = uniBeamFlashes.filter(f => f.life > 0);
+    // Non-aggroed patrols do simple patrol movement
+    enemies.forEach(e => {
+      if (!e._uniPatrol || e.aggroed || e.dead) return;
+      e.patrolAngle = (e.patrolAngle || 0) + 0.008;
+      const px = e.patrolX + Math.cos(e.patrolAngle) * 120;
+      const py = e.patrolY + Math.sin(e.patrolAngle) * 120;
+      const dx = px - e.x, dy = py - e.y, d = Math.hypot(dx, dy) || 1;
+      e.vx = (e.vx || 0) + (dx / d) * 0.2;
+      e.vy = (e.vy || 0) + (dy / d) * 0.2;
+      e.vx *= 0.95; e.vy *= 0.95;
+      e.x += e.vx; e.y += e.vy;
+      // Face movement direction
+      const moveAngle = Math.atan2(e.vy, e.vx);
+      let rd = moveAngle - (e.rotation || 0);
+      while (rd > Math.PI) rd -= Math.PI * 2; while (rd < -Math.PI) rd += Math.PI * 2;
+      e.rotation = (e.rotation || 0) + Math.sign(rd) * Math.min(Math.abs(rd), 0.03);
+    });
 
-  // Update enemies
-  uniUpdateEnemies(gw, gh);
+    // Passive ships flee when aggroed instead of fighting
+    enemies.forEach(e => {
+      if (!e._uniPatrol || !e.isPassive || !e.aggroed || e.dead) return;
+      const ecx = e.x + e.w / 2, ecy = e.y + e.h / 2;
+      const dx = ecx - pcx, dy = ecy - pcy, d = Math.hypot(dx, dy) || 1;
+      e.vx = (e.vx || 0) + (dx / d) * e.speed * 0.5;
+      e.vy = (e.vy || 0) + (dy / d) * e.speed * 0.5;
+      e.vx *= 0.95; e.vy *= 0.95;
+      e.x += e.vx; e.y += e.vy;
+      // If escaped quadrant, remove
+      if (e.x < -100 || e.x > window.quadW + 100 || e.y < -100 || e.y > window.quadH + 100) {
+        e.dead = true;
+      }
+    });
 
-  // Collisions
-  uniCheckCollisions();
+    // Loot drops from killed passive ships
+    enemies.forEach(e => {
+      if (!e._uniPatrol || !e.isPassive || !e.dead || e._looted) return;
+      e._looted = true;
+      if (player.cargo && _uniCargoCount() < player.cargoCapacity) {
+        const lootTable = ["scrap", "iron", "copper", "electronics"];
+        const loot = lootTable[Math.floor(Math.random() * lootTable.length)];
+        const existing = player.cargo.find(c => c.commodity === loot);
+        if (existing) existing.quantity += 1 + Math.floor(Math.random() * 3);
+        else player.cargo.push({ commodity: loot, quantity: 1 + Math.floor(Math.random() * 3) });
+      }
+    });
+
+    // Credit rewards from kills
+    enemies.forEach(e => {
+      if (!e._uniPatrol || !e.dead || e._credited) return;
+      e._credited = true;
+      const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+      if (world) {
+        world.player.credits += e.score || 50;
+        if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
+      }
+    });
+  }
 
   // Mining
-  uniUpdateMining();
+  _uniUpdateMining();
 
-  // Station proximity check
-  uniCheckStationDock();
+  // Station proximity
+  _uniCheckStation();
 
   // POI discovery
-  uniCheckPOIs();
+  _uniCheckPOIs();
 
-  // Map key
-  if (k["KeyM"] || k["Escape"]) {
-    if (!_uniInCombat) {
-      k["KeyM"] = false;
-      k["Escape"] = false;
-      uniState = "map";
-      _uniMapLevel = "quadrant";
-    }
-  }
-
-  // Check player death
-  if (uniPlayer.hp <= 0) {
-    // Universe death — respawn at last station with penalties
-    uniPlayer.hp = uniPlayer.maxHp * 0.5;
-    uniPlayer.shields = 0;
-    uniPlayer.fuel = Math.max(10, uniPlayer.fuel);
+  // Player death
+  if (player.hp <= 0) {
+    player.hp = Math.floor(player.maxHp * 0.5);
+    player.shields = 0;
+    player.fuel = Math.max(10, player.fuel);
     const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
     if (world) {
       const penalty = Math.floor(world.player.credits * 0.1);
@@ -864,230 +399,208 @@ function uniUpdateFlying() {
       if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
     }
     uniState = "map";
+    if (typeof state !== "undefined") state = "menu";
     _uniMapLevel = "system";
+    _startUniMapLoop();
   }
 }
 
-// ── ENEMY AI ──────────────────────────────────────────────────
+// ── UNIVERSE RENDER OVERLAY (called from game.js render) ──────
+// Draws universe-specific stuff ON TOP of game.js's normal render.
+// game.js handles: player, enemies, bullets, particles, backgrounds.
+// We add: asteroids, POIs, station, mining beam, universe HUD.
 
-function uniUpdateEnemies(gw, gh) {
-  if (!uniPlayer) return;
-  const pcx = uniPlayer.x + uniPlayer.w / 2;
-  const pcy = uniPlayer.y + uniPlayer.h / 2;
+function uniRenderOverlay() {
+  if (uniState !== "flying" || typeof ctx === "undefined") return;
+  const c = ctx;
+  const gw = typeof GAME_W !== "undefined" ? GAME_W : 1280;
+  const gh = typeof GAME_H !== "undefined" ? GAME_H : 720;
+  const cx = window.camX || 0;
+  const cy = window.camY || 0;
 
-  uniEnemies.forEach(e => {
-    if (e.dead) return;
-    const ecx = e.x + e.w / 2;
-    const ecy = e.y + e.h / 2;
-    const distToPlayer = Math.hypot(pcx - ecx, pcy - ecy);
-
-    // Aggro check
-    if (!e.aggroed && distToPlayer < e.aggroRange) {
-      e.aggroed = true;
-      _uniInCombat = true;
-      _uniDisengageTimer = 0;
-      if (uniState === "flying") uniState = "combat";
+  // Asteroids
+  c.save();
+  uniAsteroids.forEach(ast => {
+    if (ast.depleted) return;
+    const sx = ast.x - cx, sy = ast.y - cy;
+    if (sx < -60 || sx > gw + 60 || sy < -60 || sy > gh + 60) return;
+    c.fillStyle = ast.color;
+    c.beginPath();
+    c.arc(sx, sy, ast.w / 2, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = "rgba(255,255,255,0.15)";
+    c.lineWidth = 1;
+    c.stroke();
+    // Health bar if damaged
+    if (ast.health < ast.maxHealth) {
+      c.fillStyle = "#333";
+      c.fillRect(sx - ast.w / 2, sy - ast.h / 2 - 10, ast.w, 5);
+      c.fillStyle = "#ffcc00";
+      c.fillRect(sx - ast.w / 2, sy - ast.h / 2 - 10, ast.w * (ast.health / ast.maxHealth), 5);
     }
+  });
+  c.restore();
 
-    if (e.isPassive && !e.aggroed) {
-      // Passive ships patrol slowly
-      e.patrolAngle += 0.005;
-      const px = e.patrolX + Math.cos(e.patrolAngle) * 80;
-      const py = e.patrolY + Math.sin(e.patrolAngle) * 80;
-      const dx = px - e.x, dy = py - e.y, d = Math.hypot(dx, dy) || 1;
-      e.vx += (dx / d) * 0.3;
-      e.vy += (dy / d) * 0.3;
-    } else if (e.isPassive && e.aggroed) {
-      // Passive ship flees
-      const dx = ecx - pcx, dy = ecy - pcy, d = Math.hypot(dx, dy) || 1;
-      e.vx += (dx / d) * e.speed * 0.5;
-      e.vy += (dy / d) * e.speed * 0.5;
-      // Check if escaped
-      if (e.x < -50 || e.x > gw + 50 || e.y < -50 || e.y > gh + 50) {
-        e.dead = true;
-      }
-    } else if (e.aggroed) {
-      // Combat AI — simplified from Arena
-      const dx = pcx - ecx, dy = pcy - ecy, d = Math.hypot(dx, dy) || 1;
-      const ndx = dx / d, ndy = dy / d;
-      const accel = e.speed * 0.15;
-      const targetDist = 300;
-
-      if (d < 150) {
-        e.vx -= ndx * accel * 3;
-        e.vy -= ndy * accel * 3;
-      } else if (d > targetDist + 80) {
-        e.vx += ndx * accel * 1.5;
-        e.vy += ndy * accel * 1.5;
-      } else {
-        const strafeSign = (uniEnemies.indexOf(e) % 2 === 0) ? 1 : -1;
-        e.vx += (-ndy * strafeSign) * accel;
-        e.vy += (ndx * strafeSign) * accel;
-      }
-
-      // Shoot at player
-      e.shootTimer--;
-      if (e.shootTimer <= 0) {
-        const wStats = typeof getWeaponStats === "function" ? getWeaponStats("laser_repeater", 2) : null;
-        if (wStats) {
-          const pred = typeof predictPos === "function"
-            ? predictPos(pcx, pcy, uniPlayer.vx || 0, uniPlayer.vy || 0, ecx, ecy, wStats.speed || 8)
-            : { x: pcx, y: pcy };
-          const angle = Math.atan2(pred.y - ecy, pred.x - ecx);
-          const inaccuracy = (Math.random() - 0.5) * 0.3;
-          const bullets = typeof fireBullets === "function"
-            ? fireBullets({ x: ecx - e.w / 2, y: ecy - e.h / 2, w: e.w, h: e.h }, wStats, angle + inaccuracy, false)
-            : [];
-          uniEnemyBullets.push(...bullets);
-        }
-        e.shootTimer = e.fireRate;
-      }
-    } else {
-      // Patrol
-      e.patrolAngle += 0.008;
-      const px = e.patrolX + Math.cos(e.patrolAngle) * 120;
-      const py = e.patrolY + Math.sin(e.patrolAngle) * 120;
-      const dx = px - e.x, dy = py - e.y, d = Math.hypot(dx, dy) || 1;
-      e.vx += (dx / d) * 0.2;
-      e.vy += (dy / d) * 0.2;
-    }
-
-    // Apply velocity
-    e.vx *= 0.92;
-    e.vy *= 0.92;
-    const spd = Math.hypot(e.vx, e.vy);
-    if (spd > e.speed) { e.vx *= e.speed / spd; e.vy *= e.speed / spd; }
-    e.x += e.vx;
-    e.y += e.vy;
-    e.x = Math.max(0, Math.min(gw - e.w, e.x));
-    e.y = Math.max(0, Math.min(gh - e.h, e.y));
-
-    // Face player if aggroed, else face movement direction
-    const targetRot = e.aggroed
-      ? Math.atan2(pcy - ecy, pcx - ecx)
-      : Math.atan2(e.vy, e.vx);
-    let rotDiff = targetRot - (e.rotation || 0);
-    while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-    while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-    e.rotation = (e.rotation || 0) + Math.sign(rotDiff) * Math.min(Math.abs(rotDiff), e.turnSpeed || 0.04);
-
-    // Shield regen
-    if (e.shields < e.maxShields) e.shields = Math.min(e.maxShields, e.shields + 0.01);
+  // POIs
+  uniPOIs.forEach(poi => {
+    const sx = poi.x - cx, sy = poi.y - cy;
+    if (sx < -40 || sx > gw + 40 || sy < -40 || sy > gh + 40) return;
+    c.fillStyle = poi.discovered ? "#44ff88" : "rgba(255,255,255,0.3)";
+    c.font = poi.discovered ? "bold 13px monospace" : "11px monospace";
+    c.textAlign = "center";
+    c.fillText(poi.discovered ? "[" + poi.type + "]" : "?", sx, sy);
+    c.textAlign = "left";
   });
 
-  uniEnemies = uniEnemies.filter(e => !e.dead);
-
-  // Check if combat ended
-  if (_uniInCombat && uniEnemies.filter(e => e.aggroed).length === 0) {
-    _uniInCombat = false;
-    uniState = "flying";
+  // Station
+  if (uniStation) {
+    const sx = uniStation.x - cx, sy = uniStation.y - cy;
+    c.fillStyle = "#0a1a0a";
+    c.fillRect(sx, sy, uniStation.w, uniStation.h);
+    c.strokeStyle = uniStation._playerNear ? "#0f0" : "#00ff88";
+    c.lineWidth = uniStation._playerNear ? 3 : 1.5;
+    c.strokeRect(sx, sy, uniStation.w, uniStation.h);
+    c.fillStyle = "#00ff88";
+    c.font = "bold 10px monospace";
+    c.textAlign = "center";
+    c.fillText(uniStation.name, sx + uniStation.w / 2, sy - 8);
+    if (uniStation._playerNear) {
+      c.fillStyle = "#0f0";
+      c.font = "bold 12px monospace";
+      c.fillText("DOCK", sx + uniStation.w / 2, sy + uniStation.h + 18);
+    }
+    c.textAlign = "left";
   }
+
+  // Mining beam
+  if (_uniMiningTarget && typeof player !== "undefined" && player) {
+    const px = player.x + player.w / 2 - cx;
+    const py = player.y + player.h / 2 - cy;
+    const mx = _uniMiningTarget.x - cx;
+    const my = _uniMiningTarget.y - cy;
+    const progress = _uniMiningProgress / (_uniMiningTarget.maxHealth || 100);
+    c.save();
+    c.globalAlpha = 0.5 + progress * 0.5;
+    c.strokeStyle = "#ffcc00";
+    c.lineWidth = 2 + progress * 4;
+    c.shadowColor = "#ffcc00";
+    c.shadowBlur = 10;
+    c.beginPath();
+    c.moveTo(px, py);
+    c.lineTo(mx, my);
+    c.stroke();
+    c.restore();
+  }
+
+  // Universe HUD (always on top, not affected by camera)
+  _uniRenderHUD(c, gw, gh);
 }
 
-// ── COLLISIONS ────────────────────────────────────────────────
+// ── HUD ───────────────────────────────────────────────────────
 
-function uniCheckCollisions() {
-  if (!uniPlayer) return;
+function _uniRenderHUD(c, gw, gh) {
+  if (typeof player === "undefined" || !player) return;
+  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  const credits = world ? world.player.credits : 0;
 
-  // Player bullets vs enemies
-  uniBullets.forEach(b => {
-    if (b.dead) return;
-    uniEnemies.forEach(e => {
-      if (e.dead) return;
-      if (!_uniOverlaps(b, e)) return;
-      b.dead = true;
-      // Simplified damage
-      const dmg = b.damage || 10;
-      if (e.shields > 0) {
-        e.shields -= dmg * 0.5;
-        if (e.shields < 0) { e.hp += e.shields; e.shields = 0; }
-      } else {
-        e.hp -= dmg * 0.8;
-      }
-      if (typeof spawnHitEffect === "function") spawnHitEffect(b.x, b.y, b);
-      if (typeof playHitSound === "function") playHitSound(b.category || "laser");
+  // Top bar
+  c.fillStyle = "rgba(0,0,0,0.55)";
+  c.fillRect(0, 0, gw, 30);
 
-      if (e.hp <= 0) {
-        e.dead = true;
-        if (typeof spawnDeathEffect === "function") spawnDeathEffect(e);
-        if (typeof playExplosion === "function") playExplosion(3);
-        // Credit reward
-        const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
-        if (world) {
-          world.player.credits += e.score || 50;
-          if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
-        }
-        // Loot from passive ships
-        if (e.isPassive && uniPlayer.cargo.length < uniPlayer.cargoCapacity) {
-          const lootTable = ["scrap", "iron", "copper", "electronics"];
-          const loot = lootTable[Math.floor(Math.random() * lootTable.length)];
-          uniPlayer.cargo.push({ commodity: loot, quantity: 1 + Math.floor(Math.random() * 3) });
-        }
-      }
-    });
-  });
+  c.font = "11px monospace";
+  c.textAlign = "left";
 
-  // Enemy bullets vs player
-  uniEnemyBullets.forEach(b => {
-    if (b.dead) return;
-    if (!_uniOverlaps(b, uniPlayer)) return;
-    b.dead = true;
-    const dmg = b.damage || 8;
-    if (uniPlayer.shields > 0) {
-      uniPlayer.shields -= dmg * 0.5;
-      if (uniPlayer.shields < 0) { uniPlayer.hp += uniPlayer.shields; uniPlayer.shields = 0; }
-    } else {
-      uniPlayer.hp -= dmg * 0.8;
-    }
-  });
+  // Location
+  const sysName = _uniCurrentSystem?.name || "Unknown";
+  const quadName = _uniCurrentQuadrant?.name || "";
+  c.fillStyle = "#aaa";
+  c.fillText(sysName + (quadName ? " > " + quadName : ""), 8, 12);
 
-  uniBullets = uniBullets.filter(b => !b.dead);
-  uniEnemyBullets = uniEnemyBullets.filter(b => !b.dead);
+  // Credits
+  c.fillStyle = "#ffcc00";
+  c.textAlign = "right";
+  c.fillText(credits.toLocaleString() + " SC", gw - 8, 12);
+
+  // Status line
+  c.textAlign = "center";
+  if (_uniInCombat) {
+    c.fillStyle = "#ff4444";
+    c.font = "bold 11px monospace";
+    c.fillText("COMBAT - Cannot quantum travel", gw / 2, 12);
+  }
+
+  // Fuel bar (bottom left area, above Arena boost bar position)
+  const fuelX = 8, fuelY = gh - 90, fuelW = 150, fuelH = 10;
+  c.fillStyle = "#222";
+  c.fillRect(fuelX, fuelY, fuelW, fuelH);
+  const fuelFrac = Math.max(0, player.fuel / (player.fuelMax || 50));
+  c.fillStyle = fuelFrac > 0.3 ? "#0af" : fuelFrac > 0.1 ? "#ff8800" : "#ff4444";
+  c.fillRect(fuelX, fuelY, fuelW * fuelFrac, fuelH);
+  c.fillStyle = "#aaa";
+  c.font = "9px monospace";
+  c.textAlign = "left";
+  c.fillText("FUEL " + Math.floor(player.fuel) + "/" + (player.fuelMax || 50), fuelX, fuelY + fuelH + 10);
+
+  // Cargo indicator
+  const cargoStr = "CARGO " + _uniCargoCount() + "/" + (player.cargoCapacity || 2);
+  c.fillText(cargoStr, fuelX, fuelY + fuelH + 22);
+  if (player.cargo && player.cargo.length > 0) {
+    c.fillStyle = "#777";
+    const summary = player.cargo.map(ci => ci.commodity + "x" + ci.quantity).join(" ");
+    c.fillText(summary, fuelX, fuelY + fuelH + 34);
+  }
+
+  // Mining hint
+  if (player.miningPower > 0) {
+    c.fillStyle = "#ffaa00";
+    c.fillText("[H] Mine nearby asteroids", fuelX + fuelW + 16, fuelY + 10);
+  }
+
+  // Map hint
+  c.textAlign = "right";
+  c.fillStyle = "#666";
+  c.font = "10px monospace";
+  c.fillText("[M] Map", gw - 8, gh - 90);
+
+  c.textAlign = "left";
 }
 
-function _uniOverlaps(a, b) {
-  const acx = a.x + (a.w || 4) / 2, acy = a.y + (a.h || 4) / 2;
-  const bcx = b.x + b.w / 2, bcy = b.y + b.h / 2;
-  const r = (Math.min(a.w || 4, a.h || 4) * 0.45) + (Math.min(b.w, b.h) * 0.45);
-  return Math.hypot(acx - bcx, acy - bcy) < r;
+function _uniCargoCount() {
+  if (typeof player === "undefined" || !player || !player.cargo) return 0;
+  return player.cargo.reduce((sum, c) => sum + c.quantity, 0);
 }
 
 // ── MINING ────────────────────────────────────────────────────
 
-function uniUpdateMining() {
-  if (!uniPlayer || uniPlayer.miningPower <= 0) { _uniMiningTarget = null; return; }
+function _uniUpdateMining() {
+  if (typeof player === "undefined" || !player || (player.miningPower || 0) <= 0) {
+    _uniMiningTarget = null; return;
+  }
   const k = typeof keys !== "undefined" ? keys : {};
+  const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
+  const mineRange = 150;
 
-  // Find nearest asteroid in range
-  const pcx = uniPlayer.x + uniPlayer.w / 2;
-  const pcy = uniPlayer.y + uniPlayer.h / 2;
-  let nearest = null, nearestDist = 120; // mining range
-
+  // Find nearest asteroid
+  let nearest = null, nearestDist = mineRange;
   uniAsteroids.forEach(ast => {
     if (ast.depleted) return;
     const d = Math.hypot(ast.x - pcx, ast.y - pcy);
     if (d < nearestDist) { nearestDist = d; nearest = ast; }
   });
 
-  const holdingMine = k["KeyH"]; // H to mine, or could use mouse
-
-  if (nearest && holdingMine && uniPlayer.cargo.length < uniPlayer.cargoCapacity) {
+  if (nearest && k["KeyH"] && _uniCargoCount() < player.cargoCapacity) {
     _uniMiningTarget = nearest;
-    _uniMiningProgress += UNI_MINE_RATE * (uniPlayer.miningPower / 10);
+    _uniMiningProgress += UNI_MINE_RATE * (player.miningPower / 10);
 
     if (_uniMiningProgress >= nearest.health) {
-      // Asteroid depleted
       nearest.depleted = true;
       _uniMiningProgress = 0;
       _uniMiningTarget = null;
 
       // Add ore to cargo
-      const existing = uniPlayer.cargo.find(c => c.commodity === nearest.oreType);
-      if (existing) {
-        existing.quantity += 1;
-      } else if (uniPlayer.cargo.length < uniPlayer.cargoCapacity) {
-        uniPlayer.cargo.push({ commodity: nearest.oreType, quantity: 1 });
-      }
+      const existing = player.cargo.find(c => c.commodity === nearest.oreType);
+      if (existing) existing.quantity += 1;
+      else player.cargo.push({ commodity: nearest.oreType, quantity: 1 });
 
       // Record delta
       const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
@@ -1095,7 +608,6 @@ function uniUpdateMining() {
         const deltaKey = _uniCurrentSystem.id + ":" + (_uniCurrentArea?.id || "") + ":" + _uniCurrentQuadrant.id + ":" + nearest.id;
         addDelta(world, deltaKey, "depleted", true);
       }
-
       uniAsteroids = uniAsteroids.filter(a => !a.depleted);
     }
   } else {
@@ -1104,40 +616,36 @@ function uniUpdateMining() {
   }
 }
 
-// ── STATION DOCKING ───────────────────────────────────────────
+// ── STATION CHECK ─────────────────────────────────────────────
 
-function uniCheckStationDock() {
-  if (!uniStation || !uniPlayer || _uniInCombat) return;
-  const k = typeof keys !== "undefined" ? keys : {};
-
-  const pcx = uniPlayer.x + uniPlayer.w / 2;
-  const pcy = uniPlayer.y + uniPlayer.h / 2;
-  const scx = uniStation.x + uniStation.w / 2;
-  const scy = uniStation.y + uniStation.h / 2;
+function _uniCheckStation() {
+  if (!uniStation || typeof player === "undefined" || !player || _uniInCombat) return;
+  const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
+  const scx = uniStation.x + uniStation.w / 2, scy = uniStation.y + uniStation.h / 2;
   const dist = Math.hypot(pcx - scx, pcy - scy);
 
   uniStation._playerNear = dist < uniStation.dockRange;
 
+  const k = typeof keys !== "undefined" ? keys : {};
   if (uniStation._playerNear && k["KeyE"]) {
     k["KeyE"] = false;
-    uniState = "docked";
     _uniDockedStation = uniStation.data;
     _uniStationTab = "trading";
+    _uniTradeSelected = 0;
+    uniState = "docked";
+    if (typeof state !== "undefined") state = "menu"; // pause game.js combat loop
     if (typeof autoSaveUniverse === "function") autoSaveUniverse();
   }
 }
 
-// ── POI DISCOVERY ─────────────────────────────────────────────
+// ── POI CHECK ─────────────────────────────────────────────────
 
-function uniCheckPOIs() {
-  if (!uniPlayer) return;
-  const pcx = uniPlayer.x + uniPlayer.w / 2;
-  const pcy = uniPlayer.y + uniPlayer.h / 2;
-
+function _uniCheckPOIs() {
+  if (typeof player === "undefined" || !player) return;
+  const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
   uniPOIs.forEach(poi => {
     if (poi.discovered) return;
-    const d = Math.hypot(poi.x - pcx, poi.y - pcy);
-    if (d < uniPlayer.scanRange * 0.5) {
+    if (Math.hypot(poi.x - pcx, poi.y - pcy) < (player.scanRange || 100) * 0.5) {
       poi.discovered = true;
       const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
       if (world && typeof addDelta === "function") {
@@ -1148,27 +656,130 @@ function uniCheckPOIs() {
   });
 }
 
-// ── STATION UI (DOCKED) ───────────────────────────────────────
+// ── MAP KEY HANDLING (from flying) ────────────────────────────
 
-let _uniDockedStation = null;
-let _uniStationTab = "trading";
-let _uniTradeSelected = -1; // selected commodity row index
+function _uniCheckMapKey() {
+  if (uniState !== "flying") return;
+  const k = typeof keys !== "undefined" ? keys : {};
+  if ((k["KeyM"] || k["Escape"]) && !_uniInCombat) {
+    k["KeyM"] = false;
+    k["Escape"] = false;
+    uniState = "map";
+    if (typeof state !== "undefined") state = "menu";
+    _uniMapLevel = "quadrant";
+    _startUniMapLoop();
+  }
+}
 
-function uniRenderDocked(c, gw, gh) {
-  // Dim background
+// ── QUANTUM TRAVEL ────────────────────────────────────────────
+
+function uniStartQuantum(systemId, areaId, quad) {
+  const fuelCost = UNI_QUANTUM_FUEL / (typeof player !== "undefined" && player ? player.fuelEfficiency || 1 : 1);
+  if (typeof player !== "undefined" && player && player.fuel < fuelCost) return false;
+  if (typeof player !== "undefined" && player) player.fuel -= fuelCost;
+
+  _uniQuantumTarget = { systemId, areaId, quadrant: quad };
+  _uniQuantumTimer = UNI_QUANTUM_DURATION;
+  uniState = "quantum";
+  return true;
+}
+
+function uniStartWormhole(toSystemId) {
+  const fuelCost = (typeof FUEL_COSTS !== "undefined" ? FUEL_COSTS.wormholeFlat : 10) / (typeof player !== "undefined" && player ? player.fuelEfficiency || 1 : 1);
+  if (typeof player !== "undefined" && player && player.fuel < fuelCost) return false;
+  if (typeof player !== "undefined" && player) player.fuel -= fuelCost;
+
+  const uni = window._activeUniverse;
+  if (!uni || !uni.systems[toSystemId]) return false;
+  _uniCurrentSystem = uni.systems[toSystemId];
+  _uniMapSelectedSystem = toSystemId;
+  _uniQuantumTarget = { systemId: toSystemId, isWormhole: true };
+  _uniQuantumTimer = 60;
+  uniState = "quantum";
+  return true;
+}
+
+function _uniUpdateQuantum() {
+  _uniQuantumTimer--;
+  if (_uniQuantumTimer <= 0) {
+    if (_uniQuantumTarget && _uniQuantumTarget.quadrant) {
+      const sys = window._activeUniverse?.systems[_uniQuantumTarget.systemId];
+      if (sys) {
+        _uniCurrentSystem = sys;
+        _uniCurrentArea = sys.areas[_uniQuantumTarget.areaId] || null;
+        uniLoadQuadrant(_uniQuantumTarget.quadrant);
+        uniState = "flying";
+        if (typeof state !== "undefined") state = "playing";
+        _buildUniMobileUI();
+      } else {
+        uniState = "map";
+        _startUniMapLoop();
+      }
+    } else {
+      // Wormhole — back to map in new system
+      uniState = "map";
+      _uniMapLevel = "area";
+      _startUniMapLoop();
+    }
+    _uniQuantumTarget = null;
+    if (typeof autoSaveUniverse === "function") autoSaveUniverse();
+  }
+}
+
+function _uniRenderQuantum(c, gw, gh) {
+  const t = 1 - (_uniQuantumTimer / UNI_QUANTUM_DURATION);
+  c.fillStyle = "#000";
+  c.fillRect(0, 0, gw, gh);
+
+  // Streaking stars
+  for (let i = 0; i < 60; i++) {
+    const sx = ((i * 137 + _uniFrameCount * 12) % gw);
+    const sy = ((i * 97 + 50) % gh);
+    const len = 20 + t * 80;
+    c.strokeStyle = "rgba(150,180,255," + (0.3 + t * 0.5) + ")";
+    c.lineWidth = 1;
+    c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx - len, sy); c.stroke();
+  }
+
+  // Flash
+  const flashR = t * gw * 0.3;
+  const grad = c.createRadialGradient(gw / 2, gh / 2, 0, gw / 2, gh / 2, Math.max(1, flashR));
+  grad.addColorStop(0, "rgba(100,180,255," + (0.3 * t) + ")");
+  grad.addColorStop(1, "rgba(0,0,0,0)");
+  c.fillStyle = grad;
+  c.beginPath(); c.arc(gw / 2, gh / 2, Math.max(1, flashR), 0, Math.PI * 2); c.fill();
+
+  c.textAlign = "center";
+  c.fillStyle = "#0af";
+  c.font = "bold 18px monospace";
+  c.fillText("QUANTUM TRAVEL", gw / 2, gh / 2 - 15);
+  c.fillStyle = "#fff";
+  c.font = "14px monospace";
+  const dest = _uniQuantumTarget?.quadrant?.name || _uniQuantumTarget?.systemId || "Unknown";
+  c.fillText(dest, gw / 2, gh / 2 + 10);
+  c.textAlign = "left";
+}
+
+// ── DOCKED (STATION) UI ───────────────────────────────────────
+
+function uniRenderDockedUI() {
+  if (uniState !== "docked" || !_uniDockedStation) return;
+  const c = typeof ctx !== "undefined" ? ctx : null;
+  if (!c) return;
+  const gw = typeof GAME_W !== "undefined" ? GAME_W : 1280;
+  const gh = typeof GAME_H !== "undefined" ? GAME_H : 720;
+
   c.fillStyle = "rgba(0,0,10,0.92)";
   c.fillRect(0, 0, gw, gh);
 
-  if (!_uniDockedStation) { uniState = "flying"; return; }
-
   const st = _uniDockedStation;
-  const panelW = Math.min(600, gw - 40);
-  const panelH = Math.min(500, gh - 40);
+  const panelW = Math.min(620, gw - 30);
+  const panelH = Math.min(520, gh - 30);
   const px = (gw - panelW) / 2;
   const py = (gh - panelH) / 2;
 
-  // Panel background
-  c.fillStyle = "#0a0e1a";
+  // Panel
+  c.fillStyle = "#090914";
   c.fillRect(px, py, panelW, panelH);
   c.strokeStyle = "#0af";
   c.lineWidth = 2;
@@ -1178,642 +789,650 @@ function uniRenderDocked(c, gw, gh) {
   c.textAlign = "center";
   c.fillStyle = "#0af";
   c.font = "bold 18px monospace";
-  c.fillText(st.name, gw / 2, py + 28);
+  c.fillText(st.name, gw / 2, py + 26);
 
-  // Tabs
-  const tabs = ["trading", "refuel", "repair", "missions", "shipyard"];
-  const tabW = panelW / tabs.length;
+  // Tabs as clickable buttons
+  const tabs = [
+    { id: "trading", label: "TRADE" },
+    { id: "refuel", label: "REFUEL" },
+    { id: "repair", label: "REPAIR" },
+    { id: "missions", label: "MISSIONS" },
+    { id: "shipyard", label: "SHIPS" },
+  ];
+  const tabW = (panelW - 20) / tabs.length;
+  window._uniStationTabRects = [];
   tabs.forEach((tab, i) => {
-    const tx = px + i * tabW;
-    const isActive = tab === _uniStationTab;
-    c.fillStyle = isActive ? "rgba(0,170,255,0.15)" : "rgba(0,0,0,0.3)";
-    c.fillRect(tx, py + 40, tabW, 28);
+    const tx = px + 10 + i * tabW;
+    const ty = py + 38;
+    const tw = tabW - 4;
+    const th = 26;
+    const isActive = tab.id === _uniStationTab;
+    c.fillStyle = isActive ? "rgba(0,170,255,0.2)" : "rgba(0,0,0,0.4)";
+    c.fillRect(tx, ty, tw, th);
     c.strokeStyle = isActive ? "#0af" : "#333";
     c.lineWidth = 1;
-    c.strokeRect(tx, py + 40, tabW, 28);
+    c.strokeRect(tx, ty, tw, th);
     c.fillStyle = isActive ? "#0af" : "#888";
     c.font = "bold 10px monospace";
-    c.fillText(tab.toUpperCase(), tx + tabW / 2, py + 58);
+    c.fillText(tab.label, tx + tw / 2, ty + 17);
+    window._uniStationTabRects.push({ id: tab.id, x: tx, y: ty, w: tw, h: th });
   });
 
-  // Tab content area
-  const contentY = py + 75;
-  const contentH = panelH - 110;
+  // Content area
+  const contentX = px + 12, contentY = py + 72;
+  const contentW = panelW - 24, contentH = panelH - 110;
 
-  if (_uniStationTab === "trading") {
-    uniRenderTrading(c, px + 10, contentY, panelW - 20, contentH, st);
-  } else if (_uniStationTab === "refuel") {
-    uniRenderRefuel(c, px + 10, contentY, panelW - 20, contentH);
-  } else if (_uniStationTab === "repair") {
-    uniRenderRepair(c, px + 10, contentY, panelW - 20, contentH);
-  } else if (_uniStationTab === "missions") {
-    uniRenderMissions(c, px + 10, contentY, panelW - 20, contentH);
-  } else if (_uniStationTab === "shipyard") {
-    uniRenderShipyard(c, px + 10, contentY, panelW - 20, contentH);
-  }
+  c.textAlign = "left";
+  if (_uniStationTab === "trading") _uniRenderTrading(c, contentX, contentY, contentW, contentH, st);
+  else if (_uniStationTab === "refuel") _uniRenderRefuel(c, contentX, contentY, contentW, contentH);
+  else if (_uniStationTab === "repair") _uniRenderRepair(c, contentX, contentY, contentW, contentH);
+  else if (_uniStationTab === "missions") _uniRenderPlaceholder(c, contentX, contentY, contentW, contentH, "Mission Board", "Missions coming in Phase 1");
+  else if (_uniStationTab === "shipyard") _uniRenderPlaceholder(c, contentX, contentY, contentW, contentH, "Shipyard", "Ship switching coming in Phase 1");
 
-  // Leave button
-  c.textAlign = "center";
-  c.fillStyle = "rgba(255,255,255,0.08)";
-  c.fillRect(px + panelW / 2 - 60, py + panelH - 30, 120, 24);
-  c.strokeStyle = "#888";
+  // Undock button
+  const btnW = 140, btnH = 28;
+  const btnX = px + (panelW - btnW) / 2, btnY = py + panelH - btnH - 8;
+  c.fillStyle = "rgba(255,80,80,0.12)";
+  c.fillRect(btnX, btnY, btnW, btnH);
+  c.strokeStyle = "#f44";
   c.lineWidth = 1;
-  c.strokeRect(px + panelW / 2 - 60, py + panelH - 30, 120, 24);
-  c.fillStyle = "#aaa";
+  c.strokeRect(btnX, btnY, btnW, btnH);
+  c.fillStyle = "#f44";
   c.font = "bold 11px monospace";
-  c.fillText("[ESC] UNDOCK", gw / 2, py + panelH - 14);
+  c.textAlign = "center";
+  c.fillText("UNDOCK", px + panelW / 2, btnY + 18);
+  window._uniUndockRect = { x: btnX, y: btnY, w: btnW, h: btnH };
   c.textAlign = "left";
 }
 
 // ── TRADING ───────────────────────────────────────────────────
 
-function uniRenderTrading(c, x, y, w, h, station) {
+function _uniRenderTrading(c, x, y, w, h, station) {
   const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
   const credits = world ? world.player.credits : 0;
   const commodities = typeof COMMODITY_DEFS !== "undefined" ? COMMODITY_DEFS : {};
 
   c.fillStyle = "#fff";
   c.font = "bold 12px monospace";
-  c.textAlign = "left";
   c.fillText("Credits: " + credits.toLocaleString() + " SC", x, y + 14);
-  c.fillText("Cargo: " + _uniCargoCount() + " / " + uniPlayer.cargoCapacity, x + w - 200, y + 14);
+  c.textAlign = "right";
+  c.fillText("Cargo: " + _uniCargoCount() + "/" + ((typeof player !== "undefined" && player) ? player.cargoCapacity : 0), x + w, y + 14);
+  c.textAlign = "left";
 
   const comKeys = Object.keys(commodities);
-  const rowH = 22;
-  let cy = y + 32;
+  const rowH = 24;
+  let cy = y + 34;
 
   // Header
-  c.fillStyle = "#666";
+  c.fillStyle = "#555";
   c.font = "10px monospace";
-  c.fillText("COMMODITY", x, cy);
-  c.fillText("STOCK", x + 170, cy);
-  c.fillText("PRICE", x + 230, cy);
-  c.fillText("HAVE", x + 310, cy);
+  c.fillText("ITEM", x, cy);
+  c.fillText("STOCK", x + 160, cy);
+  c.fillText("PRICE", x + 220, cy);
+  c.fillText("HAVE", x + 290, cy);
   cy += 16;
 
-  // Store row positions for click detection
   window._uniTradeRows = [];
+  const stationId = station.id;
 
   comKeys.forEach((key, idx) => {
-    if (cy > y + h - 40) return;
+    if (cy > y + h - 50) return;
     const def = commodities[key];
-    const stationId = station.id;
-    const stock = typeof getStationStock === "function" && world
-      ? getStationStock(world, stationId, key) : 50;
+    const stock = typeof getStationStock === "function" && world ? getStationStock(world, stationId, key) : 50;
     const price = typeof calculatePrice === "function"
       ? calculatePrice(key, typeof deriveEntitySeed === "function" ? deriveEntitySeed(world?.masterSeed || 0, stationId) : 0, 1, 1)
       : def.basePrice;
-    const playerHas = uniPlayer.cargo.find(c => c.commodity === key);
+    const playerHas = (typeof player !== "undefined" && player && player.cargo) ? player.cargo.find(ci => ci.commodity === key) : null;
     const playerQty = playerHas ? playerHas.quantity : 0;
-
     const isSelected = idx === _uniTradeSelected;
 
-    // Row background
-    if (isSelected) {
-      c.fillStyle = "rgba(0,170,255,0.12)";
-      c.fillRect(x - 4, cy - 12, w + 8, rowH);
-    }
+    if (isSelected) { c.fillStyle = "rgba(0,170,255,0.1)"; c.fillRect(x - 2, cy - 12, w + 4, rowH); }
 
-    window._uniTradeRows.push({ idx, key, y1: cy - 12, y2: cy - 12 + rowH, price, stock, playerQty });
+    window._uniTradeRows.push({ idx, key, y1: cy - 12, y2: cy - 12 + rowH, x: x, w: w, price, stock, playerQty });
 
     c.fillStyle = isSelected ? "#fff" : (def.rarity === "rare" ? "#ffcc44" : def.rarity === "uncommon" ? "#88aaff" : "#ccc");
     c.font = "11px monospace";
     c.fillText(def.name, x, cy);
     c.fillStyle = "#aaa";
-    c.fillText(stock.toString(), x + 170, cy);
-    c.fillText(price + " SC", x + 230, cy);
+    c.fillText(stock.toString(), x + 160, cy);
+    c.fillText(price + " SC", x + 220, cy);
     c.fillStyle = playerQty > 0 ? "#ffaa00" : "#555";
-    c.fillText(playerQty.toString(), x + 310, cy);
+    c.fillText(playerQty.toString(), x + 290, cy);
 
-    // Buy/sell hints for selected row
+    // Buy/Sell buttons for selected row
     if (isSelected) {
-      const canBuy = stock > 0 && credits >= price && _uniCargoCount() < uniPlayer.cargoCapacity;
+      const canBuy = stock > 0 && credits >= price && _uniCargoCount() < ((typeof player !== "undefined" && player) ? player.cargoCapacity : 0);
       const canSell = playerQty > 0;
+      // Buy button
+      const buyX = x + 340, buyY = cy - 10, buyW = 50, buyH = 18;
+      c.fillStyle = canBuy ? "rgba(0,255,100,0.15)" : "rgba(50,50,50,0.2)";
+      c.fillRect(buyX, buyY, buyW, buyH);
+      c.strokeStyle = canBuy ? "#0f0" : "#333";
+      c.strokeRect(buyX, buyY, buyW, buyH);
       c.fillStyle = canBuy ? "#0f0" : "#444";
-      c.fillText("[B]uy", x + 370, cy);
+      c.font = "bold 9px monospace";
+      c.fillText("BUY", buyX + 12, buyY + 13);
+      // Sell button
+      const sellX = buyX + buyW + 6, sellY = buyY, sellW = 50, sellH = 18;
+      c.fillStyle = canSell ? "rgba(255,130,0,0.15)" : "rgba(50,50,50,0.2)";
+      c.fillRect(sellX, sellY, sellW, sellH);
+      c.strokeStyle = canSell ? "#ff8800" : "#333";
+      c.strokeRect(sellX, sellY, sellW, sellH);
       c.fillStyle = canSell ? "#ff8800" : "#444";
-      c.fillText("[N]sell", x + 430, cy);
+      c.fillText("SELL", sellX + 10, sellY + 13);
+      // Store rects for click detection
+      window._uniTradeBuyRect = canBuy ? { x: buyX, y: buyY, w: buyW, h: buyH, key, price } : null;
+      window._uniTradeSellRect = canSell ? { x: sellX, y: sellY, w: sellW, h: sellH, key, price } : null;
     }
-
     cy += rowH;
   });
-
-  // Navigation hint
-  c.fillStyle = "#555";
-  c.font = "9px monospace";
-  c.fillText("Click row to select. [B] Buy 1. [N] Sell 1. [UP/DOWN] Navigate.", x, y + h - 8);
-
-  // Handle buy/sell keys
-  const k = typeof keys !== "undefined" ? keys : {};
-  if (_uniTradeSelected >= 0 && _uniTradeSelected < comKeys.length) {
-    const row = window._uniTradeRows?.find(r => r.idx === _uniTradeSelected);
-    if (row) {
-      if (k["KeyB"]) {
-        k["KeyB"] = false;
-        _uniTradeBuy(row.key, row.price, station.id, world);
-      }
-      if (k["KeyN"]) {
-        k["KeyN"] = false;
-        _uniTradeSell(row.key, row.price, station.id, world);
-      }
-    }
-  }
-  // Navigate with arrows (only in docked/trading)
-  if (k["ArrowUp"]) { k["ArrowUp"] = false; _uniTradeSelected = Math.max(0, _uniTradeSelected - 1); }
-  if (k["ArrowDown"]) { k["ArrowDown"] = false; _uniTradeSelected = Math.min(comKeys.length - 1, _uniTradeSelected + 1); }
 }
 
-function _uniCargoCount() {
-  if (!uniPlayer || !uniPlayer.cargo) return 0;
-  return uniPlayer.cargo.reduce((sum, c) => sum + c.quantity, 0);
-}
-
-function _uniTradeBuy(commodityKey, price, stationId, world) {
-  if (!world || !uniPlayer) return;
-  const credits = world.player.credits;
+function _uniTradeBuy(commodityKey, price, stationId) {
+  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  if (!world || typeof player === "undefined" || !player) return;
+  if (world.player.credits < price || _uniCargoCount() >= player.cargoCapacity) return;
   const stock = typeof getStationStock === "function" ? getStationStock(world, stationId, commodityKey) : 0;
-  if (stock <= 0 || credits < price || _uniCargoCount() >= uniPlayer.cargoCapacity) return;
-
-  // Deduct credits
+  if (stock <= 0) return;
   world.player.credits -= price;
   if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
-
-  // Reduce station stock
   if (typeof modifyStationStock === "function") modifyStationStock(world, stationId, commodityKey, -1);
-
-  // Add to cargo
-  const existing = uniPlayer.cargo.find(c => c.commodity === commodityKey);
+  const existing = player.cargo.find(ci => ci.commodity === commodityKey);
   if (existing) existing.quantity += 1;
-  else uniPlayer.cargo.push({ commodity: commodityKey, quantity: 1 });
+  else player.cargo.push({ commodity: commodityKey, quantity: 1 });
 }
 
-function _uniTradeSell(commodityKey, price, stationId, world) {
-  if (!world || !uniPlayer) return;
-  const existing = uniPlayer.cargo.find(c => c.commodity === commodityKey);
+function _uniTradeSell(commodityKey, price, stationId) {
+  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  if (!world || typeof player === "undefined" || !player) return;
+  const existing = player.cargo.find(ci => ci.commodity === commodityKey);
   if (!existing || existing.quantity <= 0) return;
-
-  // Add credits (sell at 90% of buy price)
   const sellPrice = Math.floor(price * 0.9);
   world.player.credits += sellPrice;
   if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
-
-  // Increase station stock
   if (typeof modifyStationStock === "function") modifyStationStock(world, stationId, commodityKey, 1);
-
-  // Remove from cargo
   existing.quantity -= 1;
-  if (existing.quantity <= 0) uniPlayer.cargo = uniPlayer.cargo.filter(c => c.quantity > 0);
+  if (existing.quantity <= 0) player.cargo = player.cargo.filter(ci => ci.quantity > 0);
 }
 
 // ── REFUEL ────────────────────────────────────────────────────
 
-function uniRenderRefuel(c, x, y, w, h) {
-  if (!uniPlayer) return;
+function _uniRenderRefuel(c, x, y, w, h) {
+  if (typeof player === "undefined" || !player) return;
   const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
   const credits = world ? world.player.credits : 0;
-  const fuelNeeded = uniPlayer.fuelMax - uniPlayer.fuel;
+  const fuelNeeded = (player.fuelMax || 50) - player.fuel;
   const pricePerUnit = typeof FUEL_COSTS !== "undefined" ? FUEL_COSTS.refuelPricePerUnit : 2;
   const totalCost = Math.ceil(fuelNeeded * pricePerUnit);
+  const canRefuel = fuelNeeded > 0.5 && credits >= totalCost;
 
   c.textAlign = "center";
   c.fillStyle = "#fff";
-  c.font = "bold 14px monospace";
-  c.fillText("REFUEL", x + w / 2, y + 20);
+  c.font = "bold 16px monospace";
+  c.fillText("REFUEL", x + w / 2, y + 24);
 
   // Fuel bar
   const barW = w * 0.6, barH = 24;
-  const barX = x + (w - barW) / 2, barY = y + 40;
-  c.fillStyle = "#222";
-  c.fillRect(barX, barY, barW, barH);
-  const fuelFrac = uniPlayer.fuel / uniPlayer.fuelMax;
+  const barX = x + (w - barW) / 2, barY = y + 44;
+  c.fillStyle = "#222"; c.fillRect(barX, barY, barW, barH);
+  const fuelFrac = player.fuel / (player.fuelMax || 50);
   c.fillStyle = fuelFrac > 0.5 ? "#0af" : fuelFrac > 0.2 ? "#ff8800" : "#ff4444";
   c.fillRect(barX, barY, barW * fuelFrac, barH);
-  c.strokeStyle = "#444";
-  c.strokeRect(barX, barY, barW, barH);
+  c.strokeStyle = "#444"; c.strokeRect(barX, barY, barW, barH);
+  c.fillStyle = "#fff"; c.font = "12px monospace";
+  c.fillText(Math.floor(player.fuel) + " / " + (player.fuelMax || 50), x + w / 2, barY + 17);
 
-  c.fillStyle = "#fff";
-  c.font = "12px monospace";
-  c.fillText(Math.floor(uniPlayer.fuel) + " / " + uniPlayer.fuelMax, x + w / 2, barY + 16);
-
-  c.fillStyle = "#aaa";
-  c.font = "12px monospace";
-  c.fillText("Fuel needed: " + Math.ceil(fuelNeeded), x + w / 2, barY + 50);
-  c.fillText("Cost: " + totalCost + " SC", x + w / 2, barY + 68);
-  c.fillText("Your credits: " + credits.toLocaleString() + " SC", x + w / 2, barY + 86);
+  c.fillStyle = "#aaa"; c.font = "12px monospace";
+  c.fillText("Cost: " + totalCost + " SC", x + w / 2, barY + 50);
 
   // Refuel button
-  const canRefuel = fuelNeeded > 0.5 && credits >= totalCost;
-  const btnY = barY + 105;
+  const btnW = 160, btnH = 34;
+  const btnX = x + (w - btnW) / 2, btnY = barY + 70;
   c.fillStyle = canRefuel ? "rgba(0,170,255,0.2)" : "rgba(50,50,50,0.3)";
-  c.fillRect(x + w / 2 - 80, btnY, 160, 30);
+  c.fillRect(btnX, btnY, btnW, btnH);
   c.strokeStyle = canRefuel ? "#0af" : "#555";
-  c.strokeRect(x + w / 2 - 80, btnY, 160, 30);
+  c.strokeRect(btnX, btnY, btnW, btnH);
   c.fillStyle = canRefuel ? "#0af" : "#555";
-  c.font = "bold 12px monospace";
-  c.fillText(fuelNeeded < 0.5 ? "TANK FULL" : "[R] REFUEL", x + w / 2, btnY + 20);
+  c.font = "bold 13px monospace";
+  c.fillText(fuelNeeded < 0.5 ? "TANK FULL" : "REFUEL", x + w / 2, btnY + 22);
+  window._uniRefuelRect = canRefuel ? { x: btnX, y: btnY, w: btnW, h: btnH, cost: totalCost } : null;
 
   c.textAlign = "left";
-
-  // Handle refuel input
-  const k = typeof keys !== "undefined" ? keys : {};
-  if (k["KeyR"] && canRefuel) {
-    k["KeyR"] = false;
-    uniPlayer.fuel = uniPlayer.fuelMax;
-    if (world) {
-      world.player.credits -= totalCost;
-      if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
-    }
-  }
 }
 
 // ── REPAIR ────────────────────────────────────────────────────
 
-function uniRenderRepair(c, x, y, w, h) {
-  if (!uniPlayer) return;
+function _uniRenderRepair(c, x, y, w, h) {
+  if (typeof player === "undefined" || !player) return;
   const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
   const credits = world ? world.player.credits : 0;
-  const hpNeeded = uniPlayer.maxHp - uniPlayer.hp;
-  const repairCost = Math.ceil(hpNeeded * 0.5);
+  const hpNeeded = player.maxHp - player.hp;
+  const armorNeeded = player.maxArmor - player.armor;
+  const repairCost = Math.ceil(hpNeeded * 0.5 + armorNeeded * 0.3);
+  const canRepair = (hpNeeded > 0.5 || armorNeeded > 0.5) && credits >= repairCost;
 
   c.textAlign = "center";
-  c.fillStyle = "#fff";
-  c.font = "bold 14px monospace";
-  c.fillText("REPAIR BAY", x + w / 2, y + 20);
+  c.fillStyle = "#fff"; c.font = "bold 16px monospace";
+  c.fillText("REPAIR BAY", x + w / 2, y + 24);
 
-  // HP bar
-  const barW = w * 0.6, barH = 20;
-  const barX = x + (w - barW) / 2, barY = y + 44;
-  c.fillStyle = "#222"; c.fillRect(barX, barY, barW, barH);
-  const hpFrac = uniPlayer.hp / uniPlayer.maxHp;
-  c.fillStyle = hpFrac > 0.5 ? "#0f0" : hpFrac > 0.25 ? "#ff8800" : "#ff4444";
-  c.fillRect(barX, barY, barW * hpFrac, barH);
+  const barW = w * 0.6, barH = 18;
+  const barX = x + (w - barW) / 2;
+
+  // HP
+  const hpY = y + 46;
+  c.fillStyle = "#222"; c.fillRect(barX, hpY, barW, barH);
+  c.fillStyle = player.hp / player.maxHp > 0.5 ? "#0f0" : "#ff4444";
+  c.fillRect(barX, hpY, barW * Math.max(0, player.hp / player.maxHp), barH);
   c.fillStyle = "#fff"; c.font = "11px monospace";
-  c.fillText("HP: " + Math.floor(uniPlayer.hp) + " / " + uniPlayer.maxHp, x + w / 2, barY + 15);
+  c.fillText("HP " + Math.floor(player.hp) + "/" + player.maxHp, x + w / 2, hpY + 14);
 
-  // Armor bar
-  const arY = barY + 30;
+  // Armor
+  const arY = hpY + 28;
   c.fillStyle = "#222"; c.fillRect(barX, arY, barW, barH);
-  const arFrac = uniPlayer.armor / uniPlayer.maxArmor;
-  c.fillStyle = "#ccc"; c.fillRect(barX, arY, barW * arFrac, barH);
+  c.fillStyle = "#ccc";
+  c.fillRect(barX, arY, barW * Math.max(0, player.armor / player.maxArmor), barH);
   c.fillStyle = "#fff";
-  c.fillText("Armor: " + Math.floor(uniPlayer.armor) + " / " + uniPlayer.maxArmor, x + w / 2, arY + 15);
+  c.fillText("Armor " + Math.floor(player.armor) + "/" + player.maxArmor, x + w / 2, arY + 14);
 
   c.fillStyle = "#aaa"; c.font = "12px monospace";
-  c.fillText("Repair cost: " + repairCost + " SC", x + w / 2, arY + 50);
+  c.fillText("Repair cost: " + repairCost + " SC", x + w / 2, arY + 44);
 
-  const canRepair = hpNeeded > 0.5 && credits >= repairCost;
-  const btnY = arY + 65;
+  const btnW = 160, btnH = 34;
+  const btnX = x + (w - btnW) / 2, btnY = arY + 62;
   c.fillStyle = canRepair ? "rgba(0,255,100,0.15)" : "rgba(50,50,50,0.3)";
-  c.fillRect(x + w / 2 - 80, btnY, 160, 30);
+  c.fillRect(btnX, btnY, btnW, btnH);
   c.strokeStyle = canRepair ? "#0f0" : "#555";
-  c.strokeRect(x + w / 2 - 80, btnY, 160, 30);
+  c.strokeRect(btnX, btnY, btnW, btnH);
   c.fillStyle = canRepair ? "#0f0" : "#555";
-  c.font = "bold 12px monospace";
-  c.fillText(hpNeeded < 0.5 ? "HULL OK" : "[F] REPAIR", x + w / 2, btnY + 20);
-  c.textAlign = "left";
+  c.font = "bold 13px monospace";
+  c.fillText(hpNeeded < 0.5 && armorNeeded < 0.5 ? "HULL OK" : "REPAIR", x + w / 2, btnY + 22);
+  window._uniRepairRect = canRepair ? { x: btnX, y: btnY, w: btnW, h: btnH, cost: repairCost } : null;
 
-  const k = typeof keys !== "undefined" ? keys : {};
-  if (k["KeyF"] && canRepair) {
-    k["KeyF"] = false;
-    uniPlayer.hp = uniPlayer.maxHp;
-    uniPlayer.armor = uniPlayer.maxArmor;
-    if (world) {
-      world.player.credits -= repairCost;
-      if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
-    }
+  c.textAlign = "left";
+}
+
+// ── PLACEHOLDER TAB ───────────────────────────────────────────
+
+function _uniRenderPlaceholder(c, x, y, w, h, title, msg) {
+  c.textAlign = "center";
+  c.fillStyle = "#888"; c.font = "bold 16px monospace";
+  c.fillText(title, x + w / 2, y + 30);
+  c.fillStyle = "#555"; c.font = "12px monospace";
+  c.fillText(msg, x + w / 2, y + 55);
+  c.textAlign = "left";
+}
+
+// ── MAP RENDERING (reusing existing code from v1, will be replaced with visual map later) ──
+
+function _startUniMapLoop() {
+  if (_uniMapLoopId) return;
+  _uniMapLoopId = requestAnimationFrame(_uniMapTick);
+}
+
+function _stopUniMapLoop() {
+  if (_uniMapLoopId) { cancelAnimationFrame(_uniMapLoopId); _uniMapLoopId = null; }
+}
+
+function _uniMapTick() {
+  if (uniState !== "map" && uniState !== "quantum" && uniState !== "docked") {
+    _uniMapLoopId = null; return;
   }
-}
+  _uniFrameCount++;
+  const c = typeof ctx !== "undefined" ? ctx : null;
+  const gw = typeof GAME_W !== "undefined" ? GAME_W : 1280;
+  const gh = typeof GAME_H !== "undefined" ? GAME_H : 720;
+  if (!c) { _uniMapLoopId = requestAnimationFrame(_uniMapTick); return; }
 
-// ── MISSIONS (placeholder) ────────────────────────────────────
-
-function uniRenderMissions(c, x, y, w, h) {
-  c.textAlign = "center";
-  c.fillStyle = "#888";
-  c.font = "14px monospace";
-  c.fillText("Mission Board", x + w / 2, y + 30);
-  c.fillStyle = "#555";
-  c.font = "11px monospace";
-  c.fillText("Missions coming in Phase 1", x + w / 2, y + 55);
-  c.textAlign = "left";
-}
-
-// ── SHIPYARD (placeholder) ────────────────────────────────────
-
-function uniRenderShipyard(c, x, y, w, h) {
-  c.textAlign = "center";
-  c.fillStyle = "#888";
-  c.font = "14px monospace";
-  c.fillText("Shipyard", x + w / 2, y + 30);
-  c.fillStyle = "#555";
-  c.font = "11px monospace";
-  c.fillText("Ship switching coming in Phase 1", x + w / 2, y + 55);
-  c.textAlign = "left";
-}
-
-// ── FLYING RENDER ─────────────────────────────────────────────
-
-function uniRenderFlying(c, gw, gh) {
-  // Star background
-  if (typeof _buildStarBg === "function" && typeof _starCanvas !== "undefined") {
-    if (!_starCanvas) _buildStarBg();
-    if (_starCanvas) c.drawImage(_starCanvas, 0, 0);
-    else { c.fillStyle = "#020611"; c.fillRect(0, 0, gw, gh); }
+  if (uniState === "quantum") {
+    _uniUpdateQuantum();
+    _uniRenderQuantum(c, gw, gh);
+  } else if (uniState === "docked") {
+    uniRenderDockedUI();
   } else {
-    c.fillStyle = "#020611";
-    c.fillRect(0, 0, gw, gh);
-  }
-
-  // Asteroids
-  uniAsteroids.forEach(ast => {
-    c.save();
-    c.fillStyle = ast.color;
-    c.beginPath();
-    c.arc(ast.x, ast.y, ast.w / 2, 0, Math.PI * 2);
-    c.fill();
-    c.strokeStyle = "rgba(255,255,255,0.15)";
-    c.lineWidth = 1;
-    c.stroke();
-    // Health bar
-    if (ast.health < ast.maxHealth) {
-      c.fillStyle = "#333";
-      c.fillRect(ast.x - ast.w / 2, ast.y - ast.h / 2 - 8, ast.w, 4);
-      c.fillStyle = "#ffcc00";
-      c.fillRect(ast.x - ast.w / 2, ast.y - ast.h / 2 - 8, ast.w * (ast.health / ast.maxHealth), 4);
-    }
-    c.restore();
-  });
-
-  // POIs
-  uniPOIs.forEach(poi => {
-    c.save();
-    c.fillStyle = poi.discovered ? "#44ff88" : "#555";
-    c.font = poi.discovered ? "bold 14px monospace" : "12px monospace";
-    c.textAlign = "center";
-    c.fillText(poi.discovered ? "[" + poi.type + "]" : "?", poi.x, poi.y);
-    c.textAlign = "left";
-    c.restore();
-  });
-
-  // Station
-  if (uniStation) {
-    c.save();
-    c.fillStyle = "#0a1a0a";
-    c.fillRect(uniStation.x, uniStation.y, uniStation.w, uniStation.h);
-    c.strokeStyle = uniStation._playerNear ? "#0f0" : "#00ff88";
-    c.lineWidth = uniStation._playerNear ? 3 : 1.5;
-    c.strokeRect(uniStation.x, uniStation.y, uniStation.w, uniStation.h);
-    c.fillStyle = "#00ff88";
-    c.font = "bold 10px monospace";
-    c.textAlign = "center";
-    c.fillText(uniStation.name, uniStation.x + uniStation.w / 2, uniStation.y - 8);
-    if (uniStation._playerNear) {
-      c.fillStyle = "#0f0";
-      c.fillText("[E] DOCK", uniStation.x + uniStation.w / 2, uniStation.y + uniStation.h + 16);
-    }
-    c.textAlign = "left";
-    c.restore();
-  }
-
-  // Enemies
-  uniEnemies.forEach(e => {
-    if (typeof drawEntity === "function") drawEntity(e);
-    else {
-      c.fillStyle = e.color || "#ff4444";
-      c.fillRect(e.x, e.y, e.w, e.h);
-    }
-    // Aggro indicator
-    if (e.aggroed) {
-      c.fillStyle = "#ff4444";
-      c.font = "bold 9px monospace";
+    // Map
+    c.fillStyle = "#020611"; c.fillRect(0, 0, gw, gh);
+    const uni = window._activeUniverse;
+    if (uni) {
       c.textAlign = "center";
-      c.fillText("HOSTILE", e.x + e.w / 2, e.y - 22);
+      if (_uniMapLevel === "system") _renderSystemMap(c, gw, gh, uni);
+      else if (_uniMapLevel === "area") _renderAreaMap(c, gw, gh, uni);
+      else if (_uniMapLevel === "quadrant") _renderQuadrantMap(c, gw, gh, uni);
       c.textAlign = "left";
     }
-  });
+    // Back hint
+    c.fillStyle = "#666"; c.font = "12px monospace"; c.textAlign = "left";
+    c.fillText(_uniMapLevel === "system" ? "[ESC] Exit Universe" : "[ESC] Back", 10, gh - 10);
+    if (_uniCurrentSystem) {
+      c.textAlign = "right"; c.fillStyle = "#555"; c.font = "11px monospace";
+      c.fillText("Current: " + _uniCurrentSystem.name, gw - 10, gh - 10);
+    }
+    c.textAlign = "left";
+  }
 
-  // Player
-  if (uniPlayer) {
-    if (typeof drawEntity === "function") drawEntity(uniPlayer);
-    else {
-      c.fillStyle = uniPlayer.color || "#4488ff";
-      c.fillRect(uniPlayer.x, uniPlayer.y, uniPlayer.w, uniPlayer.h);
+  _uniMapLoopId = requestAnimationFrame(_uniMapTick);
+}
+
+// System map (text-based for now, visual map coming next session)
+function _renderSystemMap(c, gw, gh, uni) {
+  c.fillStyle = "#0af"; c.font = "bold 22px monospace"; c.fillText("STARMAP", gw / 2, 40);
+  const systems = Object.values(uni.systems);
+  const cols = 3, rows = Math.ceil(systems.length / cols);
+  const cellW = (gw - 100) / cols, cellH = (gh - 120) / rows;
+  const startX = 50, startY = 70;
+  const mx = typeof mouse !== "undefined" ? mouse.x : 0;
+  const my = typeof mouse !== "undefined" ? mouse.y : 0;
+  _uniMapHover = null;
+
+  // Connections
+  c.strokeStyle = "rgba(100,100,150,0.3)"; c.lineWidth = 1;
+  for (const sys of systems) {
+    const si = systems.indexOf(sys);
+    const sx = startX + (si % cols) * cellW + cellW / 2;
+    const sy = startY + Math.floor(si / cols) * cellH + cellH / 2;
+    for (const connId of sys.connections) {
+      const ci = systems.findIndex(s => s.id === connId);
+      if (ci < 0 || ci <= si) continue;
+      c.beginPath(); c.moveTo(sx, sy);
+      c.lineTo(startX + (ci % cols) * cellW + cellW / 2, startY + Math.floor(ci / cols) * cellH + cellH / 2);
+      c.stroke();
     }
   }
 
-  // Bullets
-  uniBullets.forEach(b => {
-    c.fillStyle = b.color || "#88ddff";
-    c.fillRect(b.x, b.y, b.w || 4, b.h || 4);
-  });
-  uniEnemyBullets.forEach(b => {
-    c.fillStyle = b.color || "#ff8844";
-    c.fillRect(b.x, b.y, b.w || 4, b.h || 4);
-  });
-
-  // Beam flashes
-  uniBeamFlashes.forEach(f => {
-    const alpha = f.life / f.maxLife;
-    c.save();
-    c.globalAlpha = alpha;
-    c.strokeStyle = f.color || "#88ddff";
-    c.lineWidth = 3;
-    c.beginPath(); c.moveTo(f.x1, f.y1); c.lineTo(f.x2, f.y2); c.stroke();
-    c.restore();
-  });
-
-  // Hit/death effects (reuse Arena's if available)
-  if (typeof drawHitEffects === "function") drawHitEffects();
-  if (typeof drawDeathEffects === "function") drawDeathEffects();
-
-  // Mining beam
-  if (_uniMiningTarget && uniPlayer) {
-    const progress = _uniMiningProgress / (_uniMiningTarget.maxHealth || 100);
-    c.save();
-    c.globalAlpha = 0.5 + progress * 0.5;
-    c.strokeStyle = "#ffcc00";
-    c.lineWidth = 2 + progress * 3;
-    c.beginPath();
-    c.moveTo(uniPlayer.x + uniPlayer.w / 2, uniPlayer.y + uniPlayer.h / 2);
-    c.lineTo(_uniMiningTarget.x, _uniMiningTarget.y);
-    c.stroke();
-    c.restore();
+  // Nodes
+  for (let i = 0; i < systems.length; i++) {
+    const sys = systems[i];
+    const x = startX + (i % cols) * cellW + cellW / 2;
+    const y = startY + Math.floor(i / cols) * cellH + cellH / 2;
+    const r = 28;
+    const hovered = Math.hypot(mx - x, my - y) < r + 10;
+    if (hovered) _uniMapHover = sys.id;
+    const isCurrent = _uniCurrentSystem && sys.id === _uniCurrentSystem.id;
+    const fc = sys.faction === "harvester" ? "#ff8800" : sys.faction === "eldritch" ? "#cc0033" : "#4488ff";
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2);
+    c.fillStyle = hovered ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.5)";
+    c.fill(); c.strokeStyle = isCurrent ? "#0f0" : fc; c.lineWidth = isCurrent ? 3 : 2; c.stroke();
+    c.fillStyle = isCurrent ? "#0f0" : hovered ? "#fff" : "#aaa"; c.font = "bold 11px monospace";
+    c.fillText(sys.name, x, y + r + 16);
+    c.fillStyle = "#666"; c.font = "9px monospace"; c.fillText("Danger " + sys.dangerLevel, x, y + r + 28);
+    if (isCurrent) { c.fillStyle = "#0f0"; c.font = "bold 9px monospace"; c.fillText("YOU ARE HERE", x, y - r - 8); }
   }
-
-  // HUD
-  uniRenderHUD(c, gw, gh);
+  c.fillStyle = "#555"; c.font = "11px monospace"; c.fillText("Click a system to view areas", gw / 2, gh - 30);
 }
 
-// ── HUD ───────────────────────────────────────────────────────
-
-function uniRenderHUD(c, gw, gh) {
-  if (!uniPlayer) return;
-  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
-  const credits = world ? world.player.credits : 0;
-
-  // Top bar
-  c.fillStyle = "rgba(0,0,0,0.6)";
-  c.fillRect(0, 0, gw, 32);
-
-  c.fillStyle = "#fff";
-  c.font = "11px monospace";
-  c.textAlign = "left";
-
-  // Location
-  const sysName = _uniCurrentSystem?.name || "Unknown";
-  const areaName = _uniCurrentArea?.name || "";
-  const quadName = _uniCurrentQuadrant?.name || "";
-  c.fillText(sysName + (areaName ? " > " + areaName : "") + (quadName ? " > " + quadName : ""), 8, 14);
-
-  // Credits
-  c.fillStyle = "#ffcc00";
-  c.textAlign = "right";
-  c.fillText(credits.toLocaleString() + " SC", gw - 8, 14);
-
-  // Bottom bar
-  c.fillStyle = "rgba(0,0,0,0.6)";
-  c.fillRect(0, gh - 48, gw, 48);
-
-  // HP bar
-  const barX = 8, barY = gh - 42, barW = 140, barH = 10;
-  c.fillStyle = "#333"; c.fillRect(barX, barY, barW, barH);
-  const hpFrac = Math.max(0, uniPlayer.hp / uniPlayer.maxHp);
-  c.fillStyle = hpFrac > 0.5 ? "#0f0" : hpFrac > 0.25 ? "#ff8800" : "#ff4444";
-  c.fillRect(barX, barY, barW * hpFrac, barH);
-  c.fillStyle = "#aaa"; c.font = "9px monospace"; c.textAlign = "left";
-  c.fillText("HP " + Math.floor(uniPlayer.hp), barX, barY + barH + 10);
-
-  // Shield bar
-  const shBarY = barY + 14;
-  c.fillStyle = "#333"; c.fillRect(barX, shBarY, barW, barH);
-  const shFrac = Math.max(0, uniPlayer.shields / uniPlayer.maxShields);
-  c.fillStyle = "#0af";
-  c.fillRect(barX, shBarY, barW * shFrac, barH);
-  c.fillText("SH " + Math.floor(uniPlayer.shields), barX, shBarY + barH + 10);
-
-  // Fuel bar
-  const fuelX = 180;
-  c.fillStyle = "#333"; c.fillRect(fuelX, barY, barW, barH);
-  const fuelFrac = Math.max(0, uniPlayer.fuel / uniPlayer.fuelMax);
-  c.fillStyle = fuelFrac > 0.3 ? "#0af" : fuelFrac > 0.1 ? "#ff8800" : "#ff4444";
-  c.fillRect(fuelX, barY, barW * fuelFrac, barH);
-  c.fillText("FUEL " + Math.floor(uniPlayer.fuel) + "/" + uniPlayer.fuelMax, fuelX, barY + barH + 10);
-
-  // Cargo
-  const cargoX = 360;
-  c.fillStyle = "#aaa"; c.font = "10px monospace";
-  c.fillText("CARGO " + uniPlayer.cargo.length + "/" + uniPlayer.cargoCapacity, cargoX, barY + 8);
-  if (uniPlayer.cargo.length > 0) {
-    const summary = uniPlayer.cargo.map(c => c.commodity + "x" + c.quantity).join(" ");
-    c.fillStyle = "#777"; c.font = "9px monospace";
-    c.fillText(summary, cargoX, barY + 22);
+function _renderAreaMap(c, gw, gh, uni) {
+  const sys = uni.systems[_uniMapSelectedSystem];
+  if (!sys) { _uniMapLevel = "system"; return; }
+  c.fillStyle = "#0af"; c.font = "bold 20px monospace"; c.fillText(sys.name + " - Areas", gw / 2, 40);
+  const areas = Object.values(sys.areas);
+  const cols = Math.min(4, areas.length), rows = Math.ceil(areas.length / cols);
+  const cellW = (gw - 80) / cols, cellH = Math.min(110, (gh - 140) / rows);
+  const mx = typeof mouse !== "undefined" ? mouse.x : 0, my = typeof mouse !== "undefined" ? mouse.y : 0;
+  _uniMapHover = null;
+  for (let i = 0; i < areas.length; i++) {
+    const area = areas[i], col = i % cols, row = Math.floor(i / cols);
+    const x = 40 + col * cellW, y = 70 + row * cellH, w = cellW - 8, h = cellH - 8;
+    const hovered = mx > x && mx < x + w && my > y && my < y + h;
+    if (hovered) _uniMapHover = area.id;
+    const tc = area.type === "planet" ? "#4488ff" : area.type === "belt" ? "#aa8844" : area.type === "wormhole" ? "#aa44ff" : area.type === "sun" ? "#ffcc00" : area.type === "anomaly" ? "#ff4488" : "#666";
+    c.fillStyle = hovered ? "rgba(255,255,255,0.06)" : "rgba(10,14,26,0.8)"; c.fillRect(x, y, w, h);
+    c.strokeStyle = tc; c.lineWidth = hovered ? 2 : 1; c.strokeRect(x, y, w, h);
+    c.textAlign = "left"; c.fillStyle = "#fff"; c.font = "bold 12px monospace"; c.fillText(area.name, x + 8, y + 20);
+    c.fillStyle = tc; c.font = "10px monospace"; c.fillText(area.type.toUpperCase(), x + 8, y + 34);
+    c.fillStyle = "#666"; c.font = "9px monospace"; c.fillText(area.quadrants.length + " sectors", x + 8, y + 48);
+    if (area.type === "wormhole" && area.targetSystem) { c.fillStyle = "#aa44ff"; c.fillText("-> " + area.targetSystem, x + 8, y + 62); }
   }
-
-  // Mining power indicator
-  if (uniPlayer.miningPower > 0) {
-    c.fillStyle = "#ffaa00"; c.font = "9px monospace";
-    c.fillText("[H] Mine", cargoX, barY + 38);
-  }
-
-  // Combat status
-  if (_uniInCombat) {
-    c.fillStyle = "#ff4444"; c.font = "bold 11px monospace";
-    c.textAlign = "center";
-    c.fillText("IN COMBAT — Cannot quantum travel", gw / 2, gh - 52);
-  }
-
-  // Map hint
-  c.textAlign = "right";
-  c.fillStyle = "#666"; c.font = "10px monospace";
-  c.fillText("[M] Map  [ESC] Map", gw - 8, gh - 6);
-
-  c.textAlign = "left";
+  c.textAlign = "center"; c.fillStyle = "#555"; c.font = "11px monospace"; c.fillText("Click an area to view sectors", gw / 2, gh - 30);
 }
 
-// ── INPUT HOOKS ───────────────────────────────────────────────
-// Click handling for map and station UI
+function _renderQuadrantMap(c, gw, gh, uni) {
+  const sys = uni.systems[_uniMapSelectedSystem];
+  if (!sys) { _uniMapLevel = "system"; return; }
+  const area = sys.areas[_uniMapSelectedArea];
+  if (!area) { _uniMapLevel = "area"; return; }
+  c.fillStyle = "#0af"; c.font = "bold 18px monospace"; c.fillText(area.name + " - Sectors", gw / 2, 40);
+  const quads = area.quadrants, cols = Math.min(4, quads.length), rows = Math.ceil(quads.length / cols);
+  const cellW = (gw - 80) / cols, cellH = Math.min(120, (gh - 140) / rows);
+  const mx = typeof mouse !== "undefined" ? mouse.x : 0, my = typeof mouse !== "undefined" ? mouse.y : 0;
+  _uniMapHover = null;
+  for (let i = 0; i < quads.length; i++) {
+    const q = quads[i], col = i % cols, row = Math.floor(i / cols);
+    const x = 40 + col * cellW, y = 70 + row * cellH, w = cellW - 8, h = cellH - 8;
+    const hovered = mx > x && mx < x + w && my > y && my < y + h;
+    if (hovered) _uniMapHover = q.id;
+    const tc = q.type === "station" ? "#00ff88" : q.type === "mining" ? "#ffaa00" : q.type === "patrol" ? "#ff4444" : q.type === "debris" ? "#aa8844" : q.type === "wormhole_tunnel" ? "#aa44ff" : "#446688";
+    c.fillStyle = hovered ? "rgba(255,255,255,0.06)" : "rgba(10,14,26,0.8)"; c.fillRect(x, y, w, h);
+    c.strokeStyle = tc; c.lineWidth = hovered ? 2 : 1; c.strokeRect(x, y, w, h);
+    c.textAlign = "left"; c.fillStyle = "#fff"; c.font = "bold 11px monospace"; c.fillText(q.name || q.id, x + 8, y + 18);
+    c.fillStyle = tc; c.font = "10px monospace"; c.fillText(q.type.toUpperCase(), x + 8, y + 32);
+    if (hovered) {
+      c.fillStyle = "rgba(0,255,100,0.15)"; c.fillRect(x + 4, y + h - 24, w - 8, 18);
+      c.fillStyle = "#0f0"; c.font = "bold 10px monospace"; c.textAlign = "center"; c.fillText("CLICK TO TRAVEL", x + w / 2, y + h - 10);
+    }
+  }
+  c.textAlign = "center"; c.fillStyle = "#555"; c.font = "11px monospace";
+  c.fillText("Click a sector to quantum travel", gw / 2, gh - 30);
+  if (typeof player !== "undefined" && player) { c.fillStyle = "#888"; c.font = "10px monospace"; c.fillText("Fuel: " + Math.floor(player.fuel) + "/" + (player.fuelMax || 50), gw / 2, gh - 48); }
+}
+
+// ── INPUT HANDLERS ────────────────────────────────────────────
 
 document.addEventListener("mousedown", function(e) {
   if (uniState === "inactive") return;
-  if (uniState === "map") {
-    _uniHandleMapClick();
+  const ds = typeof displayScale !== "undefined" ? displayScale : 1;
+  const mx = e.clientX / ds, my = e.clientY / ds;
+
+  if (uniState === "map" && _uniMapHover) {
+    if (_uniMapLevel === "system") { _uniMapSelectedSystem = _uniMapHover; _uniMapLevel = "area"; }
+    else if (_uniMapLevel === "area") { _uniMapSelectedArea = _uniMapHover; _uniMapLevel = "quadrant"; }
+    else if (_uniMapLevel === "quadrant") {
+      const sys = window._activeUniverse?.systems[_uniMapSelectedSystem];
+      const area = sys?.areas[_uniMapSelectedArea];
+      const quad = area?.quadrants.find(q => q.id === _uniMapHover);
+      if (quad) {
+        if (quad.type === "wormhole_tunnel" && quad.toSystem) uniStartWormhole(quad.toSystem);
+        else uniStartQuantum(_uniMapSelectedSystem, _uniMapSelectedArea, quad);
+      }
+    }
     return;
   }
+
   if (uniState === "docked") {
-    _uniHandleStationClick(e);
+    // Tab clicks
+    if (window._uniStationTabRects) {
+      for (const r of window._uniStationTabRects) {
+        if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniStationTab = r.id; return; }
+      }
+    }
+    // Trade row clicks
+    if (_uniStationTab === "trading" && window._uniTradeRows) {
+      for (const r of window._uniTradeRows) {
+        if (my > r.y1 && my < r.y2 && mx > r.x && mx < r.x + r.w) { _uniTradeSelected = r.idx; return; }
+      }
+      // Buy/Sell button clicks
+      if (window._uniTradeBuyRect) {
+        const r = window._uniTradeBuyRect;
+        if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
+          _uniTradeBuy(r.key, r.price, _uniDockedStation.id); return;
+        }
+      }
+      if (window._uniTradeSellRect) {
+        const r = window._uniTradeSellRect;
+        if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
+          _uniTradeSell(r.key, r.price, _uniDockedStation.id); return;
+        }
+      }
+    }
+    // Refuel button
+    if (_uniStationTab === "refuel" && window._uniRefuelRect) {
+      const r = window._uniRefuelRect;
+      if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
+        if (typeof player !== "undefined" && player) player.fuel = player.fuelMax || 50;
+        const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+        if (world) { world.player.credits -= r.cost; if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits; }
+        window._uniRefuelRect = null; return;
+      }
+    }
+    // Repair button
+    if (_uniStationTab === "repair" && window._uniRepairRect) {
+      const r = window._uniRepairRect;
+      if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
+        if (typeof player !== "undefined" && player) { player.hp = player.maxHp; player.armor = player.maxArmor; }
+        const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+        if (world) { world.player.credits -= r.cost; if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits; }
+        window._uniRepairRect = null; return;
+      }
+    }
+    // Undock button
+    if (window._uniUndockRect) {
+      const r = window._uniUndockRect;
+      if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
+        uniState = "flying";
+        if (typeof state !== "undefined") state = "playing";
+        _uniDockedStation = null;
+        _stopUniMapLoop();
+        return;
+      }
+    }
     return;
   }
 });
 
 document.addEventListener("keydown", function(e) {
   if (uniState === "inactive") return;
-
-  if (uniState === "map" && e.code === "Escape") {
-    e.preventDefault();
-    _uniHandleMapBack();
-    return;
-  }
-
-  if (uniState === "docked") {
-    if (e.code === "Escape") {
-      e.preventDefault();
-      uniState = "flying";
-      _uniDockedStation = null;
-      return;
-    }
-    // Tab switching with number keys
-    const tabMap = { "Digit1": "trading", "Digit2": "refuel", "Digit3": "repair", "Digit4": "missions", "Digit5": "shipyard" };
-    if (tabMap[e.code]) {
-      _uniStationTab = tabMap[e.code];
-      return;
-    }
-  }
+  if (uniState === "map" && e.code === "Escape") { e.preventDefault(); _uniMapBack(); return; }
+  if (uniState === "docked" && e.code === "Escape") { e.preventDefault(); uniState = "flying"; if (typeof state !== "undefined") state = "playing"; _uniDockedStation = null; _stopUniMapLoop(); return; }
 });
 
-function _uniHandleStationClick(e) {
-  if (!_uniDockedStation) return;
-  const gw = typeof GAME_W !== "undefined" ? GAME_W : 1280;
-  const gh = typeof GAME_H !== "undefined" ? GAME_H : 720;
-  const ds = typeof displayScale !== "undefined" ? displayScale : 1;
-
-  const mx = e.clientX / ds;
-  const my = e.clientY / ds;
-
-  const panelW = Math.min(600, gw - 40);
-  const panelH = Math.min(500, gh - 40);
-  const px = (gw - panelW) / 2;
-  const py = (gh - panelH) / 2;
-
-  // Tab clicks
-  const tabs = ["trading", "refuel", "repair", "missions", "shipyard"];
-  const tabW = panelW / tabs.length;
-  if (my > py + 40 && my < py + 68) {
-    const tabIdx = Math.floor((mx - px) / tabW);
-    if (tabIdx >= 0 && tabIdx < tabs.length) {
-      _uniStationTab = tabs[tabIdx];
-    }
-  }
-
-  // Trading row clicks
-  if (_uniStationTab === "trading" && window._uniTradeRows) {
-    for (const row of window._uniTradeRows) {
-      const rowScreenY1 = row.y1;
-      const rowScreenY2 = row.y2;
-      if (my > rowScreenY1 && my < rowScreenY2 && mx > px + 10 && mx < px + panelW - 10) {
-        _uniTradeSelected = row.idx;
-        break;
-      }
-    }
-  }
-
-  // Leave button
-  if (my > py + panelH - 30 && my < py + panelH - 6 && mx > px + panelW / 2 - 60 && mx < px + panelW / 2 + 60) {
-    uniState = "flying";
-    _uniDockedStation = null;
-  }
+function _uniMapBack() {
+  if (_uniMapLevel === "quadrant") _uniMapLevel = "area";
+  else if (_uniMapLevel === "area") _uniMapLevel = "system";
+  else exitUniverse();
 }
 
-// ── INTEGRATION ───────────────────────────────────────────────
-// universe_menu.js calls startUniverseMode() which checks for
-// enterUniverse() (defined above). If found, launches real gameplay.
-// If not (universe.js not loaded), shows placeholder.
-// No redefinition needed here — universe_menu.js handles the routing.
+// ── MOBILE UI ─────────────────────────────────────────────────
+// Build dock/mine/map buttons for mobile. Arena mobile controls (joysticks, boost, missile)
+// already work via game.js — we just need universe-specific buttons.
+
+function _buildUniMobileUI() {
+  if (!IS_MOBILE) return;
+  _hideUniMobileUI();
+
+  const ui = document.createElement("div");
+  ui.id = "uniMobileUI";
+  ui.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:998;touch-action:none";
+
+  // Map button
+  const mapBtn = document.createElement("div");
+  mapBtn.textContent = "MAP";
+  mapBtn.style.cssText = "position:absolute;top:40px;right:10px;padding:8px 16px;background:rgba(0,170,255,0.18);border:2px solid rgba(0,170,255,0.7);border-radius:8px;color:#0af;font:bold 12px monospace;pointer-events:all;touch-action:none;user-select:none";
+  mapBtn.addEventListener("touchstart", e => {
+    e.preventDefault();
+    if (!_uniInCombat && uniState === "flying") {
+      uniState = "map"; if (typeof state !== "undefined") state = "menu";
+      _uniMapLevel = "quadrant"; _startUniMapLoop();
+    }
+  }, { passive: false });
+  ui.appendChild(mapBtn);
+
+  // Dock button (shows when near station)
+  const dockBtn = document.createElement("div");
+  dockBtn.id = "uniDockBtn";
+  dockBtn.textContent = "DOCK";
+  dockBtn.style.cssText = "position:absolute;top:80px;right:10px;padding:8px 16px;background:rgba(0,255,100,0.18);border:2px solid rgba(0,255,100,0.7);border-radius:8px;color:#0f0;font:bold 12px monospace;pointer-events:all;touch-action:none;user-select:none;display:none";
+  dockBtn.addEventListener("touchstart", e => {
+    e.preventDefault();
+    if (uniStation && uniStation._playerNear && !_uniInCombat) {
+      if (typeof keys !== "undefined") keys["KeyE"] = true;
+      setTimeout(() => { if (typeof keys !== "undefined") keys["KeyE"] = false; }, 50);
+    }
+  }, { passive: false });
+  ui.appendChild(dockBtn);
+
+  // Mine button (shows when mining ship near asteroid)
+  const mineBtn = document.createElement("div");
+  mineBtn.id = "uniMineBtn";
+  mineBtn.textContent = "MINE";
+  mineBtn.style.cssText = "position:absolute;top:120px;right:10px;padding:8px 16px;background:rgba(255,170,0,0.18);border:2px solid rgba(255,170,0,0.7);border-radius:8px;color:#ffaa00;font:bold 12px monospace;pointer-events:all;touch-action:none;user-select:none;display:none";
+  mineBtn.addEventListener("touchstart", e => {
+    e.preventDefault();
+    if (typeof keys !== "undefined") keys["KeyH"] = true;
+  }, { passive: false });
+  mineBtn.addEventListener("touchend", e => {
+    e.preventDefault();
+    if (typeof keys !== "undefined") keys["KeyH"] = false;
+  }, { passive: false });
+  ui.appendChild(mineBtn);
+
+  document.body.appendChild(ui);
+  _uniMobileUI = ui;
+
+  // Show Arena mobile controls too (joysticks, boost, missile)
+  const arenaUI = document.getElementById("mobileUI");
+  if (arenaUI) arenaUI.style.display = "block";
+}
+
+function _hideUniMobileUI() {
+  if (_uniMobileUI) { _uniMobileUI.remove(); _uniMobileUI = null; }
+}
+
+// Update mobile button visibility each frame
+function _uniUpdateMobileButtons() {
+  if (!IS_MOBILE || !_uniMobileUI) return;
+  const dockBtn = document.getElementById("uniDockBtn");
+  const mineBtn = document.getElementById("uniMineBtn");
+  if (dockBtn) dockBtn.style.display = (uniStation && uniStation._playerNear && !_uniInCombat) ? "block" : "none";
+  if (mineBtn) mineBtn.style.display = (typeof player !== "undefined" && player && player.miningPower > 0 && uniAsteroids.length > 0) ? "block" : "none";
+}
+
+// ══════════════════════════════════════════════════════════════
+// GAME.JS INTEGRATION — TODO LIST
+// These changes must be made to game.js for universe.js to work:
+// ══════════════════════════════════════════════════════════════
+//
+// 1. Add globals at the top of game.js:
+//    window.gameMode = "arena";  // "arena" | "universe"
+//    window.camX = 0;
+//    window.camY = 0;
+//    window.quadW = GAME_W;
+//    window.quadH = GAME_H;
+//
+// 2. In updatePlayer(), change position clamping:
+//    BEFORE: player.x = Math.max(0, Math.min(GAME_W - player.w, ...));
+//    AFTER:  const boundW = window.gameMode === "universe" ? window.quadW : GAME_W;
+//            const boundH = window.gameMode === "universe" ? window.quadH : GAME_H;
+//            player.x = Math.max(0, Math.min(boundW - player.w, ...));
+//            player.y = Math.max(0, Math.min(boundH - player.h, ...));
+//
+// 3. Add camera update at end of updatePlayer():
+//    if (window.gameMode === "universe") {
+//      window.camX = Math.max(0, Math.min(window.quadW - GAME_W, player.x + player.w/2 - GAME_W/2));
+//      window.camY = Math.max(0, Math.min(window.quadH - GAME_H, player.y + player.h/2 - GAME_H/2));
+//    }
+//
+// 4. In render(), wrap entity drawing with camera offset:
+//    if (window.gameMode === "universe") ctx.translate(-window.camX, -window.camY);
+//    ... all existing drawing code ...
+//    if (window.gameMode === "universe") ctx.translate(window.camX, window.camY);
+//    // Then call uniRenderOverlay() for asteroids, stations, HUD
+//    if (window.gameMode === "universe" && typeof uniRenderOverlay === "function") uniRenderOverlay();
+//
+// 5. In gameLoop(), skip arena-specific logic in universe mode:
+//    if (state === "playing") {
+//      if (window.gameMode === "universe") {
+//        updatePlayer(); updateEnemies(); updateBullets(); checkCollisions();
+//        updateHitEffects(); updateDeathEffects(); updateThrusterParticles();
+//        if (typeof uniUpdate === "function") uniUpdate();
+//        if (typeof _uniCheckMapKey === "function") _uniCheckMapKey();
+//        if (typeof _uniUpdateMobileButtons === "function") _uniUpdateMobileButtons();
+//      } else {
+//        // existing arena gameLoop code
+//      }
+//    }
+//
+// 6. In render(), skip arena HUD in universe mode:
+//    if (window.gameMode !== "universe") { drawBoostHUD(); drawSpecialHUD(); ... }
+//
+// 7. In updateEnemies(), skip Dreadnaught/beam/reinforcement logic for universe patrols:
+//    enemies with e._uniPatrol && !e.aggroed should be skipped by updateEnemies
+//    enemies with e._uniPatrol && e.aggroed should fight normally (arena AI works)
+//    enemies with e.isPassive && e.aggroed are handled by uniUpdate (flee logic)
