@@ -259,7 +259,7 @@ const AREA_TYPES = {
 // Average 4-6 quadrants per area.
 
 const QUADRANT_TYPES = {
-  station:         { hasStation: true,  hasAsteroids: false, hasPatrols: true,  fixed: true,  desc: "Space station and surrounding area" },
+  station:         { hasStation: true,  hasAsteroids: false, hasPatrols: false, fixed: true,  desc: "Space station and surrounding area" },
   outpost:         { hasStation: true,  hasAsteroids: false, hasPatrols: false, fixed: true,  desc: "Planetary ground outpost" },
   mining:          { hasStation: false, hasAsteroids: true,  hasPatrols: false, fixed: false, desc: "Asteroid mining field" },
   patrol:          { hasStation: false, hasAsteroids: false, hasPatrols: true,  fixed: false, desc: "Patrol route — combat likely" },
