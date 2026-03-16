@@ -204,7 +204,7 @@ const SHIPS = {
   // --- CAPITAL ---
   Nemesis:    { price: 280000,    hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Nemesis.png",          color: "#ffff44", size: 6,  missileType: 3, armorType: "capital",    allySlots: ["small","medium","medium","heavy","heavy","heavy","heavy"],
     bespokeAlt: "vortex_cannon",   bespokeAltName: "Vortex Cannon" },
-  Prometheus: { price: 500000,    hp: 5000,  shields: 4000, armor: 100, missiles: 30, speed: 0.6,  weaponType: "ballistic_gatling", weaponSize: 7,  bespoke: true,  pdc: 6,  pdcSize: 4,                         image: "Polaris.png",          color: "#ff44ff", size: 7,  missileType: 3, armorType: "capital",    allySlots: ["small","small","medium","medium","heavy","heavy","heavy","heavy","heavy"],
+  Prometheus: { price: 500000,    hp: 5000,  shields: 4000, armor: 100, missiles: 30, speed: 0.6,  weaponType: "ballistic_gatling", weaponSize: 7,  bespoke: true,  pdc: 6,  pdcSize: 4,                         image: "Prometheus.png",       color: "#ff44ff", size: 7,  missileType: 3, armorType: "capital",    allySlots: ["small","small","medium","medium","heavy","heavy","heavy","heavy","heavy"],
     bespokeAlt: "scatter_gatling", bespokeAltName: "Scatter Gatling" },
   // --- SUPER CAPITAL ---
   Leviathan:  { price: 750000,    hp: 7500,  shields: 7000, armor: 100, missiles: 24, speed: 0.5,  weaponType: "none",              weaponSize: 0,  bespoke: false, pdc: 8, pdcSizes: [7,5,5,5,4,4,4,4], image: "Leviathan.png",  color: "#88ff00", size: 8,  missileType: 3, armorType: "capital",    allySlots: ["small","small","small","medium","medium","medium","heavy","heavy","heavy","heavy","capital","capital","capital"] },
@@ -224,13 +224,23 @@ const ENEMIES = {
   Raptor:      { hp: 120,   shields: 130,   armor: 200, speed: 3.8,  score: 100,   fireRate: 70, weaponType: "laser_repeater",    weaponSize: 2,  armorType: "light",      image: "Galactic_Horizons_Raptor_Enemy.png",         color: "#ff4444" },
   Rouge:       { hp: 500,   shields: 520,   armor: 200, speed: 2.0,  score: 350,   fireRate: 55, weaponType: "laser_repeater",    weaponSize: 3,  armorType: "medium",     image: "Galactic_Horizons_Rougue_Enemy.png",         color: "#ff8844" },
   Corsair:     { hp: 800,   shields: 750,   armor: 200, speed: 1.5,  score: 600,   fireRate: 50, weaponType: "laser_repeater",    weaponSize: 5,  armorType: "heavy",      image: "Corsair.png",         color: "#ff44ff" },
-  Bulwark:     { hp: 3700,  shields: 4500,  armor: 200, speed: 0.35, score: 3000,  fireRate: 28, weaponType: "laser_repeater",    weaponSize: 4,  armorType: "subcapital", image: "Bulwark.png",      color: "#4466ff" },
-  Prometheus:  { hp: 8000,  shields: 7000,  armor: 200, speed: 0.25, score: 6000,  fireRate: 32, weaponType: "ballistic_cannon",  weaponSize: 6,  armorType: "capital",    image: "Polaris.png",         color: "#dd44ff" },
-  Dominion:    { hp: 18000, shields: 14000, armor: 200, speed: 0.15, score: 10000, fireRate: 22, weaponType: "ballistic_railgun", weaponSize: 10, armorType: "capital",    image: "Dominion.png",           color: "#ff0000" },
-  Dreadnaught: { hp: 80000, shields: 60000, armor: 200, speed: 0.08, score: 50000, fireRate: 35, weaponType: "laser_cannon",      weaponSize: 8,  armorType: "capital",    image: "VanduulKingship.png", color: "#ff6600" },
-  Healer:      { hp: 3500, shields: 3000,  armor: 200, speed: 0.28, score: 2500,  fireRate: 45, weaponType: "laser_cannon",      weaponSize: 4,  armorType: "subcapital", image: "HammerHead.png", color: "#44ffaa" },
+  Bulwark:     { hp: 3700,  shields: 4500,  armor: 200, speed: 0.35, score: 3000,  fireRate: 28, weaponType: "laser_repeater",    weaponSize: 4,  armorType: "subcapital", image: "EnemyBulwark.png",    color: "#4466ff" },
+  Prometheus:  { hp: 8000,  shields: 7000,  armor: 200, speed: 0.25, score: 6000,  fireRate: 32, weaponType: "ballistic_cannon",  weaponSize: 6,  armorType: "capital",    image: "EnemyPrometheus.png", color: "#dd44ff" },
+  Dominion:    { hp: 18000, shields: 14000, armor: 200, speed: 0.15, score: 10000, fireRate: 22, weaponType: "ballistic_railgun", weaponSize: 10, armorType: "capital",    image: "EnemyDominion.png",   color: "#ff0000" },
+  Dreadnaught: { hp: 80000, shields: 60000, armor: 200, speed: 0.08, score: 50000, fireRate: 35, weaponType: "laser_cannon",      weaponSize: 8,  armorType: "capital",    image: "Dreadnaught1.png",    color: "#ff6600",
+    animFrames: ["Dreadnaught1.png","Dreadnaught2.png","Dreadnaught3.png"], animPattern: [0,1,2,1], animSpeed: 20 },
+  Healer:      { hp: 3500, shields: 3000,  armor: 200, speed: 0.28, score: 2500,  fireRate: 45, weaponType: "laser_cannon",      weaponSize: 4,  armorType: "subcapital", image: "EnemyMedic.png",      color: "#44ffaa" },
   Sprite:      { hp: 60,    shields: 70,    armor: 200, speed: 2.0,  score: 120,   fireRate: 60, weaponType: "laser_repeater",    weaponSize: 1,  armorType: "light",      image: "Galactic_Horizons_Sprite.png",          color: "#88ff88" },
-  ShadowComet: { hp: 1400,  shields: 1000,  armor: 300, speed: 4.5,  score: 0,     fireRate: 16, weaponType: "ballistic_cannon",  weaponSize: 8,  armorType: "light",      image: "Meteor.png",          color: "#ff0044" },
+  ShadowComet: { hp: 1400,  shields: 1000,  armor: 300, speed: 4.5,  score: 0,     fireRate: 16, weaponType: "ballistic_cannon",  weaponSize: 8,  armorType: "light",      image: "EldritchComet1.png",  color: "#ff0044",
+    animFrames: ["EldritchComet1.png","EldritchComet2.png","EldritchComet3.png"], animPattern: [0,1,0,2], animSpeed: 20 },
+};
+
+// ShadowVengeance animation data — boss is spawned in game.js, not ENEMIES
+const SHADOW_VENGEANCE_ANIM = {
+  image: "EldritchVengeance1.png",
+  animFrames: ["EldritchVengeance1.png","EldritchVengeance2.png","EldritchVengeance3.png"],
+  animPattern: [0,1,2,1],
+  animSpeed: 20,
 };
 
 ENEMIES.Raptor.turrets = [
