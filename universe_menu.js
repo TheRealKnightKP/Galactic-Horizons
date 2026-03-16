@@ -239,17 +239,24 @@ function openAccountPanel() {
   document.getElementById("topMenu").style.display = "none";
   document.getElementById("accountPanel").style.display = "block";
 
-  // Populate account body — pull from existing Command Center account tab
   const body = document.getElementById("accountBody");
-  if (typeof renderAccountPanel === "function") {
-    renderAccountPanel(body);
+  if (!body) return;
+
+  // Render account section
+  if (typeof renderShopAccount === "function") {
+    renderShopAccount(body);
   } else {
-    // Fallback — basic account info
-    let html = '';
     const username = typeof currentUsername !== "undefined" ? currentUsername : "Not logged in";
-    html += '<div style="color:#fff;font:14px monospace;margin-bottom:12px">Logged in as: <span style="color:#0af">' + escapeHTML(username) + '</span></div>';
-    html += '<div style="color:#888;font:12px monospace">Account management coming soon.</div>';
-    body.innerHTML = html;
+    body.innerHTML = '<div style="color:#fff;font:14px monospace;margin-bottom:12px">Logged in as: <span style="color:#0af">' + escapeHTML(username) + '</span></div>';
+  }
+
+  // Append admin panel below account if user is admin
+  const isAdmin = (typeof currentAccount !== "undefined") && currentAccount?.isAdmin;
+  if (isAdmin && typeof renderAdminPanel === "function") {
+    const adminDiv = document.createElement("div");
+    adminDiv.style.cssText = "margin-top:20px;padding-top:16px;border-top:1px solid #333";
+    body.appendChild(adminDiv);
+    renderAdminPanel(adminDiv);
   }
 }
 
