@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.8";
+const CACHE = "galactic-horizons-v1.8.9";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -170,4 +170,5 @@ Versions:
 -V1.8.6 - added parallax dots and cam fixes
 -V1.8.7 - Map fixes and others
 -V1.8.8 - Fixed some stuff
+-V1.8.9 - Fixes and more fixes
 */
