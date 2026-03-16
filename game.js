@@ -1310,7 +1310,7 @@ function nextWave() {
 
 function startGame(infinite) {
   infiniteMode=infinite; currentWave=0;
-  document.getElementById("mainMenu").style.display="none";
+  document.getElementById("arenaMenu").style.display="none";
   if(!ownedShips||ownedShips.length===0) ownedShips=["Starlight"];
   setPlayerShip(playerLoadout.ship||"Starlight");
   if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="none";}
@@ -1318,7 +1318,7 @@ function startGame(infinite) {
 }
 
 function showWavesConfirm(infinite) {
-  document.getElementById("mainMenu").style.display="none";
+  document.getElementById("arenaMenu").style.display="none";
   let el=document.getElementById("wavesConfirm");
   if(!el){
     el=document.createElement("div"); el.id="wavesConfirm";
@@ -1330,11 +1330,11 @@ function showWavesConfirm(infinite) {
   }
   el.style.display="flex";
   el.querySelector("#wc_yes").onclick=()=>{ el.style.display="none"; nextWave(); };
-  el.querySelector("#wc_no").onclick=()=>{ el.style.display="none"; document.getElementById("mainMenu").style.display="block"; state="menu"; };
+  el.querySelector("#wc_no").onclick=()=>{ el.style.display="none"; document.getElementById("arenaMenu").style.display="block"; state="menu"; };
 }
 
 function returnToMenuPreserveMoney() {
-  document.getElementById("gameOverMenu").style.display="none"; document.getElementById("mainMenu").style.display="block"; state="menu";
+  document.getElementById("gameOverMenu").style.display="none"; document.getElementById("arenaMenu").style.display="block"; state="menu";
 }
 
 function endGame(won) {
@@ -2482,7 +2482,7 @@ function confirmLeaveGame() {
   if(confirm("Are you sure you want to leave? All progress will be lost.")) {
     enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
     shadowCometActive=false; pdcDisabledThisWave=false; state="menu";
-    document.getElementById("mainMenu").style.display="block"; document.getElementById("hud").style.display="none"; document.getElementById("inGameBack").style.display="none";
+    document.getElementById("arenaMenu").style.display="block"; document.getElementById("hud").style.display="none"; document.getElementById("inGameBack").style.display="none";
     if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="none";}
   }
 }
