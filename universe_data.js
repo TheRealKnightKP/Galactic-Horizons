@@ -452,15 +452,15 @@ function getRepTier(repValue) {
 
 // ── MISSIONS ──────────────────────────────────────────────────
 const MISSION_TYPES = {
-  bounty:        { name: "Bounty",            icon: "🎯", minRep: "neutral" },
-  delivery:      { name: "Delivery",          icon: "📦", minRep: "neutral" },
-  mining:        { name: "Mining Contract",   icon: "⛏",  minRep: "neutral" },
-  explore:       { name: "Exploration",       icon: "🔭", minRep: "friendly" },
-  salvage:       { name: "Salvage Op",        icon: "🔧", minRep: "neutral" },
-  protect:       { name: "Protection Detail", icon: "🛡",  minRep: "friendly" },
-  aid:           { name: "Aid Faction Event", icon: "⚔",  minRep: "friendly" },
-  suneater:      { name: "Repair Suneater",   icon: "☀",  minRep: "allied" },
-  second_chance: { name: "Second Chance",     icon: "🕊",  minRep: "hostile",
+  bounty:        { name: "Bounty",            icon: "BNT", minRep: "neutral" },
+  delivery:      { name: "Delivery",          icon: "DLV", minRep: "neutral" },
+  mining:        { name: "Mining Contract",   icon: "MNE",  minRep: "neutral" },
+  explore:       { name: "Exploration",       icon: "EXP", minRep: "friendly" },
+  salvage:       { name: "Salvage Op",        icon: "SLV", minRep: "neutral" },
+  protect:       { name: "Protection Detail", icon: "PRT",  minRep: "friendly" },
+  aid:           { name: "Aid Faction Event", icon: "AID",  minRep: "friendly" },
+  suneater:      { name: "Repair Suneater",   icon: "SUN",  minRep: "allied" },
+  second_chance: { name: "Second Chance",     icon: "2ND",  minRep: "hostile",
     desc: "Available ONLY when faction rep is negative. A difficult redemption mission — the only way to dig yourself out of hostile standing. Dangerous, multi-objective, no backup from the faction you wronged.",
     special: true, // only appears when rep < 0, only one available at a time
   },
