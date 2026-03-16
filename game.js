@@ -37,6 +37,7 @@ function resizeCanvas() {
   const screenW = window.innerWidth;
   const screenH = window.innerHeight;
   const aspect  = screenW / screenH;
+  const dpr = Math.min(2, window.devicePixelRatio || 1); // cap at 2x to save GPU
 
   if (IS_MOBILE) {
     GAME_H = LOGICAL_H_MOBILE;
@@ -46,8 +47,9 @@ function resizeCanvas() {
     GAME_W = Math.round(Math.max(LOGICAL_W_MIN_PC, Math.min(LOGICAL_W_MAX_PC, GAME_H * aspect)));
   }
 
-  canvas.width  = GAME_W;
-  canvas.height = GAME_H;
+  canvas.width  = GAME_W * dpr;
+  canvas.height = GAME_H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   canvas.style.position = "fixed";
   canvas.style.left     = "0px";
@@ -2213,8 +2215,10 @@ function updateEnemies() {
       e.vx*=friction;e.vy*=friction; const spd=Math.hypot(e.vx,e.vy); if(spd>e.speed){e.vx*=e.speed/spd;e.vy*=e.speed/spd;}
       if(!isSmallEnemy(e.type)){ const dToPlayer=Math.hypot(pcx-e.x-e.w/2,pcy-e.y-e.h/2); if(Math.abs(dToPlayer-430)<60){e.vx*=0.88;e.vy*=0.88;} }
       e.x+=e.vx;e.y+=e.vy; const m=25;
-      if(e.x<m)e.vx+=accel*1.5;if(e.x>GAME_W-e.w-m)e.vx-=accel*1.5;if(e.y<m)e.vy+=accel*1.5;if(e.y>GAME_H-e.h-m)e.vy-=accel*1.5;
-      e.x=Math.max(0,Math.min(GAME_W-e.w,e.x));e.y=Math.max(0,Math.min(GAME_H-e.h,e.y));
+      const _eBndW = window.gameMode === "universe" ? (window.quadW||GAME_W) : GAME_W;
+      const _eBndH = window.gameMode === "universe" ? (window.quadH||GAME_H) : GAME_H;
+      if(e.x<m)e.vx+=accel*1.5;if(e.x>_eBndW-e.w-m)e.vx-=accel*1.5;if(e.y<m)e.vy+=accel*1.5;if(e.y>_eBndH-e.h-m)e.vy-=accel*1.5;
+      e.x=Math.max(0,Math.min(_eBndW-e.w,e.x));e.y=Math.max(0,Math.min(_eBndH-e.h,e.y));
     }
     regenShieldFaces(e, 0.015);
     if(e.type==="Healer"&&!e.stunTimer){ const ehr=ENEMIES.Healer.healRadius||280; const ehp=ENEMIES.Healer.healPerFrame||8; enemies.forEach(other=>{ if(other===e||other.dead)return; const hd=Math.hypot(other.x+other.w/2-e.x-e.w/2,other.y+other.h/2-e.y-e.h/2); if(hd<ehr){ other.hp=Math.min(other.maxHp,other.hp+ehp*0.016); regenShieldFaces(other,0.04); } }); }
@@ -2246,7 +2250,9 @@ function updateBullets() {
   beamFlashes.forEach(f=>f.life--); nukeRings.forEach(r=>{r.life--;r.r=r.maxR*(1-(r.life/r.maxLife));});
   nukeRings=nukeRings.filter(r=>r.life>0); beamFlashes=beamFlashes.filter(f=>f.life>0);
   updateHitEffects(); updateDeathEffects(); updateThrusterParticles(); window.tickAutoSave?.();
-  const inBounds=b=>!b.dead&&b.x>-60&&b.x<GAME_W+60&&b.y>-60&&b.y<GAME_H+60;
+  const _bndW = window.gameMode === "universe" ? (window.quadW||GAME_W) : GAME_W;
+  const _bndH = window.gameMode === "universe" ? (window.quadH||GAME_H) : GAME_H;
+  const inBounds=b=>!b.dead&&b.x>-60&&b.x<_bndW+60&&b.y>-60&&b.y<_bndH+60;
   playerBullets=playerBullets.filter(inBounds); enemyBullets=enemyBullets.filter(inBounds);
 }
 
@@ -2441,8 +2447,10 @@ function cycleMissileKind() {
 
 function updateHUD() {
   const inGame = state==="playing"||state==="waveTransition"||state==="shadowCometCutscene"||state==="shadowVenganceCutscene";
-  document.getElementById("hud").style.display = inGame ? "block" : "none";
-  document.getElementById("inGameBack").style.display = inGame ? "block" : "none";
+  const showArenaHUD = inGame && window.gameMode !== "universe";
+  document.getElementById("hud").style.display = showArenaHUD ? "block" : "none";
+  document.getElementById("inGameBack").style.display = showArenaHUD ? "block" : "none";
+  if (!showArenaHUD) return;
   document.getElementById("health").textContent = Math.max(0,Math.floor(player.hp||0));
   document.getElementById("armorHUD").textContent = Math.max(0,Math.floor(player.armor||0));
   document.getElementById("shields").textContent = Math.max(0,Math.floor(player.shields||0));
