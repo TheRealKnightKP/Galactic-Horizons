@@ -417,6 +417,33 @@ function uniRenderOverlay() {
   const gh = typeof GAME_H !== "undefined" ? GAME_H : 720;
   const cx = window.camX || 0;
   const cy = window.camY || 0;
+  const qw = window.quadW || gw;
+  const qh = window.quadH || gh;
+
+  // Parallax background dots — gives sense of movement in large quadrants
+  // Layer 1: distant dim dots
+  c.fillStyle = "rgba(180,190,220,0.3)";
+  for (let i = 0; i < 300; i++) {
+    const dx = ((i * 367 + 11) % qw) - cx;
+    const dy = ((i * 211 + 53) % qh) - cy;
+    if (dx > -2 && dx < gw + 2 && dy > -2 && dy < gh + 2) c.fillRect(dx, dy, 1, 1);
+  }
+  // Layer 2: mid stars
+  c.fillStyle = "rgba(210,220,255,0.45)";
+  for (let i = 0; i < 80; i++) {
+    const dx = ((i * 491 + 137) % qw) - cx;
+    const dy = ((i * 313 + 79) % qh) - cy;
+    if (dx > -2 && dx < gw + 2 && dy > -2 && dy < gh + 2) c.fillRect(dx, dy, 1.5, 1.5);
+  }
+  // Layer 3: bright foreground stars
+  for (let i = 0; i < 20; i++) {
+    const dx = ((i * 719 + 233) % qw) - cx;
+    const dy = ((i * 503 + 171) % qh) - cy;
+    if (dx > -4 && dx < gw + 4 && dy > -4 && dy < gh + 4) {
+      c.fillStyle = "rgba(255,255,255,0.7)";
+      c.fillRect(dx, dy, 2, 2);
+    }
+  }
 
   // Asteroids
   c.save();
