@@ -1875,7 +1875,11 @@ function updatePlayer() {
   const _boundW = window.gameMode === "universe" ? window.quadW : GAME_W;
   const _boundH = window.gameMode === "universe" ? window.quadH : GAME_H;
   player.x=Math.max(0,Math.min(_boundW-player.w,player.x+player.vx)); player.y=Math.max(0,Math.min(_boundH-player.h,player.y+player.vy));
-  player.rotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
+  if (window.gameMode === "universe") {
+    player.rotation=Math.atan2((mouse.y+window.camY)-player.y-player.h/2,(mouse.x+window.camX)-player.x-player.w/2);
+  } else {
+    player.rotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
+  }
   const shieldRegen=SHIELD_TIERS[playerLoadout.shieldTier||1].regenRate; regenShieldFaces(player, shieldRegen);
   const isShooting=IS_MOBILE?mobileAim.shooting:(keys["Space"]||mouse.down);
   const isRailgun=player.weaponStats&&player.weaponStats.hitscan;
