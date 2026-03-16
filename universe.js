@@ -422,25 +422,25 @@ function uniRenderOverlay() {
 
   // Parallax background dots — gives sense of movement in large quadrants
   // Layer 1: distant dim dots
-  c.fillStyle = "rgba(180,190,220,0.3)";
-  for (let i = 0; i < 300; i++) {
+  c.fillStyle = "rgba(180,190,220,0.5)";
+  for (let i = 0; i < 600; i++) {
     const dx = ((i * 367 + 11) % qw) - cx;
     const dy = ((i * 211 + 53) % qh) - cy;
     if (dx > -2 && dx < gw + 2 && dy > -2 && dy < gh + 2) c.fillRect(dx, dy, 1, 1);
   }
   // Layer 2: mid stars
-  c.fillStyle = "rgba(210,220,255,0.45)";
-  for (let i = 0; i < 80; i++) {
+  c.fillStyle = "rgba(210,220,255,0.65)";
+  for (let i = 0; i < 200; i++) {
     const dx = ((i * 491 + 137) % qw) - cx;
     const dy = ((i * 313 + 79) % qh) - cy;
     if (dx > -2 && dx < gw + 2 && dy > -2 && dy < gh + 2) c.fillRect(dx, dy, 1.5, 1.5);
   }
   // Layer 3: bright foreground stars
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 50; i++) {
     const dx = ((i * 719 + 233) % qw) - cx;
     const dy = ((i * 503 + 171) % qh) - cy;
     if (dx > -4 && dx < gw + 4 && dy > -4 && dy < gh + 4) {
-      c.fillStyle = "rgba(255,255,255,0.7)";
+      c.fillStyle = "rgba(255,255,255,0.85)";
       c.fillRect(dx, dy, 2, 2);
     }
   }
@@ -1139,19 +1139,123 @@ function _uniMapTick() {
   _uniMapLoopId = requestAnimationFrame(_uniMapTick);
 }
 
-// System map (text-based for now, visual map coming next session)
+// ── VISUAL STARMAP ────────────────────────────────────────────
+// Zoom animation state
+let _uniZoomAnim = { active: false, from: null, to: null, t: 0, duration: 20 };
+
+function _uniStartZoom(fromLevel, toLevel) {
+  _uniZoomAnim = { active: true, from: fromLevel, to: toLevel, t: 0, duration: 20 };
+}
+
+// Helper: draw a glowing sun orb
+function _drawSun(c, x, y, r, sunHealth, faction) {
+  const hp = (sunHealth || 100) / 100;
+  const t = _uniFrameCount * 0.02;
+
+  if (hp <= 0.05) {
+    // Black hole
+    const grad = c.createRadialGradient(x, y, r * 0.2, x, y, r * 1.8);
+    grad.addColorStop(0, "rgba(0,0,0,1)");
+    grad.addColorStop(0.4, "rgba(20,0,40,0.9)");
+    grad.addColorStop(0.7, "rgba(80,0,120,0.3)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = grad;
+    c.beginPath(); c.arc(x, y, r * 1.8, 0, Math.PI * 2); c.fill();
+    // Accretion disk
+    c.save(); c.globalAlpha = 0.5 + Math.sin(t) * 0.15;
+    c.strokeStyle = "#8844cc"; c.lineWidth = 2;
+    c.beginPath(); c.ellipse(x, y, r * 1.5, r * 0.4, t * 0.5, 0, Math.PI * 2); c.stroke();
+    c.restore();
+    return;
+  }
+
+  // Sun color based on faction and health
+  let coreColor, midColor, outerColor;
+  if (faction === "eldritch") {
+    const corr = 1 - hp;
+    coreColor = "rgba(" + Math.floor(180 + 75 * corr) + ",20," + Math.floor(60 + 40 * corr) + ",1)";
+    midColor = "rgba(" + Math.floor(120 + 80 * corr) + ",0," + Math.floor(80 + 60 * corr) + ",0.6)";
+    outerColor = "rgba(60,0,40,0)";
+  } else if (faction === "harvester") {
+    coreColor = "rgba(255," + Math.floor(200 * hp) + ",40,1)";
+    midColor = "rgba(255," + Math.floor(120 * hp) + ",0,0.5)";
+    outerColor = "rgba(120,40,0,0)";
+  } else {
+    coreColor = "rgba(255," + Math.floor(240 * hp + 15) + "," + Math.floor(180 * hp) + ",1)";
+    midColor = "rgba(255," + Math.floor(200 * hp) + ",80,0.5)";
+    outerColor = "rgba(100,60,0,0)";
+  }
+
+  // Outer glow
+  const glow = c.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  glow.addColorStop(0, midColor);
+  glow.addColorStop(1, outerColor);
+  c.fillStyle = glow;
+  c.beginPath(); c.arc(x, y, r * 2.2, 0, Math.PI * 2); c.fill();
+
+  // Core
+  const core = c.createRadialGradient(x, y, 0, x, y, r);
+  core.addColorStop(0, "#ffffff");
+  core.addColorStop(0.3, coreColor);
+  core.addColorStop(1, midColor);
+  c.fillStyle = core;
+  c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+
+  // Animated sun burst / corona wisps
+  c.save();
+  c.globalAlpha = 0.25 + Math.sin(t * 1.5) * 0.1;
+  for (let i = 0; i < 6; i++) {
+    const angle = t + i * Math.PI / 3;
+    const burstR = r * (1.2 + Math.sin(t * 2 + i) * 0.3);
+    const bx = x + Math.cos(angle) * burstR;
+    const by = y + Math.sin(angle) * burstR;
+    const bg = c.createRadialGradient(bx, by, 0, bx, by, r * 0.4);
+    bg.addColorStop(0, coreColor);
+    bg.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = bg;
+    c.beginPath(); c.arc(bx, by, r * 0.4, 0, Math.PI * 2); c.fill();
+  }
+  c.restore();
+}
+
+// Helper: draw a small planet dot
+function _drawPlanet(c, x, y, r, biome) {
+  const colors = {
+    temperate: "#4488aa", oceanic: "#2266bb", volcanic: "#cc4422", industrial: "#888888",
+    desert: "#ccaa44", arctic: "#aaddff", barren: "#666655", scorched: "#aa4400",
+    tundra: "#88aacc", urban: "#aaaaaa", harvester_city: "#ff8844", corrupted: "#880044",
+    gas_giant: "#cc8855", "default": "#888888",
+  };
+  c.fillStyle = colors[biome] || colors["default"];
+  c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+  // Subtle highlight
+  c.save(); c.globalAlpha = 0.4;
+  c.fillStyle = "#ffffff";
+  c.beginPath(); c.arc(x - r * 0.25, y - r * 0.25, r * 0.35, 0, Math.PI * 2); c.fill();
+  c.restore();
+}
+
+// SYSTEM MAP — zoomed out, shows all systems as suns
 function _renderSystemMap(c, gw, gh, uni) {
-  c.fillStyle = "#0af"; c.font = "bold 22px monospace"; c.fillText("STARMAP", gw / 2, 40);
+  // Star field background
+  c.fillStyle = "rgba(150,160,200,0.3)";
+  for (let i = 0; i < 200; i++) {
+    c.fillRect((i * 367 + 11) % gw, (i * 211 + 53) % gh, 1, 1);
+  }
+
+  c.fillStyle = "#aaa"; c.font = "bold 16px monospace"; c.textAlign = "center";
+  c.fillText("STARMAP", gw / 2, 28);
+
   const systems = Object.values(uni.systems);
   const cols = 3, rows = Math.ceil(systems.length / cols);
-  const cellW = (gw - 100) / cols, cellH = (gh - 120) / rows;
-  const startX = 50, startY = 70;
+  const cellW = (gw - 120) / cols, cellH = (gh - 110) / rows;
+  const startX = 60, startY = 50;
   const mx = typeof mouse !== "undefined" ? mouse.x : 0;
   const my = typeof mouse !== "undefined" ? mouse.y : 0;
   _uniMapHover = null;
 
-  // Connections
-  c.strokeStyle = "rgba(100,100,150,0.3)"; c.lineWidth = 1;
+  // Wormhole connection lines
+  c.save();
   for (const sys of systems) {
     const si = systems.indexOf(sys);
     const sx = startX + (si % cols) * cellW + cellW / 2;
@@ -1159,86 +1263,275 @@ function _renderSystemMap(c, gw, gh, uni) {
     for (const connId of sys.connections) {
       const ci = systems.findIndex(s => s.id === connId);
       if (ci < 0 || ci <= si) continue;
-      c.beginPath(); c.moveTo(sx, sy);
-      c.lineTo(startX + (ci % cols) * cellW + cellW / 2, startY + Math.floor(ci / cols) * cellH + cellH / 2);
-      c.stroke();
+      const cx2 = startX + (ci % cols) * cellW + cellW / 2;
+      const cy2 = startY + Math.floor(ci / cols) * cellH + cellH / 2;
+      // Animated dashed wormhole line
+      c.strokeStyle = "rgba(120,80,200,0.25)";
+      c.lineWidth = 1.5;
+      c.setLineDash([8, 6]);
+      c.lineDashOffset = -_uniFrameCount * 0.5;
+      c.beginPath(); c.moveTo(sx, sy); c.lineTo(cx2, cy2); c.stroke();
     }
   }
+  c.setLineDash([]);
+  c.restore();
 
-  // Nodes
+  // Draw each system
   for (let i = 0; i < systems.length; i++) {
     const sys = systems[i];
     const x = startX + (i % cols) * cellW + cellW / 2;
     const y = startY + Math.floor(i / cols) * cellH + cellH / 2;
-    const r = 28;
-    const hovered = Math.hypot(mx - x, my - y) < r + 10;
-    if (hovered) _uniMapHover = sys.id;
+    const sunR = 16;
     const isCurrent = _uniCurrentSystem && sys.id === _uniCurrentSystem.id;
-    const fc = sys.faction === "harvester" ? "#ff8800" : sys.faction === "eldritch" ? "#cc0033" : "#4488ff";
-    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2);
-    c.fillStyle = hovered ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.5)";
-    c.fill(); c.strokeStyle = isCurrent ? "#0f0" : fc; c.lineWidth = isCurrent ? 3 : 2; c.stroke();
-    c.fillStyle = isCurrent ? "#0f0" : hovered ? "#fff" : "#aaa"; c.font = "bold 11px monospace";
-    c.fillText(sys.name, x, y + r + 16);
-    c.fillStyle = "#666"; c.font = "9px monospace"; c.fillText("Danger " + sys.dangerLevel, x, y + r + 28);
-    if (isCurrent) { c.fillStyle = "#0f0"; c.font = "bold 9px monospace"; c.fillText("YOU ARE HERE", x, y - r - 8); }
+    const hovered = Math.hypot(mx - x, my - y) < sunR * 3;
+    if (hovered) _uniMapHover = sys.id;
+
+    // Draw sun
+    _drawSun(c, x, y, sunR, sys.sunHealth, sys.faction);
+
+    // Draw tiny orbiting planets
+    const planets = Object.values(sys.areas).filter(a => a.type === "planet" || a.type === "moon");
+    planets.forEach((p, pi) => {
+      const orbitR = sunR * 2.2 + pi * 12;
+      const angle = _uniFrameCount * 0.005 * (1 + pi * 0.3) + pi * 1.8;
+      const px = x + Math.cos(angle) * orbitR;
+      const py = y + Math.sin(angle) * orbitR;
+      // Orbit ring
+      c.save(); c.globalAlpha = 0.08; c.strokeStyle = "#fff"; c.lineWidth = 0.5;
+      c.beginPath(); c.arc(x, y, orbitR, 0, Math.PI * 2); c.stroke(); c.restore();
+      _drawPlanet(c, px, py, 3 + (p.type === "moon" ? 0 : 1), p.biome);
+    });
+
+    // Hover highlight ring
+    if (hovered) {
+      c.save(); c.globalAlpha = 0.2; c.strokeStyle = "#fff"; c.lineWidth = 1.5;
+      c.beginPath(); c.arc(x, y, sunR * 3, 0, Math.PI * 2); c.stroke(); c.restore();
+    }
+
+    // Current system indicator
+    if (isCurrent) {
+      c.save(); c.globalAlpha = 0.35 + Math.sin(_uniFrameCount * 0.05) * 0.15;
+      c.strokeStyle = "#00ff88"; c.lineWidth = 2;
+      c.beginPath(); c.arc(x, y, sunR * 3.2, 0, Math.PI * 2); c.stroke(); c.restore();
+      c.fillStyle = "#00ff88"; c.font = "bold 8px monospace"; c.textAlign = "center";
+      c.fillText("YOU", x, y - sunR * 3.2 - 6);
+    }
+
+    // System name
+    c.fillStyle = isCurrent ? "#00ff88" : hovered ? "#fff" : "#aaa";
+    c.font = "bold 10px monospace"; c.textAlign = "center";
+    c.fillText(sys.name, x, y + sunR * 3 + 14);
+    // Danger
+    c.fillStyle = "#555"; c.font = "8px monospace";
+    c.fillText("Danger " + sys.dangerLevel, x, y + sunR * 3 + 24);
   }
-  c.fillStyle = "#555"; c.font = "11px monospace"; c.fillText("Click a system to view areas", gw / 2, gh - 30);
+
+  c.textAlign = "center"; c.fillStyle = "#555"; c.font = "10px monospace";
+  c.fillText("Select a system", gw / 2, gh - 16);
+  c.textAlign = "left";
 }
 
+// AREA MAP — zoomed into a system, sun centered, areas arranged around it
 function _renderAreaMap(c, gw, gh, uni) {
   const sys = uni.systems[_uniMapSelectedSystem];
   if (!sys) { _uniMapLevel = "system"; return; }
-  c.fillStyle = "#0af"; c.font = "bold 20px monospace"; c.fillText(sys.name + " - Areas", gw / 2, 40);
+
+  // Star background
+  c.fillStyle = "rgba(150,160,200,0.25)";
+  for (let i = 0; i < 120; i++) { c.fillRect((i * 251 + 77) % gw, (i * 179 + 33) % gh, 1, 1); }
+
+  // Large central sun
+  const sunX = gw / 2, sunY = gh / 2;
+  const sunR = 40;
+  _drawSun(c, sunX, sunY, sunR, sys.sunHealth, sys.faction);
+
+  // System title
+  c.fillStyle = "#aaa"; c.font = "bold 14px monospace"; c.textAlign = "center";
+  c.fillText(sys.name, gw / 2, 24);
+
   const areas = Object.values(sys.areas);
-  const cols = Math.min(4, areas.length), rows = Math.ceil(areas.length / cols);
-  const cellW = (gw - 80) / cols, cellH = Math.min(110, (gh - 140) / rows);
-  const mx = typeof mouse !== "undefined" ? mouse.x : 0, my = typeof mouse !== "undefined" ? mouse.y : 0;
+  const mx = typeof mouse !== "undefined" ? mouse.x : 0;
+  const my = typeof mouse !== "undefined" ? mouse.y : 0;
   _uniMapHover = null;
-  for (let i = 0; i < areas.length; i++) {
-    const area = areas[i], col = i % cols, row = Math.floor(i / cols);
-    const x = 40 + col * cellW, y = 70 + row * cellH, w = cellW - 8, h = cellH - 8;
-    const hovered = mx > x && mx < x + w && my > y && my < y + h;
+
+  // Place areas in orbits around the sun
+  // Sun areas skip rendering (it's the center)
+  const nonSunAreas = areas.filter(a => a.type !== "sun");
+  const areaCount = nonSunAreas.length;
+
+  nonSunAreas.forEach((area, i) => {
+    const angle = (Math.PI * 2 * i / areaCount) - Math.PI / 2;
+    const orbitR = 120 + (i % 3) * 40; // vary distance slightly
+    const ax = sunX + Math.cos(angle) * orbitR;
+    const ay = sunY + Math.sin(angle) * orbitR;
+
+    // Orbit ring (faint)
+    c.save(); c.globalAlpha = 0.06; c.strokeStyle = "#888"; c.lineWidth = 0.5;
+    c.beginPath(); c.arc(sunX, sunY, orbitR, 0, Math.PI * 2); c.stroke(); c.restore();
+
+    const hovered = Math.hypot(mx - ax, my - ay) < 30;
     if (hovered) _uniMapHover = area.id;
-    const tc = area.type === "planet" ? "#4488ff" : area.type === "belt" ? "#aa8844" : area.type === "wormhole" ? "#aa44ff" : area.type === "sun" ? "#ffcc00" : area.type === "anomaly" ? "#ff4488" : "#666";
-    c.fillStyle = hovered ? "rgba(255,255,255,0.06)" : "rgba(10,14,26,0.8)"; c.fillRect(x, y, w, h);
-    c.strokeStyle = tc; c.lineWidth = hovered ? 2 : 1; c.strokeRect(x, y, w, h);
-    c.textAlign = "left"; c.fillStyle = "#fff"; c.font = "bold 12px monospace"; c.fillText(area.name, x + 8, y + 20);
-    c.fillStyle = tc; c.font = "10px monospace"; c.fillText(area.type.toUpperCase(), x + 8, y + 34);
-    c.fillStyle = "#666"; c.font = "9px monospace"; c.fillText(area.quadrants.length + " sectors", x + 8, y + 48);
-    if (area.type === "wormhole" && area.targetSystem) { c.fillStyle = "#aa44ff"; c.fillText("-> " + area.targetSystem, x + 8, y + 62); }
-  }
-  c.textAlign = "center"; c.fillStyle = "#555"; c.font = "11px monospace"; c.fillText("Click an area to view sectors", gw / 2, gh - 30);
+
+    if (area.type === "planet" || area.type === "moon") {
+      const pr = area.type === "moon" ? 8 : 14;
+      _drawPlanet(c, ax, ay, pr, area.biome);
+      // Label
+      c.fillStyle = hovered ? "#fff" : "#aaa"; c.font = "10px monospace"; c.textAlign = "center";
+      c.fillText(area.name, ax, ay + pr + 14);
+      c.fillStyle = "#666"; c.font = "8px monospace";
+      c.fillText(area.quadrants.length + " sectors", ax, ay + pr + 24);
+    } else if (area.type === "belt") {
+      // Draw as arc of dots
+      c.save(); c.globalAlpha = 0.6;
+      for (let d = 0; d < 12; d++) {
+        const da = angle - 0.3 + d * 0.05;
+        const dr = orbitR - 5 + Math.sin(d * 2.3) * 8;
+        c.fillStyle = "#aa8844";
+        c.beginPath(); c.arc(sunX + Math.cos(da) * dr, sunY + Math.sin(da) * dr, 2, 0, Math.PI * 2); c.fill();
+      }
+      c.restore();
+      c.fillStyle = hovered ? "#fff" : "#aa8844"; c.font = "10px monospace"; c.textAlign = "center";
+      c.fillText(area.name, ax, ay + 18);
+    } else if (area.type === "wormhole") {
+      // Swirling portal
+      c.save();
+      const pulse = 0.5 + Math.sin(_uniFrameCount * 0.06 + i) * 0.3;
+      c.globalAlpha = pulse;
+      const wg = c.createRadialGradient(ax, ay, 0, ax, ay, 16);
+      wg.addColorStop(0, "#cc88ff");
+      wg.addColorStop(0.6, "#6622aa");
+      wg.addColorStop(1, "rgba(40,0,80,0)");
+      c.fillStyle = wg;
+      c.beginPath(); c.arc(ax, ay, 16, 0, Math.PI * 2); c.fill();
+      // Spiral lines
+      c.strokeStyle = "rgba(200,150,255,0.4)"; c.lineWidth = 1;
+      for (let s = 0; s < 3; s++) {
+        const sa = _uniFrameCount * 0.04 + s * Math.PI * 2 / 3;
+        c.beginPath();
+        c.arc(ax, ay, 10, sa, sa + 1.5);
+        c.stroke();
+      }
+      c.restore();
+      c.fillStyle = hovered ? "#fff" : "#aa88ff"; c.font = "10px monospace"; c.textAlign = "center";
+      c.fillText(area.name, ax, ay + 22);
+      if (area.targetSystem) {
+        c.fillStyle = "#8866cc"; c.font = "8px monospace";
+        c.fillText("-> " + area.targetSystem, ax, ay + 32);
+      }
+    } else if (area.type === "anomaly") {
+      // Glowing marker
+      c.save();
+      c.globalAlpha = 0.5 + Math.sin(_uniFrameCount * 0.08 + i * 2) * 0.3;
+      c.fillStyle = "#ff4488";
+      c.beginPath(); c.arc(ax, ay, 8, 0, Math.PI * 2); c.fill();
+      c.restore();
+      c.fillStyle = hovered ? "#fff" : "#ff4488"; c.font = "10px monospace"; c.textAlign = "center";
+      c.fillText(area.name, ax, ay + 18);
+    }
+
+    // Hover ring
+    if (hovered) {
+      c.save(); c.globalAlpha = 0.3; c.strokeStyle = "#fff"; c.lineWidth = 1.5;
+      c.beginPath(); c.arc(ax, ay, 28, 0, Math.PI * 2); c.stroke(); c.restore();
+    }
+  });
+
+  c.textAlign = "center"; c.fillStyle = "#555"; c.font = "10px monospace";
+  c.fillText("Select an area", gw / 2, gh - 16);
+  c.textAlign = "left";
 }
 
+// QUADRANT MAP — sectors within an area
 function _renderQuadrantMap(c, gw, gh, uni) {
   const sys = uni.systems[_uniMapSelectedSystem];
   if (!sys) { _uniMapLevel = "system"; return; }
   const area = sys.areas[_uniMapSelectedArea];
   if (!area) { _uniMapLevel = "area"; return; }
-  c.fillStyle = "#0af"; c.font = "bold 18px monospace"; c.fillText(area.name + " - Sectors", gw / 2, 40);
-  const quads = area.quadrants, cols = Math.min(4, quads.length), rows = Math.ceil(quads.length / cols);
-  const cellW = (gw - 80) / cols, cellH = Math.min(120, (gh - 140) / rows);
-  const mx = typeof mouse !== "undefined" ? mouse.x : 0, my = typeof mouse !== "undefined" ? mouse.y : 0;
+
+  // Background
+  c.fillStyle = "rgba(150,160,200,0.2)";
+  for (let i = 0; i < 80; i++) { c.fillRect((i * 311 + 47) % gw, (i * 197 + 61) % gh, 1, 1); }
+
+  c.fillStyle = "#aaa"; c.font = "bold 14px monospace"; c.textAlign = "center";
+  c.fillText(area.name, gw / 2, 24);
+
+  const quads = area.quadrants;
+  const mx = typeof mouse !== "undefined" ? mouse.x : 0;
+  const my = typeof mouse !== "undefined" ? mouse.y : 0;
   _uniMapHover = null;
+
+  // Layout quadrants in a grid with visual styling
+  const cols = Math.min(4, quads.length);
+  const rows = Math.ceil(quads.length / cols);
+  const cellW = Math.min(200, (gw - 60) / cols);
+  const cellH = Math.min(140, (gh - 100) / rows);
+  const startX = (gw - cols * cellW) / 2;
+  const startY = 50;
+
   for (let i = 0; i < quads.length; i++) {
-    const q = quads[i], col = i % cols, row = Math.floor(i / cols);
-    const x = 40 + col * cellW, y = 70 + row * cellH, w = cellW - 8, h = cellH - 8;
+    const q = quads[i];
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = startX + col * cellW + 4;
+    const y = startY + row * cellH + 4;
+    const w = cellW - 8, h = cellH - 8;
     const hovered = mx > x && mx < x + w && my > y && my < y + h;
     if (hovered) _uniMapHover = q.id;
-    const tc = q.type === "station" ? "#00ff88" : q.type === "mining" ? "#ffaa00" : q.type === "patrol" ? "#ff4444" : q.type === "debris" ? "#aa8844" : q.type === "wormhole_tunnel" ? "#aa44ff" : "#446688";
-    c.fillStyle = hovered ? "rgba(255,255,255,0.06)" : "rgba(10,14,26,0.8)"; c.fillRect(x, y, w, h);
-    c.strokeStyle = tc; c.lineWidth = hovered ? 2 : 1; c.strokeRect(x, y, w, h);
-    c.textAlign = "left"; c.fillStyle = "#fff"; c.font = "bold 11px monospace"; c.fillText(q.name || q.id, x + 8, y + 18);
-    c.fillStyle = tc; c.font = "10px monospace"; c.fillText(q.type.toUpperCase(), x + 8, y + 32);
+
+    const typeColors = {
+      station: { bg: "rgba(0,80,40,0.3)", border: "#00ff88", icon: "STA" },
+      mining: { bg: "rgba(80,60,0,0.3)", border: "#ffaa00", icon: "ORE" },
+      patrol: { bg: "rgba(80,0,0,0.3)", border: "#ff4444", icon: "PTR" },
+      debris: { bg: "rgba(60,40,0,0.3)", border: "#aa8844", icon: "WRK" },
+      open: { bg: "rgba(20,40,60,0.3)", border: "#446688", icon: "SPC" },
+      mission: { bg: "rgba(60,30,0,0.3)", border: "#ff8844", icon: "MSN" },
+      wormhole_tunnel: { bg: "rgba(40,0,60,0.3)", border: "#aa44ff", icon: "WRM" },
+      sun_zone: { bg: "rgba(60,40,0,0.3)", border: "#ffcc00", icon: "SUN" },
+    };
+    const tc = typeColors[q.type] || { bg: "rgba(30,30,40,0.3)", border: "#666", icon: "???" };
+
+    // Card background
+    c.fillStyle = hovered ? "rgba(255,255,255,0.08)" : tc.bg;
+    c.fillRect(x, y, w, h);
+    c.strokeStyle = hovered ? "#fff" : tc.border;
+    c.lineWidth = hovered ? 2 : 1;
+    c.strokeRect(x, y, w, h);
+
+    // Icon circle
+    const iconR = 16;
+    const iconX = x + w / 2, iconY = y + 28;
+    c.save(); c.globalAlpha = 0.3;
+    c.fillStyle = tc.border;
+    c.beginPath(); c.arc(iconX, iconY, iconR, 0, Math.PI * 2); c.fill();
+    c.restore();
+    c.fillStyle = tc.border; c.font = "bold 10px monospace"; c.textAlign = "center";
+    c.fillText(tc.icon, iconX, iconY + 4);
+
+    // Name
+    c.fillStyle = hovered ? "#fff" : "#ccc"; c.font = "bold 10px monospace";
+    c.fillText(q.name || q.id, x + w / 2, iconY + iconR + 16);
+
+    // Type label
+    c.fillStyle = tc.border; c.font = "8px monospace";
+    c.fillText(q.type.toUpperCase(), x + w / 2, iconY + iconR + 28);
+
+    // Travel prompt on hover
     if (hovered) {
-      c.fillStyle = "rgba(0,255,100,0.15)"; c.fillRect(x + 4, y + h - 24, w - 8, 18);
-      c.fillStyle = "#0f0"; c.font = "bold 10px monospace"; c.textAlign = "center"; c.fillText("CLICK TO TRAVEL", x + w / 2, y + h - 10);
+      c.fillStyle = "rgba(0,255,100,0.2)";
+      c.fillRect(x + 4, y + h - 22, w - 8, 18);
+      c.fillStyle = "#0f0"; c.font = "bold 9px monospace";
+      c.fillText("TRAVEL", x + w / 2, y + h - 9);
     }
   }
-  c.textAlign = "center"; c.fillStyle = "#555"; c.font = "11px monospace";
-  c.fillText("Click a sector to quantum travel", gw / 2, gh - 30);
-  if (typeof player !== "undefined" && player) { c.fillStyle = "#888"; c.font = "10px monospace"; c.fillText("Fuel: " + Math.floor(player.fuel) + "/" + (player.fuelMax || 50), gw / 2, gh - 48); }
+
+  // Fuel indicator
+  c.textAlign = "center";
+  if (typeof player !== "undefined" && player && player.fuel !== undefined) {
+    c.fillStyle = "#888"; c.font = "10px monospace";
+    c.fillText("Fuel: " + Math.floor(player.fuel) + "/" + (player.fuelMax || 50) + "  |  Cost per jump: " + Math.ceil(UNI_QUANTUM_FUEL / (player.fuelEfficiency || 1)), gw / 2, gh - 34);
+  }
+  c.fillStyle = "#555"; c.font = "10px monospace";
+  c.fillText("Select a sector to travel", gw / 2, gh - 16);
+  c.textAlign = "left";
 }
 
 // ── INPUT HANDLERS ────────────────────────────────────────────
