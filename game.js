@@ -16,6 +16,13 @@ let GAME_H = 720;
 const SIZE_SCALE = 0.5;
 let displayScale = 1;
 
+// Universe mode globals (used by universe.js for camera system)
+window.gameMode = "arena"; // "arena" | "universe"
+window.camX = 0;
+window.camY = 0;
+window.quadW = 1280;
+window.quadH = 720;
+
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1);
 
 let _starCanvas = null; // declared early — resizeCanvas nulls it on resize
@@ -1865,7 +1872,9 @@ function updatePlayer() {
   if(keys["ArrowLeft"]||keys["KeyA"])player.vx-=curAccel; if(keys["ArrowRight"]||keys["KeyD"])player.vx+=curAccel;
   player.vx*=FRICTION;player.vy*=FRICTION;
   const spd=Math.hypot(player.vx,player.vy); if(spd>curMaxSpd){player.vx*=curMaxSpd/spd;player.vy*=curMaxSpd/spd;}
-  player.x=Math.max(0,Math.min(GAME_W-player.w,player.x+player.vx)); player.y=Math.max(0,Math.min(GAME_H-player.h,player.y+player.vy));
+  const _boundW = window.gameMode === "universe" ? window.quadW : GAME_W;
+  const _boundH = window.gameMode === "universe" ? window.quadH : GAME_H;
+  player.x=Math.max(0,Math.min(_boundW-player.w,player.x+player.vx)); player.y=Math.max(0,Math.min(_boundH-player.h,player.y+player.vy));
   player.rotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
   const shieldRegen=SHIELD_TIERS[playerLoadout.shieldTier||1].regenRate; regenShieldFaces(player, shieldRegen);
   const isShooting=IS_MOBILE?mobileAim.shooting:(keys["Space"]||mouse.down);
@@ -1941,6 +1950,11 @@ function updatePlayer() {
         const bulwM=(player.specialActive&&currentShipName==="Bulwark")?0.5:1.0; t.shootTimer=Math.round(t.fireRate*bulwM);
       }
     });
+  }
+  // Camera follow in universe mode
+  if (window.gameMode === "universe") {
+    window.camX = Math.max(0, Math.min(window.quadW - GAME_W, player.x + player.w/2 - GAME_W/2));
+    window.camY = Math.max(0, Math.min(window.quadH - GAME_H, player.y + player.h/2 - GAME_H/2));
   }
 }
 
@@ -2374,13 +2388,29 @@ function render() {
     ctx.textAlign="left";return;
   }
   if(state!=="playing")return;
-  if(currentShipName==="Vengeance"&&player.revengeActive){ ctx.save();ctx.globalAlpha=0.07;ctx.fillStyle="#ff0000";ctx.fillRect(0,0,GAME_W,GAME_H);ctx.restore(); }
-  if(pdcDisabledThisWave){ ctx.save();ctx.globalAlpha=0.7;ctx.fillStyle="#ff2200";ctx.font="bold 13px monospace"; ctx.fillText("TURRETS DISABLED",10,GAME_H-30);ctx.restore(); }
+
+  // Camera offset for universe mode
+  const _isUni = window.gameMode === "universe";
+  if (_isUni) { ctx.save(); ctx.translate(-window.camX, -window.camY); }
+
+  if(!_isUni && currentShipName==="Vengeance"&&player.revengeActive){ ctx.save();ctx.globalAlpha=0.07;ctx.fillStyle="#ff0000";ctx.fillRect(0,0,GAME_W,GAME_H);ctx.restore(); }
+  if(!_isUni && pdcDisabledThisWave){ ctx.save();ctx.globalAlpha=0.7;ctx.fillStyle="#ff2200";ctx.font="bold 13px monospace"; ctx.fillText("TURRETS DISABLED",10,GAME_H-30);ctx.restore(); }
   drawThrusterParticles(); enemies.forEach(drawEntity); allies.forEach(drawEntity);
   if(isDeployed && capitalShipObj && !capitalDestroyed) drawEntity(capitalShipObj);
-  drawEntity(player); drawRailgunCharge(); drawAimArrow(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings(); drawBoostHUD(); drawSpecialHUD(); drawCapitalStatusHUD(); drawEnemyCapFormationHUD();
-  ctx.fillStyle="rgba(255,255,255,0.4)";ctx.font="18px monospace";
-  ctx.fillText(infiniteMode?"Wave "+currentWave+" (Infinite)":"Wave "+currentWave+" / "+WAVES.length,10,GAME_H-12);
+  drawEntity(player); drawRailgunCharge(); drawAimArrow(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings();
+
+  // Restore camera offset before drawing HUD (HUD is screen-space)
+  if (_isUni) { ctx.restore(); }
+
+  if (_isUni) {
+    // Universe overlay: asteroids, station, POIs, mining beam, universe HUD
+    if (typeof uniRenderOverlay === "function") uniRenderOverlay();
+  } else {
+    // Arena HUD
+    drawBoostHUD(); drawSpecialHUD(); drawCapitalStatusHUD(); drawEnemyCapFormationHUD();
+    ctx.fillStyle="rgba(255,255,255,0.4)";ctx.font="18px monospace";
+    ctx.fillText(infiniteMode?"Wave "+currentWave+" (Infinite)":"Wave "+currentWave+" / "+WAVES.length,10,GAME_H-12);
+  }
   if(player.hp<player.maxHp*0.25){ctx.fillStyle="rgba(255,0,0,0.12)";ctx.fillRect(0,0,GAME_W,GAME_H);}
 }
 
@@ -2449,28 +2479,40 @@ function gameLoop() {
   if(state==="shadowCometCutscene"){ updateShadowCometCutscene(); updateDeathEffects(); render(); updateHUD(); requestAnimationFrame(gameLoop); return; }
   if(state==="shadowVenganceCutscene"){ updateShadowVenganceCutscene(); updateDeathEffects(); render(); updateHUD(); requestAnimationFrame(gameLoop); return; }
   if(state==="playing"){
-    updatePlayerDodgeTracking(); observePlayer(); updateEnemyCapitalAI(); updateCapitalAutopilot();
-    updatePlayer();updateAllies();updateEnemies();updateBullets();checkCollisions();updateSpecial();
-    if (player && !player.dead) spawnThrusterParticles(player, true, currentShipName);
-    allies.forEach(a => { if(!a.dead) spawnThrusterParticles(a, false, a.shipName||""); });
-    if (isDeployed && capitalShipObj && !capitalDestroyed) spawnThrusterParticles(capitalShipObj, true, currentShipName);
-    updateThrusterParticles();
-    if(waveReinforceTimer>0){waveReinforceTimer--;if(waveReinforceTimer<=0&&!waveReinforceDone){
-      waveReinforceDone=true; const wd=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
-      if(wd&&wd.reinforceEnemies){ wd.reinforceEnemies.forEach(name=>{ const re=createEnemyObject(name, GAME_W, 80+Math.random()*(GAME_H-160)); if(re) enemies.push(re); }); showSpecialToast("REINFORCEMENTS!"); }
-    }}
-    if(enemies.length===0&&!shadowCometActive&&!shadowVenganceActive){
-      const reward=infiniteMode?generateInfiniteWave(currentWave).reward:(WAVES[currentWave-1]?.reward||0);
-      money+=reward; player.shields=player.maxShields;player.armor=player.maxArmor; if(player.shieldFaces) initShieldFaces(player);
-      if(isDeployed && capitalShipObj) { capitalShipObj.shields=capitalShipObj.maxShields; capitalShipObj.armor=capitalShipObj.maxArmor; if(capitalShipObj.shieldFaces) initShieldFaces(capitalShipObj); }
-      allies.forEach(a=>{ a.shields=a.maxShields;a.armor=a.maxArmor; if(a.shieldFaces) initShieldFaces(a); });
-      waveTransitionText="Wave "+currentWave+" Cleared!  +"+reward+" credits"; waveTransitionTimer=300;state="waveTransition";updateHUD();
-      const _hitless = !playerTookDamageThisWave, _allAlliesAlive = allies.length > 0 && allies.every(a => !a.dead), _noMissiles = !_waveMissileFired;
-      window.recordCreditsEarned?.(reward); window.recordWaveEnd?.(currentWave, _hitless, _allAlliesAlive, _noMissiles, _hitless); window.tickSessionWave?.();
-      if (typeof infiniteMode !== "undefined" && infiniteMode) window.checkChallengeCondition?.("waveReach", { wave: currentWave, infinite: true });
+    if (window.gameMode === "universe") {
+      // Universe mode — game.js handles movement, combat, particles
+      // universe.js handles fuel, mining, stations, patrols, map
+      updatePlayer();updateEnemies();updateBullets();checkCollisions();
+      updateHitEffects();updateDeathEffects();updateThrusterParticles();
+      if (player && !player.dead) spawnThrusterParticles(player, true, currentShipName);
+      if (typeof uniUpdate === "function") uniUpdate();
+      if (typeof _uniCheckMapKey === "function") _uniCheckMapKey();
+      if (typeof _uniUpdateMobileButtons === "function") _uniUpdateMobileButtons();
+    } else {
+      // Arena mode — full arena logic
+      updatePlayerDodgeTracking(); observePlayer(); updateEnemyCapitalAI(); updateCapitalAutopilot();
+      updatePlayer();updateAllies();updateEnemies();updateBullets();checkCollisions();updateSpecial();
+      if (player && !player.dead) spawnThrusterParticles(player, true, currentShipName);
+      allies.forEach(a => { if(!a.dead) spawnThrusterParticles(a, false, a.shipName||""); });
+      if (isDeployed && capitalShipObj && !capitalDestroyed) spawnThrusterParticles(capitalShipObj, true, currentShipName);
+      updateThrusterParticles();
+      if(waveReinforceTimer>0){waveReinforceTimer--;if(waveReinforceTimer<=0&&!waveReinforceDone){
+        waveReinforceDone=true; const wd=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
+        if(wd&&wd.reinforceEnemies){ wd.reinforceEnemies.forEach(name=>{ const re=createEnemyObject(name, GAME_W, 80+Math.random()*(GAME_H-160)); if(re) enemies.push(re); }); showSpecialToast("REINFORCEMENTS!"); }
+      }}
+      if(enemies.length===0&&!shadowCometActive&&!shadowVenganceActive){
+        const reward=infiniteMode?generateInfiniteWave(currentWave).reward:(WAVES[currentWave-1]?.reward||0);
+        money+=reward; player.shields=player.maxShields;player.armor=player.maxArmor; if(player.shieldFaces) initShieldFaces(player);
+        if(isDeployed && capitalShipObj) { capitalShipObj.shields=capitalShipObj.maxShields; capitalShipObj.armor=capitalShipObj.maxArmor; if(capitalShipObj.shieldFaces) initShieldFaces(capitalShipObj); }
+        allies.forEach(a=>{ a.shields=a.maxShields;a.armor=a.maxArmor; if(a.shieldFaces) initShieldFaces(a); });
+        waveTransitionText="Wave "+currentWave+" Cleared!  +"+reward+" credits"; waveTransitionTimer=300;state="waveTransition";updateHUD();
+        const _hitless = !playerTookDamageThisWave, _allAlliesAlive = allies.length > 0 && allies.every(a => !a.dead), _noMissiles = !_waveMissileFired;
+        window.recordCreditsEarned?.(reward); window.recordWaveEnd?.(currentWave, _hitless, _allAlliesAlive, _noMissiles, _hitless); window.tickSessionWave?.();
+        if (typeof infiniteMode !== "undefined" && infiniteMode) window.checkChallengeCondition?.("waveReach", { wave: currentWave, infinite: true });
+      }
+      if(player.hp<=0){ if(isDeployed) handleDeployedShipDeath(); else if(capitalShipObj) endGame(false); else endGame(false); }
+      _hudFrame++; if (_hudFrame % 3 === 0) updateHUD();
     }
-    if(player.hp<=0){ if(isDeployed) handleDeployedShipDeath(); else if(capitalShipObj) endGame(false); else endGame(false); }
-    _hudFrame++; if (_hudFrame % 3 === 0) updateHUD();
   }
   if(state==="waveTransition"){ updatePlayer();updateDeathEffects();waveTransitionTimer--; if(waveTransitionTimer<=0)nextWave(); if (_hudFrame % 3 === 0) updateHUD(); }
   render();
