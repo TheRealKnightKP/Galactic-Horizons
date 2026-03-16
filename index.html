@@ -16,7 +16,6 @@
 <div id="gameContainer" style="position:fixed;background:#000;">
   <canvas id="gameCanvas"></canvas>
 </div>
-
 <div id="hud">
   HP: <span id="health">100</span> |
   Armor: <span id="armorHUD">100</span>% |
@@ -25,21 +24,48 @@
   Wave: <span id="wave">0</span> |
   Missiles: <span id="missiles">2</span>
 </div>
-
 <div id="inGameBack">
   <button onclick="confirmLeaveGame()">✕ Leave</button>
 </div>
 
-<div id="mainMenu" class="menu">
+<!-- ═══ TOP-LEVEL MENU (shown after login) ═══ -->
+<div id="topMenu" class="menu" style="display:none">
   <h1>Galactic Horizons</h1>
-  <p style="color:#555;font-size:11px;margin-top:-10px">v1.7.6</p>
+  <p style="color:#555;font-size:11px;margin-top:-10px">v1.8.0</p>
+  <button onclick="openAccountPanel()">👤 Account</button>
+  <button onclick="enterArenaMenu()">⚔ Arena</button>
+  <button onclick="enterUniverseMenu()">🌌 Universe</button>
+</div>
+
+<!-- ═══ ACCOUNT PANEL (top-level, shared across modes) ═══ -->
+<div id="accountPanel" class="menu" style="display:none; min-width:400px">
+  <h2>👤 Account</h2>
+  <div id="accountBody"></div>
+  <br>
+  <button onclick="closeAccountPanel()">← Back</button>
+</div>
+
+<!-- ═══ ARENA MENU (sub-menu of top level) ═══ -->
+<div id="arenaMenu" class="menu" style="display:none">
+  <h2>⚔ Arena</h2>
   <p>WASD/Arrows: Move &nbsp; Mouse: Aim &nbsp; Click/Space: Shoot &nbsp; F: Missile</p>
   <button onclick="startGame(false)">Campaign (20 Waves)</button>
   <button onclick="startGame(true)">Infinite Mode</button>
   <button onclick="openShopFromMenu()">Ship Shop</button>
   <button onclick="openLoadout()">Loadout</button>
+  <br>
+  <button onclick="backToTopMenu()" style="margin-top:8px">← Back</button>
 </div>
 
+<!-- ═══ UNIVERSE MENU (sub-menu of top level) ═══ -->
+<div id="universeMenu" class="menu" style="display:none; min-width:500px">
+  <h2>🌌 Universe</h2>
+  <div id="universeMenuBody"></div>
+  <br>
+  <button onclick="backToTopMenu()">← Back</button>
+</div>
+
+<!-- ═══ ARENA: SHOP ═══ -->
 <div id="shopMenu" class="menu" style="display:none; min-width:700px">
   <h2>Ship Shop</h2>
   <p id="shopMoney"></p>
@@ -53,6 +79,7 @@
   <button onclick="closeShop()">Continue →</button>
 </div>
 
+<!-- ═══ ARENA: LOADOUT ═══ -->
 <div id="loadoutMenu" class="menu" style="display:none; min-width:540px">
   <h2>Loadout</h2>
   <p id="loadoutMoney"></p>
@@ -66,6 +93,7 @@
   <button onclick="closeLoadout()">← Back to Menu</button>
 </div>
 
+<!-- ═══ ARENA: GAME OVER ═══ -->
 <div id="gameOverMenu" class="menu" style="display:none">
   <h2 id="gameOverText">Game Over</h2>
   <p>Final Credits: <span id="finalMoney">0</span></p>
@@ -76,19 +104,9 @@
 <script src="saves.js"></script>
 <script src="challenges.js"></script>
 <script src="shop.js"></script>
+<script src="universe_data.js"></script>
+<script src="universe_saves.js"></script>
+<script src="universe_menu.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
