@@ -534,14 +534,14 @@ function equipShip(name) {
 }
 function openShopFromMenu() {
   shopOpenedFromMenu = true;
-  document.getElementById("mainMenu").style.display = "none";
+  document.getElementById("arenaMenu").style.display = "none";
   state = "shop"; showShop();
 }
 function closeShop() {
   document.getElementById("shopMenu").style.display = "none";
   if (shopOpenedFromMenu) {
     shopOpenedFromMenu = false;
-    document.getElementById("mainMenu").style.display = "block";
+    document.getElementById("arenaMenu").style.display = "block";
     state = "menu"; return;
   }
   if (currentWave === 0) nextWave(); else state = "playing";
@@ -576,7 +576,7 @@ function ensureAllySlots() {
 }
 
 function openLoadout() {
-  document.getElementById("mainMenu").style.display = "none";
+  document.getElementById("arenaMenu").style.display = "none";
   document.getElementById("loadoutMenu").style.display = "block";
   _loadoutTab = "ship";
   ensureAllySlots();
@@ -584,7 +584,7 @@ function openLoadout() {
 }
 function closeLoadout() {
   document.getElementById("loadoutMenu").style.display = "none";
-  document.getElementById("mainMenu").style.display = "block";
+  document.getElementById("arenaMenu").style.display = "block";
 }
 function loadoutTab(tab) { _loadoutTab = tab; renderLoadout(); }
 function renderInventoryPanel(container) {
@@ -1619,7 +1619,7 @@ function openCommandCenter(startTab) {
       : "display:block;width:760px;max-width:92vw;max-height:85vh;overflow-y:auto;position:relative;margin-left:0;text-align:left";
     document.body.appendChild(panel);
   }
-  document.getElementById("mainMenu").style.display = "none";
+  document.getElementById("arenaMenu").style.display = "none";
   panel.style.display = "block";
   renderCommandCenter();
 }
@@ -1627,7 +1627,7 @@ function openCommandCenter(startTab) {
 function closeCommandCenter() {
   const panel = document.getElementById("cmdCenterMenu");
   if (panel) panel.style.display = "none";
-  document.getElementById("mainMenu").style.display = "block";
+  document.getElementById("arenaMenu").style.display = "block";
 }
 
 function setCCTab(tab) { _ccTab = tab; renderCommandCenter(); }
@@ -1814,7 +1814,7 @@ async function adminDeleteOrphan(username, btn) {
 // Inject "Command Center" button into main menu
 window.addEventListener("DOMContentLoaded", () => {
   // Add Command Center button to main menu
-  const menu = document.getElementById("mainMenu");
+  const menu = document.getElementById("arenaMenu");
   if (menu) {
     const btn = document.createElement("button");
     btn.textContent = "Command Center";
