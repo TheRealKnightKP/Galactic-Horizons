@@ -31,15 +31,15 @@
 <!-- ═══ TOP-LEVEL MENU (shown after login) ═══ -->
 <div id="topMenu" class="menu" style="display:none">
   <h1>Galactic Horizons</h1>
-  <p style="color:#555;font-size:11px;margin-top:-10px">v1.8.0</p>
-  <button onclick="openAccountPanel()">👤 Account</button>
-  <button onclick="enterArenaMenu()">⚔ Arena</button>
-  <button onclick="enterUniverseMenu()">🌌 Universe</button>
+  <p style="color:#555;font-size:11px;margin-top:-10px">v1.8.1</p>
+  <button onclick="openAccountPanel()">Account</button>
+  <button onclick="enterArenaMenu()">Arena</button>
+  <button onclick="enterUniverseMenu()">Universe</button>
 </div>
 
 <!-- ═══ ACCOUNT PANEL (top-level, shared across modes) ═══ -->
 <div id="accountPanel" class="menu" style="display:none; min-width:400px">
-  <h2>👤 Account</h2>
+  <h2>Account</h2>
   <div id="accountBody"></div>
   <br>
   <button onclick="closeAccountPanel()">← Back</button>
@@ -47,7 +47,7 @@
 
 <!-- ═══ ARENA MENU (sub-menu of top level) ═══ -->
 <div id="arenaMenu" class="menu" style="display:none">
-  <h2>⚔ Arena</h2>
+  <h2>Arena</h2>
   <p>WASD/Arrows: Move &nbsp; Mouse: Aim &nbsp; Click/Space: Shoot &nbsp; F: Missile</p>
   <button onclick="startGame(false)">Campaign (20 Waves)</button>
   <button onclick="startGame(true)">Infinite Mode</button>
@@ -59,7 +59,7 @@
 
 <!-- ═══ UNIVERSE MENU (sub-menu of top level) ═══ -->
 <div id="universeMenu" class="menu" style="display:none; min-width:500px">
-  <h2>🌌 Universe</h2>
+  <h2>Universe</h2>
   <div id="universeMenuBody"></div>
   <br>
   <button onclick="backToTopMenu()">← Back</button>
