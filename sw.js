@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.3";
+const CACHE = "galactic-horizons-v1.8.4";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -165,4 +165,5 @@ Versions:
 -V1.8.1 - Moved Account/Admin from Command Center to top-level Account panel. Stripped all emojis from game UI.
 -V1.8.2 - Added the first vertical slice playable form of Universe
 -V1.8.3 - Added universe.js to sw.js
+-V1.8.4 - Fixed menu, movement, and other stuff on universe mode
 */
