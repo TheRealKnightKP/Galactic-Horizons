@@ -454,8 +454,8 @@ function generateQuadrantContents(quadrant, systemDanger) {
     }
   }
 
-  // Patrol spawns (for patrol and station quadrants)
-  if (quadrant.type === "patrol" || quadrant.type === "station" || quadrant.type === "mission") {
+  // Patrol spawns (for patrol and mission quadrants — NOT stations)
+  if (quadrant.type === "patrol" || quadrant.type === "mission") {
     const patrolKeys = Object.keys(typeof PATROL_TEMPLATES !== "undefined" ? PATROL_TEMPLATES : {});
     const validPatrols = patrolKeys.filter(k => {
       const p = PATROL_TEMPLATES[k];
