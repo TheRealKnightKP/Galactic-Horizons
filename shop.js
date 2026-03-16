@@ -45,7 +45,7 @@ document.addEventListener("keydown", e => {
       if (!vengeanaceUnlocked) {
         vengeanaceUnlocked = true;
         if (!ownedShips.includes("Vengeance")) ownedShips.push("Vengeance");
-        msg += (msg ? " + " : "") + "⚔ VENGEANCE";
+        msg += (msg ? " + " : "") + "+ VENGEANCE";
       }
       if (!retributionUnlocked) {
         retributionUnlocked = true;
@@ -1346,7 +1346,7 @@ function renderShopMastery(container) {
   const pct = Math.min(100, Math.round(m.xp / (typeof MASTERY_XP_PER_LEVEL !== "undefined" ? MASTERY_XP_PER_LEVEL : 200) % 1 * 100));
 
   let html = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:680px">
-    <div style="color:#ffcc00;font:bold 16px monospace;margin-bottom:4px">🏆 Ship Mastery — ${ship}</div>
+    <div style="color:#ffcc00;font:bold 16px monospace;margin-bottom:4px">Ship Mastery — ${ship}</div>
     <div style="color:#888;margin-bottom:12px">Earn XP by playing. Spend tokens to permanently upgrade this ship.</div>
     <div style="background:#111;border:1px solid #333;border-radius:6px;padding:10px;margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;margin-bottom:4px">
@@ -1439,7 +1439,7 @@ function renderShopRecords(container) {
   const schema = typeof RECORDS_SCHEMA !== "undefined" ? RECORDS_SCHEMA : {};
 
   let html = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:500px">
-    <div style="color:#0af;font:bold 16px monospace;margin-bottom:14px">📊 Personal Records</div>
+    <div style="color:#0af;font:bold 16px monospace;margin-bottom:14px">Personal Records</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">`;
 
   Object.entries(schema).forEach(([key, def]) => {
@@ -1471,7 +1471,7 @@ function renderShopAccount(container) {
   let html = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:600px">`;
 
   // Account section
-  html += `<div style="color:#0af;font:bold 15px monospace;margin-bottom:10px">👤 Account</div>
+  html += `<div style="color:#0af;font:bold 15px monospace;margin-bottom:10px">Account</div>
     <div style="background:#0a0e1a;border:1px solid #223;border-radius:6px;padding:12px;margin-bottom:16px">`;
 
   if (isGuest) {
@@ -1480,24 +1480,24 @@ function renderShopAccount(container) {
         <button onclick="showLoginFromMenu?.()" style="padding:8px 16px;background:#0af;color:#000;font:bold 12px monospace;border:none;cursor:pointer;border-radius:4px">Login / Register</button>
       </div>`;
   } else {
-    html += `<div style="color:#fff;margin-bottom:6px">Logged in as: <span style="color:#0af;font-weight:bold">${acct.username}${acct.isAdmin?" 👑":""}</span></div>
+    html += `<div style="color:#fff;margin-bottom:6px">Logged in as: <span style="color:#0af;font-weight:bold">${acct.username}${acct.isAdmin?"":""}</span></div>
       <div id="logoutErrMsg" style="color:#f84;font:10px monospace;min-height:14px;margin-bottom:4px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
         <button onclick="(()=>{
           const r=typeof logoutAccount==='function'?logoutAccount():{ok:false,error:'Not available'};
           if(!r.ok){const el=document.getElementById('logoutErrMsg');if(el)el.textContent=r.error;return;}
-          if(!confirm('⚠ Warning: You will need an internet connection to log back in. Log out now?'))return;
-          if(typeof buildLoginUI==='function')buildLoginUI();renderCommandCenter?.();})()"
+          if(!confirm('Warning: You will need an internet connection to log back in. Log out now?'))return;
+          if(typeof buildLoginUI==='function')buildLoginUI();typeof openAccountPanel==="function"?openAccountPanel():null;})()"
           style="padding:6px 14px;background:#333;color:#ccc;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Logout</button>
         <button onclick="if(typeof saveGame==='function'){saveGame();showNotification?.('Game saved!','#0af');}" 
           style="padding:6px 14px;background:#0a4;color:#fff;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Save Now</button>
         ${acct.isAdmin?'':
-        `<button onclick="window._showDeleteConfirm=true;renderCommandCenter?.()"
+        `<button onclick="window._showDeleteConfirm=true;typeof openAccountPanel==="function"?openAccountPanel():null"
           style="padding:6px 14px;background:#1a0000;color:#f44;font:11px monospace;border:1px solid #f444;cursor:pointer;border-radius:4px">Delete Account</button>`}
       </div>
       ${window._showDeleteConfirm ? `
         <div style="margin-top:12px;background:#1a0000;border:1px solid #f444;border-radius:6px;padding:12px">
-          <div style="color:#f44;margin-bottom:8px;font-weight:bold">⚠ Delete account permanently?</div>
+          <div style="color:#f44;margin-bottom:8px;font-weight:bold">Delete account permanently?</div>
           <div style="color:#888;font:10px monospace;margin-bottom:8px">Enter your password to confirm. This cannot be undone.</div>
           <input id="deletePassInput" type="password" placeholder="Your password"
             style="width:100%;box-sizing:border-box;background:#111;border:1px solid #333;color:#eee;padding:6px;font:12px monospace;margin-bottom:8px;border-radius:4px">
@@ -1510,7 +1510,7 @@ function renderShopAccount(container) {
               if(r.ok){window._showDeleteConfirm=false;if(typeof buildLoginUI==='function')buildLoginUI();}
               else{const el=document.getElementById('deleteErr');if(el)el.textContent=r.error;btn.disabled=false;btn.textContent='Confirm Delete';}})()"
               style="padding:6px 14px;background:#f44;color:#000;font:bold 11px monospace;border:none;cursor:pointer;border-radius:4px">Confirm Delete</button>
-            <button onclick="window._showDeleteConfirm=false;renderCommandCenter?.()"
+            <button onclick="window._showDeleteConfirm=false;typeof openAccountPanel==="function"?openAccountPanel():null"
               style="padding:6px 14px;background:#333;color:#ccc;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Cancel</button>
           </div>
         </div>` : ''}
@@ -1520,11 +1520,11 @@ function renderShopAccount(container) {
 
   // Titles
   if (titles.length > 0) {
-    html += `<div style="color:#cc88ff;font:bold 13px monospace;margin-bottom:8px">🎖 Titles</div>
+    html += `<div style="color:#cc88ff;font:bold 13px monospace;margin-bottom:8px">Titles</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">`;
     titles.forEach(t => {
       const isEq = t === equipped;
-      html += `<button onclick="if(typeof equippedTitle!='undefined'){window.equippedTitle='${t}';renderCommandCenter?.();}" 
+      html += `<button onclick="if(typeof equippedTitle!='undefined'){window.equippedTitle='${t}';typeof openAccountPanel==="function"?openAccountPanel():null;}" 
         style="padding:5px 12px;background:${isEq?'#cc88ff':'#1a0a2a'};color:${isEq?'#000':'#cc88ff'};font:11px monospace;border:1px solid #cc88ff44;cursor:pointer;border-radius:4px">
         ${isEq?'✓ ':''} ${t}</button>`;
     });
@@ -1532,29 +1532,29 @@ function renderShopAccount(container) {
   }
 
   // Thruster shapes
-  html += `<div style="color:#8084ff;font:bold 13px monospace;margin-bottom:8px">💫 Thruster Shape — ${ship}</div>
+  html += `<div style="color:#8084ff;font:bold 13px monospace;margin-bottom:8px">Thruster Shape — ${ship}</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">`;
   shapes.forEach(sh => {
     const def = allShapes[sh] || { name: sh };
     const isActive = sh === curShape;
-    html += `<button onclick="if(typeof setThrusterShape==='function'){setThrusterShape('${ship}','${sh}');renderCommandCenter?.();}"
+    html += `<button onclick="if(typeof setThrusterShape==='function'){setThrusterShape('${ship}','${sh}');typeof openAccountPanel==="function"?openAccountPanel():null;}"
       style="padding:5px 12px;background:${isActive?'#8084ff':'#0a0e1a'};color:${isActive?'#000':'#8084ff'};font:11px monospace;border:1px solid #8084ff44;cursor:pointer;border-radius:4px">
       ${isActive?'✓ ':''} ${def.name||sh}</button>`;
   });
   html += `</div>`;
 
   // Thruster color
-  html += `<div style="color:#8084ff;font:bold 13px monospace;margin-bottom:8px">🎨 Thruster Color — ${ship}</div>
+  html += `<div style="color:#8084ff;font:bold 13px monospace;margin-bottom:8px">Thruster Color — ${ship}</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">`;
   colors.forEach(c => {
     const isActive = c === curColor;
-    html += `<div onclick="if(typeof setThrusterColor==='function'){setThrusterColor('${ship}','${c}');renderCommandCenter?.();}"
+    html += `<div onclick="if(typeof setThrusterColor==='function'){setThrusterColor('${ship}','${c}');typeof openAccountPanel==="function"?openAccountPanel():null;}"
       style="width:32px;height:32px;border-radius:50%;background:${c};cursor:pointer;border:3px solid ${isActive?'#fff':'#333'};box-shadow:${isActive?'0 0 8px '+c:'none'}"></div>`;
   });
   html += `</div>`;
 
   // Leaderboard
-  html += `<div style="color:#ffcc00;font:bold 13px monospace;margin-bottom:8px">🏆 Leaderboard</div>
+  html += `<div style="color:#ffcc00;font:bold 13px monospace;margin-bottom:8px">Leaderboard</div>
     <div id="lbContent" style="background:#0a0e1a;border:1px solid #223;border-radius:6px;padding:10px;color:#888;font:11px monospace">Loading...</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px" id="lbCatBtns">`;
 
@@ -1638,12 +1638,10 @@ function renderCommandCenter() {
 
   const isAdmin = (typeof currentAccount !== "undefined") && currentAccount?.isAdmin;
   const tabs = [
-    { id:"ccTabChallenges", label:"🏆 Challenges", tab:"challenges" },
-    { id:"ccTabMastery",    label:"⚡ Mastery",    tab:"mastery"    },
-    { id:"ccTabRecords",    label:"📊 Records",    tab:"records"    },
-    { id:"ccTabLeaderboard",label:"🌐 Leaderboard",tab:"leaderboard"},
-    { id:"ccTabAccount",    label:"👤 Account",    tab:"account"    },
-    ...(isAdmin ? [{ id:"ccTabAdmin", label:"👑 Admin", tab:"admin" }] : []),
+    { id:"ccTabChallenges", label:"Challenges", tab:"challenges" },
+    { id:"ccTabMastery",    label:"Mastery",    tab:"mastery"    },
+    { id:"ccTabRecords",    label:"Records",    tab:"records"    },
+    { id:"ccTabLeaderboard",label:"Leaderboard",tab:"leaderboard"},
   ];
 
   const tabBar = tabs.map(t =>
@@ -1668,14 +1666,12 @@ function renderCommandCenter() {
   else if (_ccTab === "mastery")     renderShopMastery(body);
   else if (_ccTab === "records")     renderShopRecords(body);
   else if (_ccTab === "leaderboard") renderCCLeaderboard(body);
-  else if (_ccTab === "account")     renderShopAccount(body);
-  else if (_ccTab === "admin")       renderAdminPanel(body);
 }
 
 function renderCCLeaderboard(container) {
   const cats = typeof LB_CATEGORIES !== "undefined" ? LB_CATEGORIES : [];
   let html = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:600px">
-    <div style="color:#ffcc00;font:bold 16px monospace;margin-bottom:12px">🌐 Leaderboard</div>
+    <div style="color:#ffcc00;font:bold 16px monospace;margin-bottom:12px">Leaderboard</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
   cats.forEach(c => {
     html += `<button onclick="loadLBCat('${c.id}')"
@@ -1695,7 +1691,7 @@ function renderCCLeaderboard(container) {
 // ── ADMIN PANEL (temp — remove /admin/delete before public launch) ──────────
 async function renderAdminPanel(container) {
   container.innerHTML = `<div style="padding:12px;font:12px monospace;color:#ccc;max-width:640px">
-    <div style="color:#ffcc00;font:bold 16px monospace;margin-bottom:12px">👑 Admin Panel</div>
+    <div style="color:#ffcc00;font:bold 16px monospace;margin-bottom:12px">Admin Panel</div>
     <div id="adminBody" style="color:#888">Loading...</div>
   </div>`;
 
@@ -1754,7 +1750,7 @@ async function renderAdminPanel(container) {
       html += `</div>`;
     }
 
-    html += `<div style="color:#555;font:10px monospace">⚠ /admin/delete and /admin/orphans are TEMP endpoints — remove before public launch.</div>`;
+    html += `<div style="color:#555;font:10px monospace">/admin/delete and /admin/orphans are TEMP endpoints — remove before public launch.</div>`;
     document.getElementById("adminBody").innerHTML = html;
   } catch(e) {
     document.getElementById("adminBody").textContent = "Error reaching server.";
