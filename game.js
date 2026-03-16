@@ -37,7 +37,6 @@ function resizeCanvas() {
   const screenW = window.innerWidth;
   const screenH = window.innerHeight;
   const aspect  = screenW / screenH;
-  const dpr = Math.min(2, window.devicePixelRatio || 1); // cap at 2x to save GPU
 
   if (IS_MOBILE) {
     GAME_H = LOGICAL_H_MOBILE;
@@ -47,9 +46,8 @@ function resizeCanvas() {
     GAME_W = Math.round(Math.max(LOGICAL_W_MIN_PC, Math.min(LOGICAL_W_MAX_PC, GAME_H * aspect)));
   }
 
-  canvas.width  = GAME_W * dpr;
-  canvas.height = GAME_H * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  canvas.width  = GAME_W;
+  canvas.height = GAME_H;
 
   canvas.style.position = "fixed";
   canvas.style.left     = "0px";
@@ -2499,7 +2497,7 @@ function gameLoop() {
       if (player && !player.dead) spawnThrusterParticles(player, true, currentShipName);
       if (typeof uniUpdate === "function") uniUpdate();
       if (typeof _uniCheckMapKey === "function") _uniCheckMapKey();
-      if (typeof _uniUpdateMobileButtons === "function") _uniUpdateMobileButtons();
+      if (typeof _uniUpdateButtons === "function") _uniUpdateButtons();
     } else {
       // Arena mode — full arena logic
       updatePlayerDodgeTracking(); observePlayer(); updateEnemyCapitalAI(); updateCapitalAutopilot();
