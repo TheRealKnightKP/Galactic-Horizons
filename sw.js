@@ -16,6 +16,10 @@ const ASSETS = [
   "./assets/Comet.png",
   "./assets/Corsair.png",
   "./assets/Dominion.png",
+  "./assets/EnemyBulwark.png",
+  "./assets/EnemyDominion.png",
+  "./assets/EnemyPrometheus.png",
+  "./assets/Prometheus.png",
   "./assets/Galactic_Horizons_AllyRaptor.png",
   "./assets/Galactic_Horizons_Falcon.png",
   "./assets/Galactic_Horizons_Marauder.png",
@@ -26,12 +30,12 @@ const ASSETS = [
   "./assets/Galactic_Horizons_Supernova.png",
   "./assets/Galactic_Horizons_Vengeance.png",
   "./assets/Galactic_Horizons_Wasp.png",
+  "./assets/Galactic_Horizons_Sprite.png",
   "./assets/HammerHead.png",
   "./assets/Idris.jpg",
   "./assets/Leviathan.png",
   "./assets/Medic.png",
   "./assets/Meteor.png",
-  "./assets/Polaris.png",
   "./assets/Tempest.png",
 ];
 
@@ -143,6 +147,7 @@ Versions:
 -V1.7.0 - The Assets update: Adding the original assets for all ships. (15/3/2026)
 -V1.7.1 - Fixing assets
 -V1.7.2 - Fixig asset quality and size and Dominion orentaition
--V1.7.3 - SW model names fixed
--V1.7.4 - Fixed model size
+-V1.7.3 - Fixed sw.js asset cache list to match actual asset filenames
+-V1.7.4 - Size fixes
+-V1.7.5 - Added Prometheus, EnemyBulwark, EnemyPrometheus, EnemyDominion, assets
 */
