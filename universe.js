@@ -674,8 +674,9 @@ function _uniCheckStation() {
     _uniStationTab = "trading";
     _uniTradeSelected = 0;
     uniState = "docked";
-    if (typeof state !== "undefined") state = "menu"; // pause game.js combat loop
+    if (typeof state !== "undefined") state = "menu";
     if (typeof autoSaveUniverse === "function") autoSaveUniverse();
+    _startUniMapLoop(); // start the docked UI render loop
   }
 }
 
@@ -1687,7 +1688,17 @@ function _buildUniUI() {
   dockBtn.id = "uniDockBtn";
   dockBtn.textContent = "DOCK";
   dockBtn.style.cssText = "position:absolute;top:76px;right:10px;padding:8px 18px;display:none;" + btnCss + "background:rgba(0,255,100,0.18);border:2px solid rgba(0,255,100,0.7);color:#0f0";
-  const dockAction = () => { if (uniStation && uniStation._playerNear && !_uniInCombat) { if (typeof keys !== "undefined") keys["KeyE"] = true; setTimeout(() => { if (typeof keys !== "undefined") keys["KeyE"] = false; }, 50); } };
+  const dockAction = () => {
+    if (uniStation && uniStation._playerNear && !_uniInCombat) {
+      _uniDockedStation = uniStation.data;
+      _uniStationTab = "trading";
+      _uniTradeSelected = 0;
+      uniState = "docked";
+      if (typeof state !== "undefined") state = "menu";
+      if (typeof autoSaveUniverse === "function") autoSaveUniverse();
+      _startUniMapLoop(); // start the docked UI render loop
+    }
+  };
   dockBtn.addEventListener("click", dockAction);
   dockBtn.addEventListener("touchstart", e => { e.preventDefault(); dockAction(); }, { passive: false });
   ui.appendChild(dockBtn);
