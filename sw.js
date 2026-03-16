@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.7.4";
+const CACHE = "galactic-horizons-v1.7.5";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -19,7 +19,17 @@ const ASSETS = [
   "./assets/EnemyBulwark.png",
   "./assets/EnemyDominion.png",
   "./assets/EnemyPrometheus.png",
+  "./assets/EnemyMedic.png",
   "./assets/Prometheus.png",
+  "./assets/Dreadnaught1.png",
+  "./assets/Dreadnaught2.png",
+  "./assets/Dreadnaught3.png",
+  "./assets/EldritchComet1.png",
+  "./assets/EldritchComet2.png",
+  "./assets/EldritchComet3.png",
+  "./assets/EldritchVengeance1.png",
+  "./assets/EldritchVengeance2.png",
+  "./assets/EldritchVengeance3.png",
   "./assets/Galactic_Horizons_AllyRaptor.png",
   "./assets/Galactic_Horizons_Falcon.png",
   "./assets/Galactic_Horizons_Marauder.png",
@@ -31,11 +41,9 @@ const ASSETS = [
   "./assets/Galactic_Horizons_Vengeance.png",
   "./assets/Galactic_Horizons_Wasp.png",
   "./assets/Galactic_Horizons_Sprite.png",
-  "./assets/HammerHead.png",
   "./assets/Idris.jpg",
   "./assets/Leviathan.png",
   "./assets/Medic.png",
-  "./assets/Meteor.png",
   "./assets/Tempest.png",
 ];
 
@@ -148,6 +156,6 @@ Versions:
 -V1.7.1 - Fixing assets
 -V1.7.2 - Fixig asset quality and size and Dominion orentaition
 -V1.7.3 - Fixed sw.js asset cache list to match actual asset filenames
--V1.7.4 - Size fixes
--V1.7.5 - Added Prometheus, EnemyBulwark, EnemyPrometheus, EnemyDominion, assets
+-V1.7.4 - Added Prometheus, EnemyBulwark, EnemyPrometheus, EnemyDominion, Sprite assets
+-V1.7.5 - All original assets complete: EnemyMedic, Dreadnaught (animated), EldritchComet (animated), EldritchVengeance (animated)
 */
