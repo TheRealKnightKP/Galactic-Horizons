@@ -87,10 +87,10 @@ if (!IS_MOBILE) {
   canvas.addEventListener("mouseup",   () => mouse.down = false);
   document.addEventListener("keydown", e => {
     keys[e.code] = true;
-    if(e.code==="KeyE"&&state==="playing") cycleFormation();
-    if(e.code==="KeyQ"&&state==="playing") activateSpecial();
-    if(e.code==="KeyR"&&state==="playing") activatePing();
-    if(e.code==="KeyT"&&state==="playing") cycleMissileKind();
+    if(e.code==="KeyE"&&state==="playing"&&window.gameMode!=="universe") cycleFormation();
+    if(e.code==="KeyQ"&&state==="playing"&&window.gameMode!=="universe") activateSpecial();
+    if(e.code==="KeyR"&&state==="playing"&&window.gameMode!=="universe") activatePing();
+    if(e.code==="KeyT"&&state==="playing"&&window.gameMode!=="universe") cycleMissileKind();
     const tag = document.activeElement?.tagName;
     if (tag !== "INPUT" && tag !== "TEXTAREA") e.preventDefault();
   });
