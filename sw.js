@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.6";
+const CACHE = "galactic-horizons-v1.8.7";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -168,4 +168,5 @@ Versions:
 -V1.8.4 - Fixed menu, movement, and other stuff on universe mode
 -V1.8.5 - Ghost update
 -V1.8.6 - added parallax dots and cam fixes
+-V1.8.7 - Map fixes and others
 */
