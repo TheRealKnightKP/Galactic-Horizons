@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.7";
+const CACHE = "galactic-horizons-v1.8.8";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -60,7 +60,7 @@ self.addEventListener("install", e => {
   );
   self.skipWaiting();
 });
-
+ 
 self.addEventListener("activate", e => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -69,10 +69,10 @@ self.addEventListener("activate", e => {
   );
   clients.claim();
 });
-
+ 
 self.addEventListener("fetch", e => {
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request))
+    caches.match(e.request).then(r => r || fetch(e.request).catch(() => new Response("Offline", { status: 503 })))
   );
 });
 
@@ -169,4 +169,5 @@ Versions:
 -V1.8.5 - Ghost update
 -V1.8.6 - added parallax dots and cam fixes
 -V1.8.7 - Map fixes and others
+-V1.8.8 - Fixed some stuff
 */
