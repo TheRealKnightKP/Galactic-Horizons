@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.7.5";
+const CACHE = "galactic-horizons-v1.8.0";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -8,6 +8,9 @@ const ASSETS = [
   "./manifest.json",
   "./saves.js",
   "./challenges.js",
+  "./universe_data.js",
+  "./universe_saves.js",
+  "./universe_menu.js",
   "./assets/Galactic_Horizons_SIcon.png",
   "./assets/Galactic_Horizons_Icon.png",
   "./assets/Starlight.png",
@@ -41,7 +44,6 @@ const ASSETS = [
   "./assets/Galactic_Horizons_Vengeance.png",
   "./assets/Galactic_Horizons_Wasp.png",
   "./assets/Galactic_Horizons_Sprite.png",
-  "./assets/Idris.jpg",
   "./assets/Leviathan.png",
   "./assets/Medic.png",
   "./assets/Tempest.png",
@@ -158,4 +160,5 @@ Versions:
 -V1.7.3 - Fixed sw.js asset cache list to match actual asset filenames
 -V1.7.4 - Added Prometheus, EnemyBulwark, EnemyPrometheus, EnemyDominion, Sprite assets
 -V1.7.5 - All original assets complete: EnemyMedic, Dreadnaught (animated), EldritchComet (animated), EldritchVengeance (animated)
+-V1.8.0 - Universe Mode foundation: Menu restructure (Account/Arena/Universe top level), universe_data.js (data schema), universe_saves.js (seed-based save system), universe_menu.js (world creation/select/delete). No gameplay yet — Phase 0.5 next. (16/3/2026)
 */
