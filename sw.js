@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.0";
+const CACHE = "galactic-horizons-v1.8.1";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -161,4 +161,5 @@ Versions:
 -V1.7.4 - Added Prometheus, EnemyBulwark, EnemyPrometheus, EnemyDominion, Sprite assets
 -V1.7.5 - All original assets complete: EnemyMedic, Dreadnaught (animated), EldritchComet (animated), EldritchVengeance (animated)
 -V1.8.0 - Universe Mode foundation: Menu restructure (Account/Arena/Universe top level), universe_data.js (data schema), universe_saves.js (seed-based save system), universe_menu.js (world creation/select/delete). No gameplay yet — Phase 0.5 next. (16/3/2026)
+-V1.8.1 - Moved Account/Admin from Command Center to top-level Account panel. Stripped all emojis from game UI. (16/3/2026)
 */
