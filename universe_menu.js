@@ -167,12 +167,16 @@ function startUniverseMode(world) {
   // Store regenerated state for gameplay
   window._activeUniverse = universe;
 
-  // Hide menu, show universe UI
+  // Hide menus
   document.getElementById("universeMenu").style.display = "none";
+  document.getElementById("topMenu").style.display = "none";
 
-  // TODO: Phase 0.5 — Launch into actual Universe gameplay
-  // For now, show a placeholder confirmation
-  showUniversePlaceholder(world, universe);
+  // If universe.js is loaded, launch real gameplay. Otherwise show placeholder.
+  if (typeof enterUniverse === "function") {
+    enterUniverse(world);
+  } else {
+    showUniversePlaceholder(world, universe);
+  }
 }
 
 function showUniversePlaceholder(world, universe) {
