@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.17";
+const CACHE = "galactic-horizons-v1.8.18";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -179,4 +179,5 @@ Versions:
 -V1.8.15 - Fixing map markers and mobile map
 -V1.8.16 - Fixing some missions, markers, and exiting
 -V1.8.17 - Wreckage updates and hud updates
+-V1.8.18 - Wreckage and exit fixes
 */
