@@ -550,6 +550,55 @@ const SAVE_SCHEMA = {
   sunHealth: {},
 };
 
+// ── FACTION SHIP SHOPS ────────────────────────────────────────
+// What ships each faction's stations sell
+// Civilian stations sell warden + universal ships
+// Harvester stations sell harvester ships
+// Eldritch stations sell eldritch ships
+
+const UNI_SHIP_SHOP = {
+  civilian: [
+    { key: "Starlight",      price: 0,      desc: "Starter combat ship. Light and nimble." },
+    { key: "Falcon",         price: 8000,   desc: "Fast interceptor. Good dodge, light weapons." },
+    { key: "Rouge",          price: 12000,  desc: "Versatile fighter with decent cargo space." },
+    { key: "Marauder",       price: 25000,  desc: "Blockade runner. Fast, good cargo, outruns patrols." },
+    { key: "Wasp",           price: 18000,  desc: "Light assault craft. Spawns temporary allies." },
+    { key: "Supernova",      price: 40000,  desc: "Explorer class. Massive fuel range, deep scanner." },
+    { key: "MiningVessel",   price: 35000,  desc: "Purpose-built miner. Best mining laser in the fleet." },
+    { key: "Hauler",         price: 45000,  desc: "Cargo hauler. Massive hold, weak combat." },
+    { key: "Healer",         price: 40000,  desc: "Salvage ship. Tractor beam, hull extraction." },
+  ],
+  warden: [
+    { key: "Bulwark",        price: 50000,  desc: "Warden heavy tank. Turrets, thick armor." },
+    { key: "Tempest",        price: 55000,  desc: "Warden support cruiser. Heals allies in combat." },
+    { key: "Nemesis",        price: 65000,  desc: "Warden assault ship. Speed boost special." },
+    { key: "Leviathan",      price: 120000, desc: "Warden capital ship. Deploys fighters." },
+  ],
+  harvester: [
+    { key: "Prometheus",     price: 80000,  desc: "Harvester missile cruiser. Devastating salvos." },
+    { key: "Dominion",       price: 100000, desc: "Harvester battleship. Beam weapon, overcharge." },
+  ],
+  eldritch: [
+    { key: "Comet",          price: 90000,  desc: "Eldritch interceptor. Extreme speed and dodge." },
+    { key: "Vengeance",      price: 130000, desc: "Eldritch assault ship. Revenge mode doubles damage." },
+    { key: "Retribution",    price: 200000, desc: "Eldritch dreadnought. Summons shadow allies." },
+  ],
+};
+
+function getShopShipsForStation(stationFaction) {
+  const ships = [...(UNI_SHIP_SHOP.civilian || [])];
+  if (stationFaction === "civilian" || stationFaction === "warden") {
+    ships.push(...(UNI_SHIP_SHOP.warden || []));
+  }
+  if (stationFaction === "harvester") {
+    ships.push(...(UNI_SHIP_SHOP.harvester || []));
+  }
+  if (stationFaction === "eldritch") {
+    ships.push(...(UNI_SHIP_SHOP.eldritch || []));
+  }
+  return ships;
+}
+
 // ── WORLD GENERATION FLOW ─────────────────────────────────────
 // 1. Player creates new world → random masterSeed
 // 2. SYSTEM_DEFS are fixed (names, connections, areas) — same every world
