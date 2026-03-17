@@ -316,6 +316,9 @@ function uniUpdate() {
   // Fuel drain
   player.fuel = Math.max(0, player.fuel - UNI_FUEL_DRAIN / (player.fuelEfficiency || 1));
 
+  // Auto-save every 30 seconds
+  if (_uniFrameCount % 1800 === 0 && typeof autoSaveUniverse === "function") autoSaveUniverse();
+
   // Track combat state based on aggroed enemies
   const aggroedCount = (typeof enemies !== "undefined" ? enemies : []).filter(e => e._uniPatrol && e.aggroed).length;
   if (aggroedCount > 0 && !_uniInCombat) {
@@ -814,6 +817,7 @@ function _uniTurnInMission(missionIdx) {
 
   // Remove from active
   world.player.activeMissions.splice(missionIdx, 1);
+  if (typeof autoSaveUniverse === "function") autoSaveUniverse();
   return true;
 }
 
@@ -1039,9 +1043,10 @@ function uniRenderDockedUI() {
   // Tabs as clickable buttons
   const tabs = [
     { id: "trading", label: "TRADE" },
-    { id: "refuel", label: "REFUEL" },
+    { id: "refuel", label: "FUEL" },
     { id: "repair", label: "REPAIR" },
     { id: "missions", label: "MISSIONS" },
+    { id: "storage", label: "STORAGE" },
     { id: "shipyard", label: "SHIPS" },
   ];
   const tabW = (panelW - 20) / tabs.length;
@@ -1072,6 +1077,7 @@ function uniRenderDockedUI() {
   else if (_uniStationTab === "refuel") _uniRenderRefuel(c, contentX, contentY, contentW, contentH);
   else if (_uniStationTab === "repair") _uniRenderRepair(c, contentX, contentY, contentW, contentH);
   else if (_uniStationTab === "missions") _uniRenderMissions(c, contentX, contentY, contentW, contentH, st);
+  else if (_uniStationTab === "storage") _uniRenderStorage(c, contentX, contentY, contentW, contentH, st);
   else if (_uniStationTab === "shipyard") _uniRenderShipyard(c, contentX, contentY, contentW, contentH);
 
   // Undock button
@@ -1307,6 +1313,80 @@ function _uniRenderPlaceholder(c, x, y, w, h, title, msg) {
   c.textAlign = "left";
 }
 
+// ── STATION STORAGE ───────────────────────────────────────────
+// Players can store cargo at stations. Stored per-station in world.player.stationStorage.
+
+function _uniRenderStorage(c, x, y, w, h, station) {
+  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  if (!world) return;
+  if (!world.player.stationStorage) world.player.stationStorage = {};
+  const stId = station.id;
+  if (!world.player.stationStorage[stId]) world.player.stationStorage[stId] = [];
+  const stored = world.player.stationStorage[stId];
+  const shipCargo = (typeof player !== "undefined" && player && player.cargo) ? player.cargo : [];
+  const cargoCount = shipCargo.reduce((s, c) => s + c.quantity, 0);
+  const cargoCap = (typeof player !== "undefined" && player) ? player.cargoCapacity || 2 : 2;
+
+  c.fillStyle = "#fff"; c.font = "bold 14px monospace"; c.textAlign = "center";
+  c.fillText("STATION STORAGE", x + w / 2, y + 18);
+  c.textAlign = "left";
+
+  // Two columns: Ship cargo (left) | Station storage (right)
+  const colW = (w - 16) / 2;
+  const leftX = x + 4, rightX = x + colW + 12;
+  let ly = y + 36, ry = y + 36;
+
+  // Ship cargo header
+  c.fillStyle = "#0af"; c.font = "bold 10px monospace";
+  c.fillText("SHIP CARGO (" + cargoCount + "/" + cargoCap + ")", leftX, ly); ly += 16;
+
+  window._uniStorageDepositRects = [];
+  window._uniStorageWithdrawRects = [];
+
+  if (shipCargo.length === 0) {
+    c.fillStyle = "#555"; c.font = "9px monospace"; c.fillText("Empty", leftX, ly); ly += 14;
+  }
+  shipCargo.forEach((item, idx) => {
+    if (ly + 22 > y + h - 10) return;
+    c.fillStyle = "#ccc"; c.font = "10px monospace";
+    c.fillText(item.commodity + " x" + item.quantity, leftX, ly + 10);
+    // Deposit button
+    const btnX = leftX + colW - 55, btnY = ly, btnW = 52, btnH = 16;
+    c.fillStyle = "rgba(255,170,0,0.15)"; c.fillRect(btnX, btnY, btnW, btnH);
+    c.strokeStyle = "#ffaa00"; c.lineWidth = 1; c.strokeRect(btnX, btnY, btnW, btnH);
+    c.fillStyle = "#ffaa00"; c.font = "bold 8px monospace"; c.textAlign = "center";
+    c.fillText("STORE >", btnX + btnW / 2, btnY + 11); c.textAlign = "left";
+    window._uniStorageDepositRects.push({ cargoIdx: idx, commodity: item.commodity, x: btnX, y: btnY, w: btnW, h: btnH });
+    ly += 22;
+  });
+
+  // Station storage header
+  c.fillStyle = "#ffaa00"; c.font = "bold 10px monospace";
+  c.fillText("STORED HERE (" + stored.length + " types)", rightX, ry); ry += 16;
+
+  if (stored.length === 0) {
+    c.fillStyle = "#555"; c.font = "9px monospace"; c.fillText("Empty", rightX, ry); ry += 14;
+  }
+  stored.forEach((item, idx) => {
+    if (ry + 22 > y + h - 10) return;
+    c.fillStyle = "#ccc"; c.font = "10px monospace";
+    c.fillText(item.commodity + " x" + item.quantity, rightX, ry + 10);
+    // Withdraw button
+    const canWithdraw = cargoCount < cargoCap;
+    const btnX = rightX + colW - 55, btnY = ry, btnW = 52, btnH = 16;
+    c.fillStyle = canWithdraw ? "rgba(0,170,255,0.15)" : "rgba(50,50,50,0.2)"; c.fillRect(btnX, btnY, btnW, btnH);
+    c.strokeStyle = canWithdraw ? "#0af" : "#444"; c.lineWidth = 1; c.strokeRect(btnX, btnY, btnW, btnH);
+    c.fillStyle = canWithdraw ? "#0af" : "#444"; c.font = "bold 8px monospace"; c.textAlign = "center";
+    c.fillText("< TAKE", btnX + btnW / 2, btnY + 11); c.textAlign = "left";
+    if (canWithdraw) window._uniStorageWithdrawRects.push({ storIdx: idx, commodity: item.commodity, stationId: stId, x: btnX, y: btnY, w: btnW, h: btnH });
+    ry += 22;
+  });
+
+  c.fillStyle = "#555"; c.font = "8px monospace"; c.textAlign = "center";
+  c.fillText("Storage is per-station. Items stay here until you take them.", x + w / 2, y + h - 6);
+  c.textAlign = "left";
+}
+
 // ── MISSION BOARD ─────────────────────────────────────────────
 
 let _uniAvailableMissions = null;
@@ -1385,6 +1465,7 @@ function _uniRenderMissions(c, x, y, w, h, station) {
   window._uniMissionRows = [];
   window._uniMissionAcceptRect = null;
   window._uniMissionTurnInRects = [];
+  window._uniMissionAbandonRects = [];
 
   let cy = y + 32;
   const typeColors = { bounty: "#ff4444", delivery: "#4488ff", mining: "#ffaa00", explore: "#44ffaa", salvage: "#aa8844" };
@@ -1431,9 +1512,16 @@ function _uniRenderMissions(c, x, y, w, h, station) {
         c.textAlign = "left";
         window._uniMissionTurnInRects.push({ activeIdx: idx, x: btnX, y: btnY, w: btnW, h: btnH });
       } else {
-        // Reward preview
+        // Reward preview + Abandon button
         c.fillStyle = "#666"; c.font = "8px monospace"; c.textAlign = "right";
-        c.fillText(m.reward + " SC", x + w - 6, cy + 12); c.textAlign = "left";
+        c.fillText(m.reward + " SC", x + w - 50, cy + 12); c.textAlign = "left";
+        // Abandon button
+        const abX = x + w - 45, abY = cy + 18, abW = 42, abH = 16;
+        c.fillStyle = "rgba(255,60,60,0.15)"; c.fillRect(abX, abY, abW, abH);
+        c.strokeStyle = "#f44"; c.lineWidth = 1; c.strokeRect(abX, abY, abW, abH);
+        c.fillStyle = "#f44"; c.font = "bold 7px monospace"; c.textAlign = "center";
+        c.fillText("DROP", abX + abW / 2, abY + 11); c.textAlign = "left";
+        window._uniMissionAbandonRects.push({ activeIdx: idx, x: abX, y: abY, w: abW, h: abH });
       }
       cy += 42;
     });
@@ -2167,7 +2255,7 @@ function _renderQuadrantMap(c, gw, gh, uni) {
 
     c.restore(); // unclip
 
-    // Mission markers — show if active mission matches this quadrant type
+    // Mission markers
     const missionMatch = { bounty: "patrol", mining: "mining", explore: ["open","debris","mission"], salvage: "debris", delivery: "station" };
     const world3 = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
     const actMissions = world3 ? (world3.player.activeMissions || []) : [];
@@ -2178,18 +2266,25 @@ function _renderQuadrantMap(c, gw, gh, uni) {
       const match = missionMatch[m.type];
       const matches = Array.isArray(match) ? match.includes(q.type) : q.type === match;
       if (!matches) return;
-      // Draw mission diamond marker
-      const mkX = x + w - 10, mkY = mMarkerY + 6;
-      c.fillStyle = m.status === "complete" ? "#00ff88" : typeColors2[m.type] || "#fff";
-      c.beginPath(); c.moveTo(mkX, mkY - 5); c.lineTo(mkX + 4, mkY); c.lineTo(mkX, mkY + 5); c.lineTo(mkX - 4, mkY); c.closePath(); c.fill();
-      // Pulse for active
-      if (m.status === "active") {
-        c.save(); c.globalAlpha = 0.3 + Math.sin(_uniFrameCount * 0.08) * 0.2;
-        c.strokeStyle = typeColors2[m.type] || "#fff"; c.lineWidth = 1;
-        c.beginPath(); c.arc(mkX, mkY, 8, 0, Math.PI * 2); c.stroke();
-        c.restore();
+      // Delivery: skip the origin station
+      if (m.type === "delivery" && q.station && q.station.id === m.originStation) return;
+      const mkX = x + w - 12, mkY = mMarkerY + 8;
+      const col = m.status === "complete" ? "#00ff88" : typeColors2[m.type] || "#fff";
+      // Big diamond
+      c.fillStyle = col;
+      c.beginPath(); c.moveTo(mkX, mkY - 7); c.lineTo(mkX + 6, mkY); c.lineTo(mkX, mkY + 7); c.lineTo(mkX - 6, mkY); c.closePath(); c.fill();
+      // Pulsing glow ring
+      const pulseA = 0.4 + Math.sin(_uniFrameCount * 0.1 + mMarkerY) * 0.3;
+      c.save(); c.globalAlpha = pulseA;
+      c.strokeStyle = col; c.lineWidth = 2;
+      c.beginPath(); c.arc(mkX, mkY, 10 + Math.sin(_uniFrameCount * 0.06) * 3, 0, Math.PI * 2); c.stroke();
+      c.restore();
+      // Exclamation for complete
+      if (m.status === "complete") {
+        c.fillStyle = "#000"; c.font = "bold 8px monospace"; c.textAlign = "center";
+        c.fillText("!", mkX, mkY + 3); c.textAlign = "left";
       }
-      mMarkerY += 14;
+      mMarkerY += 18;
     });
 
     // Name below scene
@@ -2338,8 +2433,14 @@ function _uniHandleClick(mx, my) {
     }
     if (_uniStationTab === "missions") {
       if (window._uniMissionTurnInRects) { for (const r of window._uniMissionTurnInRects) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniTurnInMission(r.activeIdx); return; } } }
-      if (window._uniMissionAcceptRect) { const r = window._uniMissionAcceptRect; if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null; if (world && r.mission) { if (!world.player.activeMissions) world.player.activeMissions = []; if (world.player.activeMissions.length < 5) { world.player.activeMissions.push({ ...r.mission, status: "active", progress: 0, acceptedAt: Date.now() }); } } return; } }
+      if (window._uniMissionAbandonRects) { for (const r of window._uniMissionAbandonRects) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null; if (world && world.player.activeMissions) { const m = world.player.activeMissions[r.activeIdx]; if (m && m.type === "delivery" && m.deliveryCommodity && typeof player !== "undefined" && player && player.cargo) { const ci = player.cargo.find(c => c.commodity === m.deliveryCommodity); if (ci) { ci.quantity -= 1; player.cargo = player.cargo.filter(c => c.quantity > 0); } } world.player.activeMissions.splice(r.activeIdx, 1); } return; } } }
+      if (window._uniMissionAcceptRect) { const r = window._uniMissionAcceptRect; if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null; if (world && r.mission) { if (!world.player.activeMissions) world.player.activeMissions = []; if (world.player.activeMissions.length < 5) { const m = { ...r.mission, status: "active", progress: 0, acceptedAt: Date.now() }; if (m.type === "delivery" && m.deliveryCommodity && typeof player !== "undefined" && player) { const cap = player.cargoCapacity || 2; const cur = player.cargo ? player.cargo.reduce((s,c)=>s+c.quantity,0) : 0; if (cur >= cap) return; const ex = player.cargo.find(c=>c.commodity===m.deliveryCommodity); if (ex) ex.quantity+=1; else player.cargo.push({commodity:m.deliveryCommodity,quantity:1}); } world.player.activeMissions.push(m); } } return; } }
       if (window._uniMissionRows) { for (const r of window._uniMissionRows) { if (my > r.y1 && my < r.y2 && mx > r.x && mx < r.x + r.w) { _uniMissionSelected = r.idx; return; } } }
+    }
+    // Storage deposit/withdraw
+    if (_uniStationTab === "storage") {
+      if (window._uniStorageDepositRects) { for (const r of window._uniStorageDepositRects) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null; if (world && typeof player !== "undefined" && player && player.cargo) { const ci = player.cargo.find(c => c.commodity === r.commodity); if (ci && ci.quantity > 0) { ci.quantity -= 1; if (ci.quantity <= 0) player.cargo = player.cargo.filter(c => c.quantity > 0); if (!world.player.stationStorage) world.player.stationStorage = {}; const stId = _uniDockedStation.id; if (!world.player.stationStorage[stId]) world.player.stationStorage[stId] = []; const si = world.player.stationStorage[stId].find(c => c.commodity === r.commodity); if (si) si.quantity += 1; else world.player.stationStorage[stId].push({ commodity: r.commodity, quantity: 1 }); } } return; } } }
+      if (window._uniStorageWithdrawRects) { for (const r of window._uniStorageWithdrawRects) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null; if (world && typeof player !== "undefined" && player) { const cap = player.cargoCapacity || 2; const cur = player.cargo ? player.cargo.reduce((s,c) => s + c.quantity, 0) : 0; if (cur >= cap) return; const stored = world.player.stationStorage?.[r.stationId]; if (!stored) return; const si = stored.find(c => c.commodity === r.commodity); if (si && si.quantity > 0) { si.quantity -= 1; if (si.quantity <= 0) { const idx = stored.indexOf(si); stored.splice(idx, 1); } const ci = player.cargo.find(c => c.commodity === r.commodity); if (ci) ci.quantity += 1; else player.cargo.push({ commodity: r.commodity, quantity: 1 }); } } return; } } }
     }
     if (_uniStationTab === "shipyard") {
       if (window._uniShipyardTabRects) { for (const r of window._uniShipyardTabRects) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniShipyardTab = r.id; return; } } }
