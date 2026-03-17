@@ -296,6 +296,9 @@ function uniLoadQuadrant(quad) {
     player.vx = 0;
     player.vy = 0;
   }
+
+  // Track explore missions — visiting any new sector counts
+  if (typeof _uniMissionProgress === "function") _uniMissionProgress("explore", 1);
 }
 
 // ── UNIVERSE UPDATE (called from game.js gameLoop) ────────────
@@ -389,6 +392,12 @@ function uniUpdate() {
       if (world) {
         world.player.credits += e.score || 50;
         if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
+      }
+      // Mission tracking
+      if (e.isPassive) {
+        if (typeof _uniMissionProgress === "function") _uniMissionProgress("salvage", 1);
+      } else {
+        if (typeof _uniMissionProgress === "function") _uniMissionProgress("bounty", 1);
       }
     });
   }
@@ -590,29 +599,56 @@ function _uniRenderHUD(c, gw, gh) {
     c.fillText("[H] Mine nearby asteroids", fuelX + fuelW + 16, fuelY + 10);
   }
 
-  // Mission tracker (right side)
+  // Mission tracker (right side) — shows progress
   const world2 = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
   const activeMissions = world2 ? (world2.player.activeMissions || []) : [];
   if (activeMissions.length > 0) {
-    const mPanelW = 200, mPanelX = gw - mPanelW - 8, mPanelY = 36;
-    c.fillStyle = "rgba(0,0,0,0.5)";
-    c.fillRect(mPanelX, mPanelY, mPanelW, Math.min(activeMissions.length * 36 + 20, 200));
+    const mPanelW = 210, mPanelX = gw - mPanelW - 8, mPanelY = 36;
+    const mPanelH = Math.min(activeMissions.length * 42 + 22, 240);
+    c.fillStyle = "rgba(0,0,0,0.55)";
+    c.fillRect(mPanelX, mPanelY, mPanelW, mPanelH);
+    c.strokeStyle = "rgba(100,120,160,0.3)"; c.lineWidth = 1;
+    c.strokeRect(mPanelX, mPanelY, mPanelW, mPanelH);
     c.fillStyle = "#888"; c.font = "bold 9px monospace"; c.textAlign = "left";
-    c.fillText("ACTIVE MISSIONS", mPanelX + 6, mPanelY + 12);
+    c.fillText("MISSIONS", mPanelX + 6, mPanelY + 12);
 
     let mcy = mPanelY + 22;
     const typeColors = { bounty: "#ff4444", delivery: "#4488ff", mining: "#ffaa00", explore: "#44ffaa", salvage: "#aa8844" };
     activeMissions.forEach((m, i) => {
-      if (mcy > mPanelY + 180) return;
+      if (mcy > mPanelY + mPanelH - 15) return;
+      const prog = m.progress || 0;
+      const goal = m.goal || 1;
+      const frac = Math.min(1, prog / goal);
+      const isComplete = m.status === "complete";
+
+      // Type + title
       c.fillStyle = typeColors[m.type] || "#888"; c.font = "bold 8px monospace";
       c.fillText(m.type.toUpperCase(), mPanelX + 6, mcy);
-      c.fillStyle = "#ccc"; c.font = "9px monospace";
+      c.fillStyle = isComplete ? "#0f0" : "#ccc"; c.font = "9px monospace";
       c.fillText(m.title, mPanelX + 56, mcy);
-      c.fillStyle = "#ffcc00"; c.font = "8px monospace";
-      c.fillText(m.reward + " SC", mPanelX + 6, mcy + 12);
-      c.fillStyle = "#666";
-      c.fillText(m.status === "active" ? "In Progress" : m.status, mPanelX + 80, mcy + 12);
-      mcy += 32;
+
+      // Progress bar
+      const barX = mPanelX + 6, barY = mcy + 4, barW = mPanelW - 60, barH = 7;
+      c.fillStyle = "#1a1a2a"; c.fillRect(barX, barY, barW, barH);
+      c.fillStyle = isComplete ? "#00ff88" : typeColors[m.type] || "#0af";
+      c.fillRect(barX, barY, barW * frac, barH);
+
+      // Progress text
+      c.fillStyle = isComplete ? "#0f0" : "#aaa"; c.font = "bold 8px monospace";
+      c.textAlign = "right";
+      c.fillText(isComplete ? "DONE!" : prog + "/" + goal, mPanelX + mPanelW - 6, mcy + 10);
+      c.textAlign = "left";
+
+      // Reward
+      c.fillStyle = "#ffcc00"; c.font = "7px monospace";
+      c.fillText(m.reward + " SC", mPanelX + 6, mcy + 22);
+
+      if (isComplete) {
+        c.fillStyle = "#0f0"; c.font = "bold 7px monospace";
+        c.fillText("Dock to turn in!", mPanelX + 60, mcy + 22);
+      }
+
+      mcy += 38;
     });
   }
 
@@ -663,6 +699,9 @@ function _uniUpdateMining() {
         addDelta(world, deltaKey, "depleted", true);
       }
       uniAsteroids = uniAsteroids.filter(a => !a.depleted);
+
+      // Track mining missions
+      if (typeof _uniMissionProgress === "function") _uniMissionProgress("mining", 1);
     }
   } else {
     _uniMiningTarget = null;
@@ -688,6 +727,7 @@ function _uniCheckStation() {
     _uniTradeSelected = 0;
     _uniAvailableMissions = null;
     _uniMissionSelected = -1;
+    _uniCheckDeliveryMissions(uniStation.data.id);
     uniState = "docked";
     if (typeof state !== "undefined") state = "menu";
     if (typeof autoSaveUniverse === "function") autoSaveUniverse();
@@ -709,8 +749,64 @@ function _uniCheckPOIs() {
         const deltaKey = _uniCurrentSystem.id + ":" + (_uniCurrentArea?.id || "") + ":" + _uniCurrentQuadrant.id + ":" + poi.id;
         addDelta(world, deltaKey, "discovered", true);
       }
+      // Track explore missions
+      _uniMissionProgress("explore", 1);
     }
   });
+}
+
+// ── MISSION PROGRESS TRACKING ─────────────────────────────────
+// Call these from gameplay events to advance mission progress.
+
+function _uniMissionProgress(type, amount) {
+  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  if (!world || !world.player.activeMissions) return;
+  world.player.activeMissions.forEach(m => {
+    if (m.status !== "active" || m.type !== type) return;
+    m.progress = Math.min((m.progress || 0) + amount, m.goal);
+    if (m.progress >= m.goal) m.status = "complete";
+  });
+}
+
+// Called when docking at a station — completes delivery missions if at a different station
+function _uniCheckDeliveryMissions(stationId) {
+  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  if (!world || !world.player.activeMissions) return;
+  world.player.activeMissions.forEach(m => {
+    if (m.status !== "active" || m.type !== "delivery") return;
+    // Delivery is complete if you dock at any station OTHER than where you accepted it
+    // AND you have the required commodity in cargo
+    if (stationId !== m.originStation) {
+      const hasCommodity = player && player.cargo && player.cargo.some(c => c.commodity === m.deliveryCommodity && c.quantity > 0);
+      if (hasCommodity) {
+        // Remove one unit of the delivery commodity
+        const item = player.cargo.find(c => c.commodity === m.deliveryCommodity);
+        if (item) { item.quantity -= 1; if (item.quantity <= 0) player.cargo = player.cargo.filter(c => c.quantity > 0); }
+        m.progress = m.goal;
+        m.status = "complete";
+      }
+    }
+  });
+}
+
+// Turn in completed missions at a station — gives rewards
+function _uniTurnInMission(missionIdx) {
+  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  if (!world || !world.player.activeMissions) return false;
+  const m = world.player.activeMissions[missionIdx];
+  if (!m || m.status !== "complete") return false;
+
+  // Reward credits
+  world.player.credits += m.reward;
+  if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
+
+  // Reward rep (TODO: apply to faction)
+  // For now just track total rep earned
+  world.player.totalRepEarned = (world.player.totalRepEarned || 0) + m.repReward;
+
+  // Remove from active
+  world.player.activeMissions.splice(missionIdx, 1);
+  return true;
 }
 
 // ── MAP KEY HANDLING (from flying) ────────────────────────────
@@ -1207,7 +1303,7 @@ function _uniGenerateMissions(stationId, systemDanger) {
   if (!world) return [];
   const rng = typeof seededRNG === "function" ? seededRNG(typeof deriveEntitySeed === "function" ? deriveEntitySeed(world.masterSeed, stationId, "missions", Math.floor(Date.now() / 300000)) : 12345) : function(){ return Math.random(); };
   const types = ["bounty", "delivery", "mining", "explore", "salvage"];
-  const count = 3 + Math.floor(rng() * 3); // 3-5 missions
+  const count = 3 + Math.floor(rng() * 3);
   const missions = [];
   for (let i = 0; i < count; i++) {
     const type = types[Math.floor(rng() * types.length)];
@@ -1223,15 +1319,38 @@ function _uniGenerateMissions(stationId, systemDanger) {
       salvage: ["Recover wreck", "Salvage parts", "Strip derelict", "Scrap collection"],
     };
     const titlePool = titles[type] || ["Unknown task"];
+
+    // Concrete goals with progress tracking
+    let goal = 0, goalDesc = "";
+    if (type === "bounty") {
+      goal = 2 + Math.floor(rng() * 4); // 2-5 kills
+      goalDesc = "Destroy " + goal + " enemies";
+    } else if (type === "delivery") {
+      const commodities = ["iron", "copper", "food", "water", "electronics"];
+      const commodity = commodities[Math.floor(rng() * commodities.length)];
+      goal = 1; // deliver to any OTHER station
+      goalDesc = "Deliver " + commodity + " to another station";
+      missions._deliveryCommodity = commodity;
+    } else if (type === "mining") {
+      goal = 2 + Math.floor(rng() * 4); // 2-5 ore
+      goalDesc = "Mine " + goal + " ore from asteroids";
+    } else if (type === "explore") {
+      goal = 1; // visit 1 new sector
+      goalDesc = "Visit a new sector";
+    } else if (type === "salvage") {
+      goal = 2 + Math.floor(rng() * 3); // 2-4 salvage
+      goalDesc = "Collect " + goal + " salvage from debris";
+    }
+
     missions.push({
       id: "m_" + stationId + "_" + i,
-      type, title: titlePool[Math.floor(rng() * titlePool.length)],
+      type,
+      title: titlePool[Math.floor(rng() * titlePool.length)],
       reward, repReward,
-      desc: type === "bounty" ? "Destroy " + (2 + Math.floor(rng() * 4)) + " enemies in a patrol sector" :
-            type === "delivery" ? "Transport goods to another station" :
-            type === "mining" ? "Mine " + (2 + Math.floor(rng() * 4)) + " ore in an asteroid field" :
-            type === "explore" ? "Visit and scan a debris or anomaly sector" :
-            "Salvage materials from a wreck field",
+      goal, goalDesc,
+      progress: 0,
+      originStation: stationId,
+      deliveryCommodity: type === "delivery" ? (["iron","copper","food","water","electronics"][Math.floor(rng() * 5)]) : null,
     });
   }
   return missions;
@@ -1247,53 +1366,101 @@ function _uniRenderMissions(c, x, y, w, h, station) {
 
   c.fillStyle = "#fff"; c.font = "bold 14px monospace"; c.textAlign = "center";
   c.fillText("MISSION BOARD", x + w / 2, y + 18);
-  c.fillStyle = "#888"; c.font = "10px monospace";
-  c.fillText("Active: " + activeMissions.length + "/5", x + w / 2, y + 32);
   c.textAlign = "left";
 
-  const rowH = 52;
-  let cy = y + 46;
   window._uniMissionRows = [];
   window._uniMissionAcceptRect = null;
+  window._uniMissionTurnInRects = [];
+
+  let cy = y + 32;
+  const typeColors = { bounty: "#ff4444", delivery: "#4488ff", mining: "#ffaa00", explore: "#44ffaa", salvage: "#aa8844" };
+
+  // ── ACTIVE MISSIONS (with progress + turn-in) ──
+  if (activeMissions.length > 0) {
+    c.fillStyle = "#0af"; c.font = "bold 10px monospace";
+    c.fillText("ACTIVE (" + activeMissions.length + "/5)", x + 4, cy);
+    cy += 14;
+
+    activeMissions.forEach((m, idx) => {
+      if (cy + 42 > y + h - 40) return;
+      const prog = m.progress || 0;
+      const goal = m.goal || 1;
+      const frac = Math.min(1, prog / goal);
+      const isComplete = m.status === "complete";
+
+      c.fillStyle = isComplete ? "rgba(0,80,40,0.2)" : "rgba(20,20,40,0.3)";
+      c.fillRect(x, cy, w, 38);
+
+      // Type + title
+      c.fillStyle = typeColors[m.type] || "#888"; c.font = "bold 9px monospace";
+      c.fillText(m.type.toUpperCase(), x + 4, cy + 12);
+      c.fillStyle = isComplete ? "#0f0" : "#fff"; c.font = "bold 10px monospace";
+      c.fillText(m.title, x + 70, cy + 12);
+
+      // Progress bar
+      const barX = x + 4, barY = cy + 18, barW = w - 100, barH = 7;
+      c.fillStyle = "#1a1a2a"; c.fillRect(barX, barY, barW, barH);
+      c.fillStyle = isComplete ? "#00ff88" : typeColors[m.type] || "#0af";
+      c.fillRect(barX, barY, barW * frac, barH);
+      c.fillStyle = "#aaa"; c.font = "8px monospace";
+      c.fillText(m.goalDesc + " [" + prog + "/" + goal + "]", x + 4, cy + 34);
+
+      // Turn-in button for completed
+      if (isComplete) {
+        const btnX = x + w - 85, btnY = cy + 4, btnW = 80, btnH = 28;
+        c.fillStyle = "rgba(0,255,100,0.2)"; c.fillRect(btnX, btnY, btnW, btnH);
+        c.strokeStyle = "#0f0"; c.lineWidth = 1; c.strokeRect(btnX, btnY, btnW, btnH);
+        c.fillStyle = "#0f0"; c.font = "bold 9px monospace"; c.textAlign = "center";
+        c.fillText("TURN IN", btnX + btnW / 2, btnY + 12);
+        c.fillStyle = "#ffcc00"; c.font = "8px monospace";
+        c.fillText("+" + m.reward + " SC", btnX + btnW / 2, btnY + 23);
+        c.textAlign = "left";
+        window._uniMissionTurnInRects.push({ activeIdx: idx, x: btnX, y: btnY, w: btnW, h: btnH });
+      } else {
+        // Reward preview
+        c.fillStyle = "#666"; c.font = "8px monospace"; c.textAlign = "right";
+        c.fillText(m.reward + " SC", x + w - 6, cy + 12); c.textAlign = "left";
+      }
+      cy += 42;
+    });
+    cy += 6;
+  }
+
+  // ── AVAILABLE MISSIONS ──
+  c.fillStyle = "#888"; c.font = "bold 10px monospace";
+  c.fillText("AVAILABLE", x + 4, cy);
+  cy += 14;
 
   _uniAvailableMissions.forEach((m, idx) => {
-    if (cy + rowH > y + h - 30) return;
+    if (cy + 44 > y + h - 5) return;
     const isSelected = idx === _uniMissionSelected;
     const alreadyActive = activeMissions.some(am => am.id === m.id);
-    const typeColors = { bounty: "#ff4444", delivery: "#4488ff", mining: "#ffaa00", explore: "#44ffaa", salvage: "#aa8844" };
 
-    if (isSelected) { c.fillStyle = "rgba(0,170,255,0.1)"; c.fillRect(x, cy, w, rowH - 2); }
-    window._uniMissionRows.push({ idx, y1: cy, y2: cy + rowH - 2, x, w });
+    if (isSelected) { c.fillStyle = "rgba(0,170,255,0.1)"; c.fillRect(x, cy, w, 40); }
+    window._uniMissionRows.push({ idx, y1: cy, y2: cy + 40, x, w });
 
-    // Type badge
-    c.fillStyle = typeColors[m.type] || "#888"; c.font = "bold 10px monospace";
-    c.fillText(m.type.toUpperCase(), x + 4, cy + 14);
-    // Title
-    c.fillStyle = "#fff"; c.font = "bold 11px monospace";
-    c.fillText(m.title, x + 80, cy + 14);
-    // Description
+    c.fillStyle = typeColors[m.type] || "#888"; c.font = "bold 9px monospace";
+    c.fillText(m.type.toUpperCase(), x + 4, cy + 12);
+    c.fillStyle = alreadyActive ? "#555" : "#fff"; c.font = "bold 10px monospace";
+    c.fillText(m.title, x + 70, cy + 12);
     c.fillStyle = "#888"; c.font = "9px monospace";
-    c.fillText(m.desc, x + 4, cy + 28);
-    // Reward
-    c.fillStyle = "#ffcc00"; c.font = "10px monospace";
-    c.fillText(m.reward + " SC  +" + m.repReward + " rep", x + 4, cy + 42);
+    c.fillText(m.goalDesc, x + 4, cy + 26);
+    c.fillStyle = "#ffcc00"; c.font = "9px monospace";
+    c.fillText(m.reward + " SC  +" + m.repReward + " rep", x + 4, cy + 38);
 
-    // Accept button for selected
     if (isSelected && !alreadyActive && activeMissions.length < 5) {
-      const btnX = x + w - 80, btnY = cy + 10, btnW = 70, btnH = 24;
+      const btnX = x + w - 80, btnY = cy + 6, btnW = 72, btnH = 24;
       c.fillStyle = "rgba(0,255,100,0.15)"; c.fillRect(btnX, btnY, btnW, btnH);
       c.strokeStyle = "#0f0"; c.lineWidth = 1; c.strokeRect(btnX, btnY, btnW, btnH);
-      c.fillStyle = "#0f0"; c.font = "bold 10px monospace"; c.textAlign = "center";
-      c.fillText("ACCEPT", btnX + btnW / 2, btnY + 16);
-      c.textAlign = "left";
+      c.fillStyle = "#0f0"; c.font = "bold 9px monospace"; c.textAlign = "center";
+      c.fillText("ACCEPT", btnX + btnW / 2, btnY + 16); c.textAlign = "left";
       window._uniMissionAcceptRect = { x: btnX, y: btnY, w: btnW, h: btnH, mission: m };
     }
     if (alreadyActive) {
-      c.fillStyle = "#555"; c.font = "bold 10px monospace"; c.textAlign = "right";
-      c.fillText("ACTIVE", x + w - 8, cy + 14); c.textAlign = "left";
+      c.fillStyle = "#555"; c.font = "bold 9px monospace"; c.textAlign = "right";
+      c.fillText("ACCEPTED", x + w - 6, cy + 12); c.textAlign = "left";
     }
-
-    cy += rowH;
+    cy += 44;
   });
 }
 
@@ -2083,8 +2250,18 @@ document.addEventListener("mousedown", function(e) {
         window._uniRepairRect = null; return;
       }
     }
-    // Mission accept
+    // Mission turn-in + accept
     if (_uniStationTab === "missions") {
+      // Turn-in buttons first (completed missions)
+      if (window._uniMissionTurnInRects) {
+        for (const r of window._uniMissionTurnInRects) {
+          if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
+            _uniTurnInMission(r.activeIdx);
+            return;
+          }
+        }
+      }
+      // Accept button
       if (window._uniMissionAcceptRect) {
         const r = window._uniMissionAcceptRect;
         if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
@@ -2092,12 +2269,13 @@ document.addEventListener("mousedown", function(e) {
           if (world && r.mission) {
             if (!world.player.activeMissions) world.player.activeMissions = [];
             if (world.player.activeMissions.length < 5) {
-              world.player.activeMissions.push({ ...r.mission, status: "active", acceptedAt: Date.now() });
+              world.player.activeMissions.push({ ...r.mission, status: "active", progress: 0, acceptedAt: Date.now() });
             }
           }
           return;
         }
       }
+      // Row selection
       if (window._uniMissionRows) {
         for (const r of window._uniMissionRows) {
           if (my > r.y1 && my < r.y2 && mx > r.x && mx < r.x + r.w) { _uniMissionSelected = r.idx; return; }
@@ -2250,6 +2428,7 @@ function _buildUniUI() {
       _uniTradeSelected = 0;
       _uniAvailableMissions = null;
       _uniMissionSelected = -1;
+      _uniCheckDeliveryMissions(uniStation.data.id);
       uniState = "docked";
       if (typeof state !== "undefined") state = "menu";
       if (typeof autoSaveUniverse === "function") autoSaveUniverse();
