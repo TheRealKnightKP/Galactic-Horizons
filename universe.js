@@ -1655,6 +1655,16 @@ function _uniMapTick() {
     c.fillStyle = _uniMapLevel === "system" ? "#f66" : "#aaa"; c.font = "bold 11px monospace"; c.textAlign = "center";
     c.fillText(backLabel, backX + backW / 2, backY + 16);
     window._uniMapBackRect = { x: backX, y: backY, w: backW, h: backH };
+    // Full map button (jump to system view) — only when zoomed in
+    window._uniMapFullRect = null;
+    if (_uniMapLevel !== "system") {
+      const fmX = backX + backW + 10, fmW = 90, fmH = 24;
+      c.fillStyle = "rgba(0,170,255,0.12)"; c.fillRect(fmX, backY, fmW, fmH);
+      c.strokeStyle = "#0af"; c.lineWidth = 1; c.strokeRect(fmX, backY, fmW, fmH);
+      c.fillStyle = "#0af"; c.font = "bold 10px monospace"; c.textAlign = "center";
+      c.fillText("FULL MAP", fmX + fmW / 2, backY + 16);
+      window._uniMapFullRect = { x: fmX, y: backY, w: fmW, h: fmH };
+    }
     c.textAlign = "left";
     if (_uniCurrentSystem) {
       c.textAlign = "right"; c.fillStyle = "#555"; c.font = "11px monospace";
@@ -2157,6 +2167,31 @@ function _renderQuadrantMap(c, gw, gh, uni) {
 
     c.restore(); // unclip
 
+    // Mission markers — show if active mission matches this quadrant type
+    const missionMatch = { bounty: "patrol", mining: "mining", explore: ["open","debris","mission"], salvage: "debris", delivery: "station" };
+    const world3 = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+    const actMissions = world3 ? (world3.player.activeMissions || []) : [];
+    const typeColors2 = { bounty: "#ff4444", delivery: "#4488ff", mining: "#ffaa00", explore: "#44ffaa", salvage: "#aa8844" };
+    let mMarkerY = y + 3;
+    actMissions.forEach(m => {
+      if (m.status !== "active" && m.status !== "complete") return;
+      const match = missionMatch[m.type];
+      const matches = Array.isArray(match) ? match.includes(q.type) : q.type === match;
+      if (!matches) return;
+      // Draw mission diamond marker
+      const mkX = x + w - 10, mkY = mMarkerY + 6;
+      c.fillStyle = m.status === "complete" ? "#00ff88" : typeColors2[m.type] || "#fff";
+      c.beginPath(); c.moveTo(mkX, mkY - 5); c.lineTo(mkX + 4, mkY); c.lineTo(mkX, mkY + 5); c.lineTo(mkX - 4, mkY); c.closePath(); c.fill();
+      // Pulse for active
+      if (m.status === "active") {
+        c.save(); c.globalAlpha = 0.3 + Math.sin(_uniFrameCount * 0.08) * 0.2;
+        c.strokeStyle = typeColors2[m.type] || "#fff"; c.lineWidth = 1;
+        c.beginPath(); c.arc(mkX, mkY, 8, 0, Math.PI * 2); c.stroke();
+        c.restore();
+      }
+      mMarkerY += 14;
+    });
+
     // Name below scene
     c.fillStyle = hovered ? "#fff" : "#bbb"; c.font = "bold 9px monospace"; c.textAlign = "center";
     c.fillText(q.name || q.id, x + w / 2, y + h - 20);
@@ -2246,24 +2281,20 @@ function _uniRecalcHover(mx, my) {
   }
 }
 
-document.addEventListener("mousedown", function(e) {
+function _uniHandleClick(mx, my) {
   if (uniState === "inactive") return;
-  const ds = typeof displayScale !== "undefined" ? displayScale : 1;
-  const mx = e.clientX / ds, my = e.clientY / ds;
-
-  // Update mouse position so hover works on mobile
   if (typeof mouse !== "undefined") { mouse.x = mx; mouse.y = my; }
 
   if (uniState === "map") {
-    // Recalculate hover from click position (needed for mobile where render hasn't set _uniMapHover yet)
     _uniRecalcHover(mx, my);
-
-    // Back button
     if (window._uniMapBackRect) {
       const r = window._uniMapBackRect;
       if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniMapBack(); return; }
     }
-    // Map element clicks
+    if (window._uniMapFullRect) {
+      const r = window._uniMapFullRect;
+      if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniMapLevel = "system"; return; }
+    }
     if (_uniMapHover) {
       if (_uniMapLevel === "system") { _uniMapSelectedSystem = _uniMapHover; _uniMapLevel = "area"; }
       else if (_uniMapLevel === "area") { _uniMapSelectedArea = _uniMapHover; _uniMapLevel = "quadrant"; }
@@ -2281,34 +2312,12 @@ document.addEventListener("mousedown", function(e) {
   }
 
   if (uniState === "docked") {
-    // Tab clicks
-    if (window._uniStationTabRects) {
-      for (const r of window._uniStationTabRects) {
-        if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniStationTab = r.id; return; }
-      }
-    }
-    // Trade: Buy/Sell button clicks FIRST (they're inside row areas)
+    if (window._uniStationTabRects) { for (const r of window._uniStationTabRects) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniStationTab = r.id; return; } } }
     if (_uniStationTab === "trading") {
-      if (window._uniTradeBuyRect) {
-        const r = window._uniTradeBuyRect;
-        if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
-          _uniTradeBuy(r.key, r.price, _uniDockedStation.id); return;
-        }
-      }
-      if (window._uniTradeSellRect) {
-        const r = window._uniTradeSellRect;
-        if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
-          _uniTradeSell(r.key, r.price, _uniDockedStation.id); return;
-        }
-      }
-      // Trade row selection (only if didn't hit a button)
-      if (window._uniTradeRows) {
-        for (const r of window._uniTradeRows) {
-          if (my > r.y1 && my < r.y2 && mx > r.x && mx < r.x + r.w) { _uniTradeSelected = r.idx; return; }
-        }
-      }
+      if (window._uniTradeBuyRect) { const r = window._uniTradeBuyRect; if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniTradeBuy(r.key, r.price, _uniDockedStation.id); return; } }
+      if (window._uniTradeSellRect) { const r = window._uniTradeSellRect; if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniTradeSell(r.key, r.price, _uniDockedStation.id); return; } }
+      if (window._uniTradeRows) { for (const r of window._uniTradeRows) { if (my > r.y1 && my < r.y2 && mx > r.x && mx < r.x + r.w) { _uniTradeSelected = r.idx; return; } } }
     }
-    // Refuel button
     if (_uniStationTab === "refuel" && window._uniRefuelRect) {
       const r = window._uniRefuelRect;
       if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
@@ -2318,7 +2327,6 @@ document.addEventListener("mousedown", function(e) {
         window._uniRefuelRect = null; return;
       }
     }
-    // Repair button
     if (_uniStationTab === "repair" && window._uniRepairRect) {
       const r = window._uniRepairRect;
       if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
@@ -2328,120 +2336,35 @@ document.addEventListener("mousedown", function(e) {
         window._uniRepairRect = null; return;
       }
     }
-    // Mission turn-in + accept
     if (_uniStationTab === "missions") {
-      // Turn-in buttons first (completed missions)
-      if (window._uniMissionTurnInRects) {
-        for (const r of window._uniMissionTurnInRects) {
-          if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
-            _uniTurnInMission(r.activeIdx);
-            return;
-          }
-        }
-      }
-      // Accept button
-      if (window._uniMissionAcceptRect) {
-        const r = window._uniMissionAcceptRect;
-        if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
-          const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
-          if (world && r.mission) {
-            if (!world.player.activeMissions) world.player.activeMissions = [];
-            if (world.player.activeMissions.length < 5) {
-              world.player.activeMissions.push({ ...r.mission, status: "active", progress: 0, acceptedAt: Date.now() });
-            }
-          }
-          return;
-        }
-      }
-      // Row selection
-      if (window._uniMissionRows) {
-        for (const r of window._uniMissionRows) {
-          if (my > r.y1 && my < r.y2 && mx > r.x && mx < r.x + r.w) { _uniMissionSelected = r.idx; return; }
-        }
-      }
+      if (window._uniMissionTurnInRects) { for (const r of window._uniMissionTurnInRects) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniTurnInMission(r.activeIdx); return; } } }
+      if (window._uniMissionAcceptRect) { const r = window._uniMissionAcceptRect; if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null; if (world && r.mission) { if (!world.player.activeMissions) world.player.activeMissions = []; if (world.player.activeMissions.length < 5) { world.player.activeMissions.push({ ...r.mission, status: "active", progress: 0, acceptedAt: Date.now() }); } } return; } }
+      if (window._uniMissionRows) { for (const r of window._uniMissionRows) { if (my > r.y1 && my < r.y2 && mx > r.x && mx < r.x + r.w) { _uniMissionSelected = r.idx; return; } } }
     }
-    // Shipyard — sub-tabs, switch, buy
     if (_uniStationTab === "shipyard") {
-      // Sub-tab clicks
-      if (window._uniShipyardTabRects) {
-        for (const r of window._uniShipyardTabRects) {
-          if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniShipyardTab = r.id; return; }
-        }
-      }
-      // Ship switch buttons (owned tab)
-      if (_uniShipyardTab === "owned" && window._uniShipyardRows) {
-        for (const r of window._uniShipyardRows) {
-          if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
-            const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
-            if (world) {
-              const curShip = world.player.ownedShips[world.player.activeShipIdx || 0];
-              if (curShip && typeof player !== "undefined" && player) {
-                curShip.fuel = player.fuel; curShip.hp = player.hp; curShip.shields = player.shields;
-                curShip.cargo = player.cargo ? [...player.cargo] : [];
-              }
-              world.player.activeShipIdx = r.idx;
-              const newShip = world.player.ownedShips[r.idx];
-              if (newShip && typeof setPlayerShip === "function") {
-                if (typeof playerLoadout !== "undefined") playerLoadout.ship = newShip.key;
-                setPlayerShip(newShip.key);
-                const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[newShip.key] : null;
-                if (player) {
-                  player.fuel = newShip.fuel || uniStats?.fuelMax || 50;
-                  player.fuelMax = uniStats?.fuelMax || 50;
-                  player.fuelEfficiency = uniStats?.fuelEfficiency || 1.0;
-                  player.cargo = newShip.cargo ? [...newShip.cargo] : [];
-                  player.cargoCapacity = uniStats?.cargoCapacity || 2;
-                  player.miningPower = uniStats?.miningPower || 0;
-                  player.scanRange = uniStats?.scanRange || 100;
-                  if (newShip.hp !== null && newShip.hp !== undefined) player.hp = newShip.hp;
-                  if (newShip.shields !== null && newShip.shields !== undefined) player.shields = newShip.shields;
-                }
-              }
-            }
-            return;
-          }
-        }
-      }
-      // Ship buy buttons (buy tab)
-      if (_uniShipyardTab === "buy" && window._uniShipBuyRects) {
-        for (const r of window._uniShipBuyRects) {
-          if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
-            const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
-            if (world && world.player.credits >= r.price) {
-              world.player.credits -= r.price;
-              if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
-              const shipDef = typeof SHIPS !== "undefined" ? SHIPS[r.key] : null;
-              const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[r.key] : null;
-              world.player.ownedShips.push({
-                id: "ship_" + Date.now(),
-                key: r.key,
-                fuel: uniStats?.fuelMax || 50,
-                cargo: [],
-                hp: shipDef?.hp || 500,
-                shields: shipDef?.shields || 300,
-                armor: shipDef?.armor || 100,
-              });
-              if (typeof autoSaveUniverse === "function") autoSaveUniverse();
-            }
-            return;
-          }
-        }
-      }
+      if (window._uniShipyardTabRects) { for (const r of window._uniShipyardTabRects) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniShipyardTab = r.id; return; } } }
+      if (_uniShipyardTab === "owned" && window._uniShipyardRows) { for (const r of window._uniShipyardRows) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null; if (world) { const curShip = world.player.ownedShips[world.player.activeShipIdx || 0]; if (curShip && typeof player !== "undefined" && player) { curShip.fuel = player.fuel; curShip.hp = player.hp; curShip.shields = player.shields; curShip.cargo = player.cargo ? [...player.cargo] : []; } world.player.activeShipIdx = r.idx; const newShip = world.player.ownedShips[r.idx]; if (newShip && typeof setPlayerShip === "function") { if (typeof playerLoadout !== "undefined") playerLoadout.ship = newShip.key; setPlayerShip(newShip.key); const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[newShip.key] : null; if (player) { player.fuel = newShip.fuel || uniStats?.fuelMax || 50; player.fuelMax = uniStats?.fuelMax || 50; player.fuelEfficiency = uniStats?.fuelEfficiency || 1.0; player.cargo = newShip.cargo ? [...newShip.cargo] : []; player.cargoCapacity = uniStats?.cargoCapacity || 2; player.miningPower = uniStats?.miningPower || 0; player.scanRange = uniStats?.scanRange || 100; if (newShip.hp !== null && newShip.hp !== undefined) player.hp = newShip.hp; if (newShip.shields !== null && newShip.shields !== undefined) player.shields = newShip.shields; } } } return; } } }
+      if (_uniShipyardTab === "buy" && window._uniShipBuyRects) { for (const r of window._uniShipBuyRects) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null; if (world && world.player.credits >= r.price) { world.player.credits -= r.price; if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits; const shipDef = typeof SHIPS !== "undefined" ? SHIPS[r.key] : null; const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[r.key] : null; world.player.ownedShips.push({ id: "ship_" + Date.now(), key: r.key, fuel: uniStats?.fuelMax || 50, cargo: [], hp: shipDef?.hp || 500, shields: shipDef?.shields || 300, armor: shipDef?.armor || 100, }); if (typeof autoSaveUniverse === "function") autoSaveUniverse(); } return; } } }
     }
-    // Undock button
-    if (window._uniUndockRect) {
-      const r = window._uniUndockRect;
-      if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
-        uniState = "flying";
-        if (typeof state !== "undefined") state = "playing";
-        _uniDockedStation = null;
-        _stopUniMapLoop();
-        return;
-      }
-    }
+    if (window._uniUndockRect) { const r = window._uniUndockRect; if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { uniState = "flying"; if (typeof state !== "undefined") state = "playing"; _uniDockedStation = null; _stopUniMapLoop(); return; } }
     return;
   }
+}
+
+document.addEventListener("mousedown", function(e) {
+  if (uniState === "inactive") return;
+  const ds = typeof displayScale !== "undefined" ? displayScale : 1;
+  _uniHandleClick(e.clientX / ds, e.clientY / ds);
 });
+
+document.addEventListener("touchstart", function(e) {
+  if (uniState === "inactive") return;
+  if (uniState !== "map" && uniState !== "docked") return; // only intercept for map/station UI
+  if (e.touches.length === 0) return;
+  const ds = typeof displayScale !== "undefined" ? displayScale : 1;
+  const mx = e.touches[0].clientX / ds, my = e.touches[0].clientY / ds;
+  _uniHandleClick(mx, my);
+}, { passive: true });
 
 document.addEventListener("keydown", function(e) {
   if (uniState === "inactive") return;
