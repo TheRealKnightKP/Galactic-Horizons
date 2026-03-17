@@ -2384,6 +2384,9 @@ function drawBoostHUD() {
 }
 
 function render() {
+  // In universe mode, if not actively flying, universe.js handles all rendering
+  if (window.gameMode === "universe" && state !== "playing") return;
+
   if (!_starCanvas) _buildStarBg(); ctx.drawImage(_starCanvas, 0, 0);
   if(state==="shadowCometCutscene"){ drawShadowCometCutscene(); return; }
   if(state==="shadowVenganceCutscene"){ drawShadowVenganceCutscene(); return; }
