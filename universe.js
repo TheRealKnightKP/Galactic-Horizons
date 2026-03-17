@@ -66,7 +66,7 @@ const UNI_QUAD_SIZES = {
 };
 
 // Universe-specific entities that sit alongside game.js's enemies array
-let uniAsteroids = []; uniWrecks = [];
+let uniAsteroids = [];
 let uniPOIs = [];
 let uniWrecks = [];
 
@@ -1867,12 +1867,12 @@ function _uniMapTick() {
       c.textAlign = "left";
     }
     // Back button (clickable)
-    const backLabel = _uniMapLevel === "system" ? "EXIT UNIVERSE" : "BACK";
-    const backW = _uniMapLevel === "system" ? 130 : 80;
+    const backLabel = _uniMapLevel === "system" ? "CLOSE MAP" : "BACK";
+    const backW = _uniMapLevel === "system" ? 100 : 80;
     const backX = 10, backY = gh - 32, backH = 24;
-    c.fillStyle = "rgba(255,60,60,0.12)"; c.fillRect(backX, backY, backW, backH);
-    c.strokeStyle = _uniMapLevel === "system" ? "#f66" : "#888"; c.lineWidth = 1; c.strokeRect(backX, backY, backW, backH);
-    c.fillStyle = _uniMapLevel === "system" ? "#f66" : "#aaa"; c.font = "bold 11px monospace"; c.textAlign = "center";
+    c.fillStyle = "rgba(100,120,160,0.15)"; c.fillRect(backX, backY, backW, backH);
+    c.strokeStyle = "#888"; c.lineWidth = 1; c.strokeRect(backX, backY, backW, backH);
+    c.fillStyle = "#aaa"; c.font = "bold 11px monospace"; c.textAlign = "center";
     c.fillText(backLabel, backX + backW / 2, backY + 16);
     window._uniMapBackRect = { x: backX, y: backY, w: backW, h: backH };
     // Full map button (jump to system view) — only when zoomed in
@@ -2608,7 +2608,12 @@ document.addEventListener("keydown", function(e) {
 function _uniMapBack() {
   if (_uniMapLevel === "quadrant") _uniMapLevel = "area";
   else if (_uniMapLevel === "area") _uniMapLevel = "system";
-  else exitUniverse();
+  else {
+    // At system level — close map, return to flying
+    uniState = "flying";
+    if (typeof state !== "undefined") state = "playing";
+    _stopUniMapLoop();
+  }
 }
 
 
