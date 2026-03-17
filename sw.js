@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.12";
+const CACHE = "galactic-horizons-v1.8.13";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -174,4 +174,5 @@ Versions:
 -V1.8.10 - Fixes mc.fixface from fixlandia
 -V1.8.11 - Fixes of not being able to buy/sell
 -V1.8.12 - Vertical slice for adding missions, wormhole jumping, more ships.
+-V1.8.13 - Jump fixes, mission fixes, ship shop
 */
