@@ -590,6 +590,31 @@ function _uniRenderHUD(c, gw, gh) {
     c.fillText("[H] Mine nearby asteroids", fuelX + fuelW + 16, fuelY + 10);
   }
 
+  // Mission tracker (right side)
+  const world2 = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  const activeMissions = world2 ? (world2.player.activeMissions || []) : [];
+  if (activeMissions.length > 0) {
+    const mPanelW = 200, mPanelX = gw - mPanelW - 8, mPanelY = 36;
+    c.fillStyle = "rgba(0,0,0,0.5)";
+    c.fillRect(mPanelX, mPanelY, mPanelW, Math.min(activeMissions.length * 36 + 20, 200));
+    c.fillStyle = "#888"; c.font = "bold 9px monospace"; c.textAlign = "left";
+    c.fillText("ACTIVE MISSIONS", mPanelX + 6, mPanelY + 12);
+
+    let mcy = mPanelY + 22;
+    const typeColors = { bounty: "#ff4444", delivery: "#4488ff", mining: "#ffaa00", explore: "#44ffaa", salvage: "#aa8844" };
+    activeMissions.forEach((m, i) => {
+      if (mcy > mPanelY + 180) return;
+      c.fillStyle = typeColors[m.type] || "#888"; c.font = "bold 8px monospace";
+      c.fillText(m.type.toUpperCase(), mPanelX + 6, mcy);
+      c.fillStyle = "#ccc"; c.font = "9px monospace";
+      c.fillText(m.title, mPanelX + 56, mcy);
+      c.fillStyle = "#ffcc00"; c.font = "8px monospace";
+      c.fillText(m.reward + " SC", mPanelX + 6, mcy + 12);
+      c.fillStyle = "#666";
+      c.fillText(m.status === "active" ? "In Progress" : m.status, mPanelX + 80, mcy + 12);
+      mcy += 32;
+    });
+  }
 
   c.textAlign = "left";
 }
@@ -772,7 +797,7 @@ function _uniRenderQuantum(c, gw, gh) {
     if (typeof player !== "undefined" && player && player.img && player.img.complete) {
       c.save();
       c.translate(gw / 2, gh / 2);
-      c.rotate(0);
+      c.rotate(player.spriteAngleOffset || Math.PI);
       const scale = 1 + pt * 0.3;
       c.drawImage(player.img, -player.w * scale / 2, -player.h * scale / 2, player.w * scale, player.h * scale);
       c.restore();
@@ -854,9 +879,10 @@ function _uniRenderQuantum(c, gw, gh) {
       c.fillStyle = trailGrad;
       c.fillRect(shipX - 100, shipY - 8, 100, 16);
       c.restore();
-      // Ship
+      // Ship — rotated to face right (sprite faces left by default due to spriteAngleOffset)
       c.save();
       c.translate(shipX, shipY);
+      c.rotate(player.spriteAngleOffset || Math.PI);
       c.drawImage(player.img, -player.w / 2, -player.h / 2, player.w, player.h);
       c.restore();
     }
@@ -1273,58 +1299,132 @@ function _uniRenderMissions(c, x, y, w, h, station) {
 
 // ── SHIPYARD ──────────────────────────────────────────────────
 
+let _uniShipyardTab = "owned"; // "owned" | "buy"
+
 function _uniRenderShipyard(c, x, y, w, h) {
   const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
   if (!world) return;
+  const credits = world.player.credits || 0;
   const ships = world.player.ownedShips || [];
   const activeIdx = world.player.activeShipIdx || 0;
 
   c.fillStyle = "#fff"; c.font = "bold 14px monospace"; c.textAlign = "center";
   c.fillText("SHIPYARD", x + w / 2, y + 18);
-  c.fillStyle = "#888"; c.font = "10px monospace";
-  c.fillText("Switch your active ship", x + w / 2, y + 32);
+
+  // Sub-tabs: Owned | Buy
+  const tabW = w / 2 - 10;
+  const tabY = y + 28;
+  window._uniShipyardTabRects = [];
+
+  [{ id: "owned", label: "YOUR SHIPS" }, { id: "buy", label: "BUY SHIPS" }].forEach((tab, i) => {
+    const tx = x + 5 + i * (tabW + 10), tw = tabW, th = 22;
+    const isActive = tab.id === _uniShipyardTab;
+    c.fillStyle = isActive ? "rgba(0,170,255,0.15)" : "rgba(0,0,0,0.3)";
+    c.fillRect(tx, tabY, tw, th);
+    c.strokeStyle = isActive ? "#0af" : "#333"; c.lineWidth = 1; c.strokeRect(tx, tabY, tw, th);
+    c.fillStyle = isActive ? "#0af" : "#666"; c.font = "bold 9px monospace";
+    c.fillText(tab.label, tx + tw / 2, tabY + 15);
+    window._uniShipyardTabRects.push({ id: tab.id, x: tx, y: tabY, w: tw, h: th });
+  });
   c.textAlign = "left";
 
-  const rowH = 48;
-  let cy = y + 46;
+  const contentY = tabY + 30;
+  const contentH = h - (contentY - y) - 10;
   window._uniShipyardRows = [];
+  window._uniShipBuyRects = [];
 
-  ships.forEach((ship, idx) => {
-    if (cy + rowH > y + h - 10) return;
-    const isCurrent = idx === activeIdx;
-    const shipDef = typeof SHIPS !== "undefined" ? SHIPS[ship.key] : null;
-    const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[ship.key] : null;
+  if (_uniShipyardTab === "owned") {
+    // Owned ships — switch active
+    const rowH = 44;
+    let cy = contentY;
+    ships.forEach((ship, idx) => {
+      if (cy + rowH > y + h - 5) return;
+      const isCurrent = idx === activeIdx;
+      const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[ship.key] : null;
+      const shipDef = typeof SHIPS !== "undefined" ? SHIPS[ship.key] : null;
 
-    if (isCurrent) { c.fillStyle = "rgba(0,255,100,0.08)"; c.fillRect(x, cy, w, rowH - 2); }
+      if (isCurrent) { c.fillStyle = "rgba(0,255,100,0.08)"; c.fillRect(x, cy, w, rowH - 2); }
 
-    // Ship name
-    c.fillStyle = isCurrent ? "#0f0" : "#fff"; c.font = "bold 12px monospace";
-    c.fillText((isCurrent ? "> " : "  ") + ship.key, x + 4, cy + 16);
+      c.fillStyle = isCurrent ? "#0f0" : "#fff"; c.font = "bold 11px monospace";
+      c.fillText((isCurrent ? "> " : "  ") + ship.key, x + 4, cy + 14);
+      c.fillStyle = "#888"; c.font = "9px monospace";
+      c.fillText("HP:" + Math.floor(ship.hp || shipDef?.hp || 100) + "  Fuel:" + Math.floor(ship.fuel || 0) + "/" + (uniStats?.fuelMax || 50) + "  Cargo:" + (uniStats?.cargoCapacity || 0), x + 20, cy + 28);
 
-    // Stats line
-    c.fillStyle = "#888"; c.font = "9px monospace";
-    const cargoStr = "Cargo:" + (uniStats?.cargoCapacity || 0);
-    const fuelStr = "Fuel:" + Math.floor(ship.fuel || 0) + "/" + (uniStats?.fuelMax || 50);
-    const mineStr = (uniStats?.miningPower || 0) > 0 ? "Mining:" + uniStats.miningPower : "";
-    const hpStr = "HP:" + Math.floor(ship.hp || shipDef?.hp || 100);
-    c.fillText(hpStr + "  " + fuelStr + "  " + cargoStr + "  " + mineStr, x + 20, cy + 30);
-
-    // Switch button (if not current)
-    if (!isCurrent) {
-      const btnX = x + w - 80, btnY = cy + 8, btnW = 70, btnH = 24;
-      c.fillStyle = "rgba(0,170,255,0.15)"; c.fillRect(btnX, btnY, btnW, btnH);
-      c.strokeStyle = "#0af"; c.lineWidth = 1; c.strokeRect(btnX, btnY, btnW, btnH);
-      c.fillStyle = "#0af"; c.font = "bold 10px monospace"; c.textAlign = "center";
-      c.fillText("SWITCH", btnX + btnW / 2, btnY + 16); c.textAlign = "left";
-      window._uniShipyardRows.push({ idx, x: btnX, y: btnY, w: btnW, h: btnH });
+      if (!isCurrent) {
+        const btnX = x + w - 74, btnY = cy + 6, btnW = 66, btnH = 22;
+        c.fillStyle = "rgba(0,170,255,0.15)"; c.fillRect(btnX, btnY, btnW, btnH);
+        c.strokeStyle = "#0af"; c.lineWidth = 1; c.strokeRect(btnX, btnY, btnW, btnH);
+        c.fillStyle = "#0af"; c.font = "bold 9px monospace"; c.textAlign = "center";
+        c.fillText("SWITCH", btnX + btnW / 2, btnY + 15); c.textAlign = "left";
+        window._uniShipyardRows.push({ idx, x: btnX, y: btnY, w: btnW, h: btnH });
+      }
+      cy += rowH;
+    });
+    if (ships.length === 0) {
+      c.fillStyle = "#666"; c.font = "12px monospace"; c.textAlign = "center";
+      c.fillText("No ships", x + w / 2, contentY + 30); c.textAlign = "left";
     }
+  } else {
+    // Buy ships — faction-specific
+    const stationFaction = _uniDockedStation?.faction || _uniCurrentSystem?.faction || "civilian";
+    const shopShips = typeof getShopShipsForStation === "function" ? getShopShipsForStation(stationFaction) : [];
+    const ownedKeys = ships.map(s => s.key);
 
-    cy += rowH;
-  });
+    c.fillStyle = "#888"; c.font = "9px monospace";
+    c.fillText("Credits: " + credits.toLocaleString() + " SC", x + 4, contentY + 10);
 
-  if (ships.length === 0) {
-    c.fillStyle = "#666"; c.font = "12px monospace"; c.textAlign = "center";
-    c.fillText("No ships owned", x + w / 2, y + 80); c.textAlign = "left";
+    const factionLabel = stationFaction === "harvester" ? "HARVESTER" : stationFaction === "eldritch" ? "ELDRITCH" : "WARDEN/CIVILIAN";
+    const factionColor = stationFaction === "harvester" ? "#ff8800" : stationFaction === "eldritch" ? "#cc0033" : "#4488ff";
+    c.fillStyle = factionColor; c.font = "bold 9px monospace";
+    c.textAlign = "right";
+    c.fillText(factionLabel + " SHIPYARD", x + w - 4, contentY + 10);
+    c.textAlign = "left";
+
+    const rowH = 48;
+    let cy = contentY + 20;
+
+    shopShips.forEach((shopEntry, idx) => {
+      if (cy + rowH > y + h - 5) return;
+      const owned = ownedKeys.includes(shopEntry.key);
+      const canAfford = credits >= shopEntry.price;
+      const shipDef = typeof SHIPS !== "undefined" ? SHIPS[shopEntry.key] : null;
+      const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[shopEntry.key] : null;
+
+      c.fillStyle = owned ? "rgba(0,255,100,0.05)" : "rgba(10,14,26,0.5)";
+      c.fillRect(x, cy, w, rowH - 2);
+
+      // Ship name
+      c.fillStyle = owned ? "#0f0" : "#fff"; c.font = "bold 11px monospace";
+      c.fillText(shopEntry.key, x + 4, cy + 14);
+      // Price
+      if (!owned) {
+        c.fillStyle = canAfford ? "#ffcc00" : "#ff4444"; c.font = "bold 10px monospace";
+        c.textAlign = "right";
+        c.fillText(shopEntry.price.toLocaleString() + " SC", x + w - 80, cy + 14);
+        c.textAlign = "left";
+      } else {
+        c.fillStyle = "#0a4"; c.font = "9px monospace";
+        c.textAlign = "right"; c.fillText("OWNED", x + w - 80, cy + 14); c.textAlign = "left";
+      }
+      // Description
+      c.fillStyle = "#888"; c.font = "9px monospace";
+      c.fillText(shopEntry.desc, x + 4, cy + 28);
+      // Stats
+      c.fillStyle = "#666"; c.font = "8px monospace";
+      const statsStr = "HP:" + (shipDef?.hp || "?") + " Cargo:" + (uniStats?.cargoCapacity || 0) + " Fuel:" + (uniStats?.fuelMax || "?") + (uniStats?.miningPower ? " Mine:" + uniStats.miningPower : "");
+      c.fillText(statsStr, x + 4, cy + 40);
+
+      // Buy button
+      if (!owned && canAfford) {
+        const btnX = x + w - 70, btnY = cy + 22, btnW = 62, btnH = 20;
+        c.fillStyle = "rgba(0,255,100,0.15)"; c.fillRect(btnX, btnY, btnW, btnH);
+        c.strokeStyle = "#0f0"; c.lineWidth = 1; c.strokeRect(btnX, btnY, btnW, btnH);
+        c.fillStyle = "#0f0"; c.font = "bold 9px monospace"; c.textAlign = "center";
+        c.fillText("BUY", btnX + btnW / 2, btnY + 14); c.textAlign = "left";
+        window._uniShipBuyRects.push({ idx, key: shopEntry.key, price: shopEntry.price, x: btnX, y: btnY, w: btnW, h: btnH });
+      }
+      cy += rowH;
+    });
   }
 }
 
@@ -1706,20 +1806,44 @@ function _renderQuadrantMap(c, gw, gh, uni) {
   const my = typeof mouse !== "undefined" ? mouse.y : 0;
   _uniMapHover = null;
 
-  const cols = Math.min(4, quads.length);
-  const rows = Math.ceil(quads.length / cols);
-  const cellW = Math.min(220, (gw - 50) / cols);
-  const cellH = Math.min(150, (gh - 100) / rows);
-  const startX = (gw - cols * cellW) / 2;
-  const startY = 48;
-  const t = _uniFrameCount * 0.02; // animation time
+  const t = _uniFrameCount * 0.02;
+  const cardW = 110, cardH = 90;
+  // Scatter positions using seed — deterministic per area
+  const posRng = typeof seededRNG === "function" ? seededRNG(typeof deriveEntitySeed === "function" ? deriveEntitySeed(0, _uniMapSelectedArea || "a") : 777) : function() { return Math.random(); };
+  const positions = [];
+  const margin = 60;
+  for (let i = 0; i < quads.length; i++) {
+    let px, py, tries = 0, valid = false;
+    while (tries < 50 && !valid) {
+      px = margin + posRng() * (gw - cardW - margin * 2);
+      py = 40 + posRng() * (gh - cardH - margin - 50);
+      valid = true;
+      for (const p of positions) {
+        if (Math.abs(px - p.x) < cardW + 10 && Math.abs(py - p.y) < cardH + 10) { valid = false; break; }
+      }
+      tries++;
+    }
+    positions.push({ x: px, y: py });
+  }
+
+  // Draw connection lines between adjacent sectors
+  c.strokeStyle = "rgba(100,120,160,0.15)"; c.lineWidth = 1;
+  for (let i = 0; i < quads.length; i++) {
+    for (let j = i + 1; j < quads.length; j++) {
+      if (Math.abs(i - j) <= 2) {
+        c.beginPath();
+        c.moveTo(positions[i].x + cardW / 2, positions[i].y + cardH / 2);
+        c.lineTo(positions[j].x + cardW / 2, positions[j].y + cardH / 2);
+        c.stroke();
+      }
+    }
+  }
 
   for (let i = 0; i < quads.length; i++) {
     const q = quads[i];
-    const col = i % cols, row = Math.floor(i / cols);
-    const x = startX + col * cellW + 3;
-    const y = startY + row * cellH + 3;
-    const w = cellW - 6, h = cellH - 6;
+    const x = positions[i].x;
+    const y = positions[i].y;
+    const w = cardW, h = cardH;
     const cx = x + w / 2, cy = y + h / 2 - 8;
     const hovered = mx > x && mx < x + w && my > y && my < y + h;
     if (hovered) _uniMapHover = q.id;
@@ -1980,39 +2104,71 @@ document.addEventListener("mousedown", function(e) {
         }
       }
     }
-    // Shipyard switch
-    if (_uniStationTab === "shipyard" && window._uniShipyardRows) {
-      for (const r of window._uniShipyardRows) {
-        if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
-          const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
-          if (world) {
-            // Save current ship state
-            const curShip = world.player.ownedShips[world.player.activeShipIdx || 0];
-            if (curShip && typeof player !== "undefined" && player) {
-              curShip.fuel = player.fuel; curShip.hp = player.hp; curShip.shields = player.shields;
-              curShip.cargo = player.cargo ? [...player.cargo] : [];
-            }
-            // Switch
-            world.player.activeShipIdx = r.idx;
-            const newShip = world.player.ownedShips[r.idx];
-            if (newShip && typeof setPlayerShip === "function") {
-              if (typeof playerLoadout !== "undefined") playerLoadout.ship = newShip.key;
-              setPlayerShip(newShip.key);
-              const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[newShip.key] : null;
-              if (player) {
-                player.fuel = newShip.fuel || uniStats?.fuelMax || 50;
-                player.fuelMax = uniStats?.fuelMax || 50;
-                player.fuelEfficiency = uniStats?.fuelEfficiency || 1.0;
-                player.cargo = newShip.cargo ? [...newShip.cargo] : [];
-                player.cargoCapacity = uniStats?.cargoCapacity || 2;
-                player.miningPower = uniStats?.miningPower || 0;
-                player.scanRange = uniStats?.scanRange || 100;
-                if (newShip.hp !== null && newShip.hp !== undefined) player.hp = newShip.hp;
-                if (newShip.shields !== null && newShip.shields !== undefined) player.shields = newShip.shields;
+    // Shipyard — sub-tabs, switch, buy
+    if (_uniStationTab === "shipyard") {
+      // Sub-tab clicks
+      if (window._uniShipyardTabRects) {
+        for (const r of window._uniShipyardTabRects) {
+          if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniShipyardTab = r.id; return; }
+        }
+      }
+      // Ship switch buttons (owned tab)
+      if (_uniShipyardTab === "owned" && window._uniShipyardRows) {
+        for (const r of window._uniShipyardRows) {
+          if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
+            const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+            if (world) {
+              const curShip = world.player.ownedShips[world.player.activeShipIdx || 0];
+              if (curShip && typeof player !== "undefined" && player) {
+                curShip.fuel = player.fuel; curShip.hp = player.hp; curShip.shields = player.shields;
+                curShip.cargo = player.cargo ? [...player.cargo] : [];
+              }
+              world.player.activeShipIdx = r.idx;
+              const newShip = world.player.ownedShips[r.idx];
+              if (newShip && typeof setPlayerShip === "function") {
+                if (typeof playerLoadout !== "undefined") playerLoadout.ship = newShip.key;
+                setPlayerShip(newShip.key);
+                const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[newShip.key] : null;
+                if (player) {
+                  player.fuel = newShip.fuel || uniStats?.fuelMax || 50;
+                  player.fuelMax = uniStats?.fuelMax || 50;
+                  player.fuelEfficiency = uniStats?.fuelEfficiency || 1.0;
+                  player.cargo = newShip.cargo ? [...newShip.cargo] : [];
+                  player.cargoCapacity = uniStats?.cargoCapacity || 2;
+                  player.miningPower = uniStats?.miningPower || 0;
+                  player.scanRange = uniStats?.scanRange || 100;
+                  if (newShip.hp !== null && newShip.hp !== undefined) player.hp = newShip.hp;
+                  if (newShip.shields !== null && newShip.shields !== undefined) player.shields = newShip.shields;
+                }
               }
             }
+            return;
           }
-          return;
+        }
+      }
+      // Ship buy buttons (buy tab)
+      if (_uniShipyardTab === "buy" && window._uniShipBuyRects) {
+        for (const r of window._uniShipBuyRects) {
+          if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
+            const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+            if (world && world.player.credits >= r.price) {
+              world.player.credits -= r.price;
+              if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
+              const shipDef = typeof SHIPS !== "undefined" ? SHIPS[r.key] : null;
+              const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[r.key] : null;
+              world.player.ownedShips.push({
+                id: "ship_" + Date.now(),
+                key: r.key,
+                fuel: uniStats?.fuelMax || 50,
+                cargo: [],
+                hp: shipDef?.hp || 500,
+                shields: shipDef?.shields || 300,
+                armor: shipDef?.armor || 100,
+              });
+              if (typeof autoSaveUniverse === "function") autoSaveUniverse();
+            }
+            return;
+          }
         }
       }
     }
