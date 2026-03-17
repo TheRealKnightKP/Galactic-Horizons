@@ -1898,7 +1898,9 @@ function updatePlayer() {
     player.rotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
   }
   const shieldRegen=SHIELD_TIERS[playerLoadout.shieldTier||1].regenRate; regenShieldFaces(player, shieldRegen);
-  const isShooting=IS_MOBILE?mobileAim.shooting:(keys["Space"]||mouse.down);
+  let isShooting=IS_MOBILE?mobileAim.shooting:(keys["Space"]||mouse.down);
+  // In universe mode, only shoot when in combat (not while exploring)
+  if (window.gameMode === "universe" && typeof _uniInCombat !== "undefined" && !_uniInCombat) isShooting = false;
   const isRailgun=player.weaponStats&&player.weaponStats.hitscan;
   if(isRailgun){
     if(player.dominionOvercharged&&isShooting&&player.shootTimer<=0){ const oc={...player.weaponStats,damage:player.weaponStats.damage*3}; fireRailgun(player,oc,player.rotation,true); player.dominionOvercharged=false; player.railgunCharge=0;player.railgunCharging=false; player.shootTimer=player.weaponStats.fireInterval; }
@@ -2433,6 +2435,8 @@ function render() {
   if (_isUni) {
     // Universe overlay: asteroids, station, POIs, mining beam, universe HUD
     if (typeof uniRenderOverlay === "function") uniRenderOverlay();
+    // Boost bar works in universe too
+    drawBoostHUD();
   } else {
     // Arena HUD
     drawBoostHUD(); drawSpecialHUD(); drawCapitalStatusHUD(); drawEnemyCapFormationHUD();
