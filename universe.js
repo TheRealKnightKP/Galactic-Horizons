@@ -1450,7 +1450,7 @@ function _renderQuadrantMap(c, gw, gh, uni) {
   const area = sys.areas[_uniMapSelectedArea];
   if (!area) { _uniMapLevel = "area"; return; }
 
-  // Background
+  // Background stars
   c.fillStyle = "rgba(150,160,200,0.2)";
   for (let i = 0; i < 80; i++) { c.fillRect((i * 311 + 47) % gw, (i * 197 + 61) % gh, 1, 1); }
 
@@ -1462,66 +1462,167 @@ function _renderQuadrantMap(c, gw, gh, uni) {
   const my = typeof mouse !== "undefined" ? mouse.y : 0;
   _uniMapHover = null;
 
-  // Layout quadrants in a grid with visual styling
   const cols = Math.min(4, quads.length);
   const rows = Math.ceil(quads.length / cols);
-  const cellW = Math.min(200, (gw - 60) / cols);
-  const cellH = Math.min(140, (gh - 100) / rows);
+  const cellW = Math.min(220, (gw - 50) / cols);
+  const cellH = Math.min(150, (gh - 100) / rows);
   const startX = (gw - cols * cellW) / 2;
-  const startY = 50;
+  const startY = 48;
+  const t = _uniFrameCount * 0.02; // animation time
 
   for (let i = 0; i < quads.length; i++) {
     const q = quads[i];
     const col = i % cols, row = Math.floor(i / cols);
-    const x = startX + col * cellW + 4;
-    const y = startY + row * cellH + 4;
-    const w = cellW - 8, h = cellH - 8;
+    const x = startX + col * cellW + 3;
+    const y = startY + row * cellH + 3;
+    const w = cellW - 6, h = cellH - 6;
+    const cx = x + w / 2, cy = y + h / 2 - 8;
     const hovered = mx > x && mx < x + w && my > y && my < y + h;
     if (hovered) _uniMapHover = q.id;
 
-    const typeColors = {
-      station: { bg: "rgba(0,80,40,0.3)", border: "#00ff88", icon: "STA" },
-      mining: { bg: "rgba(80,60,0,0.3)", border: "#ffaa00", icon: "ORE" },
-      patrol: { bg: "rgba(80,0,0,0.3)", border: "#ff4444", icon: "PTR" },
-      debris: { bg: "rgba(60,40,0,0.3)", border: "#aa8844", icon: "WRK" },
-      open: { bg: "rgba(20,40,60,0.3)", border: "#446688", icon: "SPC" },
-      mission: { bg: "rgba(60,30,0,0.3)", border: "#ff8844", icon: "MSN" },
-      wormhole_tunnel: { bg: "rgba(40,0,60,0.3)", border: "#aa44ff", icon: "WRM" },
-      sun_zone: { bg: "rgba(60,40,0,0.3)", border: "#ffcc00", icon: "SUN" },
-    };
-    const tc = typeColors[q.type] || { bg: "rgba(30,30,40,0.3)", border: "#666", icon: "???" };
+    const borderColor = q.type === "station" ? "#00ff88" : q.type === "mining" ? "#ffaa00" :
+      q.type === "patrol" ? "#ff4444" : q.type === "debris" ? "#aa8844" :
+      q.type === "wormhole_tunnel" ? "#aa44ff" : q.type === "sun_zone" ? "#ffcc00" :
+      q.type === "mission" ? "#ff8844" : "#446688";
 
-    // Card background
-    c.fillStyle = hovered ? "rgba(255,255,255,0.08)" : tc.bg;
+    // Card background — dark space
+    c.fillStyle = "rgba(2,6,17,0.85)";
     c.fillRect(x, y, w, h);
-    c.strokeStyle = hovered ? "#fff" : tc.border;
+    c.strokeStyle = hovered ? "#fff" : borderColor;
     c.lineWidth = hovered ? 2 : 1;
     c.strokeRect(x, y, w, h);
 
-    // Icon circle
-    const iconR = 16;
-    const iconX = x + w / 2, iconY = y + 28;
-    c.save(); c.globalAlpha = 0.3;
-    c.fillStyle = tc.border;
-    c.beginPath(); c.arc(iconX, iconY, iconR, 0, Math.PI * 2); c.fill();
-    c.restore();
-    c.fillStyle = tc.border; c.font = "bold 10px monospace"; c.textAlign = "center";
-    c.fillText(tc.icon, iconX, iconY + 4);
+    // Mini scene inside card
+    c.save();
+    c.beginPath(); c.rect(x + 1, y + 1, w - 2, h - 2); c.clip();
 
-    // Name
-    c.fillStyle = hovered ? "#fff" : "#ccc"; c.font = "bold 10px monospace";
-    c.fillText(q.name || q.id, x + w / 2, iconY + iconR + 16);
+    // Tiny stars in every card
+    c.fillStyle = "rgba(180,190,220,0.4)";
+    for (let s = 0; s < 15; s++) { c.fillRect(x + ((s * 37 + i * 13) % (w - 4)) + 2, y + ((s * 23 + i * 7) % (h - 20)) + 2, 1, 1); }
 
-    // Type label
-    c.fillStyle = tc.border; c.font = "8px monospace";
-    c.fillText(q.type.toUpperCase(), x + w / 2, iconY + iconR + 28);
+    if (q.type === "station") {
+      // Station structure — hexagon with lights
+      c.strokeStyle = "#00ff88"; c.lineWidth = 2;
+      c.beginPath();
+      for (let s = 0; s < 6; s++) {
+        const a = s * Math.PI / 3 - Math.PI / 6;
+        const px = cx + Math.cos(a) * 18, py = cy + Math.sin(a) * 18;
+        s === 0 ? c.moveTo(px, py) : c.lineTo(px, py);
+      }
+      c.closePath(); c.stroke();
+      // Inner cross
+      c.strokeStyle = "rgba(0,255,136,0.4)"; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(cx - 8, cy); c.lineTo(cx + 8, cy); c.moveTo(cx, cy - 8); c.lineTo(cx, cy + 8); c.stroke();
+      // Blinking lights
+      c.fillStyle = Math.sin(t * 3 + i) > 0 ? "#00ff88" : "#004422";
+      c.beginPath(); c.arc(cx + 20, cy - 12, 2, 0, Math.PI * 2); c.fill();
+      c.fillStyle = Math.sin(t * 3 + i + 2) > 0 ? "#00ff88" : "#004422";
+      c.beginPath(); c.arc(cx - 20, cy + 12, 2, 0, Math.PI * 2); c.fill();
+
+    } else if (q.type === "mining") {
+      // Scattered asteroid rocks
+      const rocks = [[-22,-8,7],[-5,10,9],[18,-12,6],[8,5,8],[-15,14,5],[22,10,4]];
+      rocks.forEach(r => {
+        c.fillStyle = "#8a7744";
+        c.beginPath(); c.arc(cx + r[0], cy + r[1], r[2], 0, Math.PI * 2); c.fill();
+        c.fillStyle = "rgba(255,255,255,0.1)";
+        c.beginPath(); c.arc(cx + r[0] - 1, cy + r[1] - 1, r[2] * 0.4, 0, Math.PI * 2); c.fill();
+      });
+      // Sparkle on one rock
+      c.fillStyle = "rgba(255,200,0," + (0.4 + Math.sin(t * 4 + i) * 0.3) + ")";
+      c.beginPath(); c.arc(cx - 5, cy + 10, 2, 0, Math.PI * 2); c.fill();
+
+    } else if (q.type === "patrol") {
+      // Enemy ship silhouettes
+      c.fillStyle = "#ff4444";
+      for (let e = 0; e < 3; e++) {
+        const ex = cx - 20 + e * 20, ey = cy - 5 + (e % 2) * 10;
+        c.save(); c.translate(ex, ey); c.rotate(-0.3);
+        c.beginPath(); c.moveTo(8, 0); c.lineTo(-6, -5); c.lineTo(-4, 0); c.lineTo(-6, 5); c.closePath(); c.fill();
+        c.restore();
+      }
+      // Danger pulse
+      c.save(); c.globalAlpha = 0.15 + Math.sin(t * 2 + i) * 0.1;
+      c.fillStyle = "#ff0000";
+      c.beginPath(); c.arc(cx, cy, 25, 0, Math.PI * 2); c.fill();
+      c.restore();
+
+    } else if (q.type === "debris") {
+      // Scattered wreckage
+      c.strokeStyle = "#887755"; c.lineWidth = 1.5;
+      const pieces = [[-18,-6,12,3],[-2,8,8,6],[14,-10,6,10],[6,4,15,2],[-12,12,10,4]];
+      pieces.forEach(p => {
+        c.save(); c.translate(cx + p[0], cy + p[1]); c.rotate(p[0] * 0.1);
+        c.strokeRect(-p[2] / 2, -p[3] / 2, p[2], p[3]);
+        c.restore();
+      });
+      // Floating particles
+      c.fillStyle = "rgba(170,136,68,0.5)";
+      for (let p = 0; p < 6; p++) {
+        const pa = t + p * 1.2 + i;
+        c.fillRect(cx + Math.cos(pa) * 20, cy + Math.sin(pa * 0.7) * 15, 2, 2);
+      }
+
+    } else if (q.type === "open") {
+      // Just empty space — more stars, a subtle nebula hint
+      c.fillStyle = "rgba(180,190,220,0.3)";
+      for (let s = 0; s < 12; s++) { c.fillRect(x + ((s * 47 + i * 19) % (w - 6)) + 3, y + ((s * 31 + i * 11) % (h - 24)) + 3, 1, 1); }
+      // Faint nebula
+      c.save(); c.globalAlpha = 0.06;
+      const ng = c.createRadialGradient(cx, cy, 0, cx, cy, 30);
+      ng.addColorStop(0, "#224466"); ng.addColorStop(1, "rgba(0,0,0,0)");
+      c.fillStyle = ng;
+      c.beginPath(); c.arc(cx, cy, 30, 0, Math.PI * 2); c.fill();
+      c.restore();
+
+    } else if (q.type === "mission") {
+      // Beacon / waypoint marker
+      c.strokeStyle = "#ff8844"; c.lineWidth = 2;
+      // Diamond shape
+      c.beginPath(); c.moveTo(cx, cy - 16); c.lineTo(cx + 12, cy); c.lineTo(cx, cy + 16); c.lineTo(cx - 12, cy); c.closePath(); c.stroke();
+      // Pulse ring
+      const pulseR = 10 + Math.sin(t * 3 + i) * 8;
+      c.save(); c.globalAlpha = 0.3; c.strokeStyle = "#ff8844"; c.lineWidth = 1;
+      c.beginPath(); c.arc(cx, cy, pulseR, 0, Math.PI * 2); c.stroke(); c.restore();
+
+    } else if (q.type === "wormhole_tunnel") {
+      // Swirling portal
+      c.save();
+      const pulse = 0.5 + Math.sin(t * 2 + i) * 0.3;
+      c.globalAlpha = pulse;
+      const wg = c.createRadialGradient(cx, cy, 0, cx, cy, 22);
+      wg.addColorStop(0, "#cc88ff"); wg.addColorStop(0.6, "#6622aa"); wg.addColorStop(1, "rgba(40,0,80,0)");
+      c.fillStyle = wg;
+      c.beginPath(); c.arc(cx, cy, 22, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = "rgba(200,150,255,0.5)"; c.lineWidth = 1.5;
+      for (let s = 0; s < 4; s++) {
+        const sa = t * 2 + s * Math.PI / 2;
+        c.beginPath(); c.arc(cx, cy, 14, sa, sa + 1.2); c.stroke();
+      }
+      c.restore();
+
+    } else if (q.type === "sun_zone") {
+      // Small sun glow
+      _drawSun(c, cx, cy, 14, sys.sunHealth, sys.faction);
+    }
+
+    c.restore(); // unclip
+
+    // Name below scene
+    c.fillStyle = hovered ? "#fff" : "#bbb"; c.font = "bold 9px monospace"; c.textAlign = "center";
+    c.fillText(q.name || q.id, x + w / 2, y + h - 20);
+    c.fillStyle = borderColor; c.font = "8px monospace";
+    c.fillText(q.type.replace("_", " ").toUpperCase(), x + w / 2, y + h - 9);
 
     // Travel prompt on hover
     if (hovered) {
-      c.fillStyle = "rgba(0,255,100,0.2)";
-      c.fillRect(x + 4, y + h - 22, w - 8, 18);
-      c.fillStyle = "#0f0"; c.font = "bold 9px monospace";
-      c.fillText("TRAVEL", x + w / 2, y + h - 9);
+      c.save(); c.globalAlpha = 0.85;
+      c.fillStyle = "rgba(0,40,20,0.9)";
+      c.fillRect(x + w / 2 - 30, y + h / 2 - 10, 60, 20);
+      c.strokeStyle = "#0f0"; c.lineWidth = 1; c.strokeRect(x + w / 2 - 30, y + h / 2 - 10, 60, 20);
+      c.fillStyle = "#0f0"; c.font = "bold 10px monospace";
+      c.fillText("TRAVEL", x + w / 2, y + h / 2 + 4);
+      c.restore();
     }
   }
 
@@ -1529,10 +1630,10 @@ function _renderQuadrantMap(c, gw, gh, uni) {
   c.textAlign = "center";
   if (typeof player !== "undefined" && player && player.fuel !== undefined) {
     c.fillStyle = "#888"; c.font = "10px monospace";
-    c.fillText("Fuel: " + Math.floor(player.fuel) + "/" + (player.fuelMax || 50) + "  |  Cost per jump: " + Math.ceil(UNI_QUANTUM_FUEL / (player.fuelEfficiency || 1)), gw / 2, gh - 34);
+    c.fillText("Fuel: " + Math.floor(player.fuel) + "/" + (player.fuelMax || 50) + "  |  Cost: " + Math.ceil(UNI_QUANTUM_FUEL / (player.fuelEfficiency || 1)), gw / 2, gh - 34);
   }
   c.fillStyle = "#555"; c.font = "10px monospace";
-  c.fillText("Select a sector to travel", gw / 2, gh - 16);
+  c.fillText("Select a sector", gw / 2, gh - 16);
   c.textAlign = "left";
 }
 
@@ -1565,12 +1666,8 @@ document.addEventListener("mousedown", function(e) {
         if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniStationTab = r.id; return; }
       }
     }
-    // Trade row clicks
-    if (_uniStationTab === "trading" && window._uniTradeRows) {
-      for (const r of window._uniTradeRows) {
-        if (my > r.y1 && my < r.y2 && mx > r.x && mx < r.x + r.w) { _uniTradeSelected = r.idx; return; }
-      }
-      // Buy/Sell button clicks
+    // Trade: Buy/Sell button clicks FIRST (they're inside row areas)
+    if (_uniStationTab === "trading") {
       if (window._uniTradeBuyRect) {
         const r = window._uniTradeBuyRect;
         if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
@@ -1581,6 +1678,12 @@ document.addEventListener("mousedown", function(e) {
         const r = window._uniTradeSellRect;
         if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
           _uniTradeSell(r.key, r.price, _uniDockedStation.id); return;
+        }
+      }
+      // Trade row selection (only if didn't hit a button)
+      if (window._uniTradeRows) {
+        for (const r of window._uniTradeRows) {
+          if (my > r.y1 && my < r.y2 && mx > r.x && mx < r.x + r.w) { _uniTradeSelected = r.idx; return; }
         }
       }
     }
