@@ -334,7 +334,10 @@ function calculatePrice(commodityKey, stationSeed, eventMult, factionMult) {
   if (!def) return 0;
   const rng = seededRNG(stationSeed + commodityKey.length);
   const stationMult = 0.7 + rng() * 0.6;
-  const fluctuation = 1 + (Math.random() - 0.5) * 2 * def.volatility;
+  // Time-based fluctuation — changes every 30 seconds, not every frame
+  const timeBucket = Math.floor(Date.now() / 30000);
+  const timeRng = seededRNG(stationSeed + timeBucket + commodityKey.length * 7);
+  const fluctuation = 1 + (timeRng() - 0.5) * 2 * def.volatility;
   return Math.round(def.basePrice * stationMult * (eventMult || 1) * (factionMult || 1) * fluctuation);
 }
 
@@ -346,7 +349,7 @@ function calculatePrice(commodityKey, stationSeed, eventMult, factionMult) {
 const UNIVERSE_SHIP_STATS = {
   // === ARENA SHIPS — universe stat extensions ===
   // All combat ships. Expensive to run in Universe (high fuel, low cargo).
-  Starlight:    { cargoCapacity: 2,   fuelMax: 50,   miningPower: 0, scanRange: 100,  fuelEfficiency: 1.0,  role: "combat" },
+  Starlight:    { cargoCapacity: 2,   fuelMax: 50,   miningPower: 1, scanRange: 100,  fuelEfficiency: 1.0,  role: "combat" },
   Falcon:       { cargoCapacity: 2,   fuelMax: 60,   miningPower: 0, scanRange: 120,  fuelEfficiency: 1.2,  role: "combat" },
   Rouge:        { cargoCapacity: 4,   fuelMax: 80,   miningPower: 0, scanRange: 80,   fuelEfficiency: 0.8,  role: "combat" },
   Marauder:     { cargoCapacity: 15,  fuelMax: 120,  miningPower: 0, scanRange: 120,  fuelEfficiency: 1.3,  role: "combat/blockade_runner",
