@@ -200,6 +200,7 @@ function uniLoadQuadrant(quad) {
   _uniDisengageTimer = 0;
   _uniMiningTarget = null;
   _uniMiningProgress = 0;
+  window._uniStarCache = null; // regenerate parallax stars for new quadrant size
 
   // Set quadrant size for camera system
   const qSize = UNI_QUAD_SIZES[quad.type] || { w: 2800, h: 2000 };
@@ -434,30 +435,22 @@ function uniRenderOverlay() {
   const qw = window.quadW || gw;
   const qh = window.quadH || gh;
 
-  // Parallax background dots — gives sense of movement in large quadrants
-  // Layer 1: distant dim dots
+  // Parallax background dots — pre-seeded positions to avoid line artifacts
+  if (!window._uniStarCache || window._uniStarCacheKey !== (qw + "x" + qh)) {
+    window._uniStarCacheKey = qw + "x" + qh;
+    const sr = typeof seededRNG === "function" ? seededRNG(qw * 1000 + qh) : function() { return Math.random(); };
+    window._uniStarCache = { l1: [], l2: [], l3: [] };
+    for (let i = 0; i < 600; i++) window._uniStarCache.l1.push({ x: sr() * qw, y: sr() * qh });
+    for (let i = 0; i < 200; i++) window._uniStarCache.l2.push({ x: sr() * qw, y: sr() * qh });
+    for (let i = 0; i < 50; i++) window._uniStarCache.l3.push({ x: sr() * qw, y: sr() * qh });
+  }
+  const _sc = window._uniStarCache;
   c.fillStyle = "rgba(180,190,220,0.5)";
-  for (let i = 0; i < 600; i++) {
-    const dx = ((i * 367 + 11) % qw) - cx;
-    const dy = ((i * 211 + 53) % qh) - cy;
-    if (dx > -2 && dx < gw + 2 && dy > -2 && dy < gh + 2) c.fillRect(dx, dy, 1, 1);
-  }
-  // Layer 2: mid stars
+  for (const s of _sc.l1) { const dx = s.x - cx, dy = s.y - cy; if (dx > -2 && dx < gw + 2 && dy > -2 && dy < gh + 2) c.fillRect(dx, dy, 1, 1); }
   c.fillStyle = "rgba(210,220,255,0.65)";
-  for (let i = 0; i < 200; i++) {
-    const dx = ((i * 491 + 137) % qw) - cx;
-    const dy = ((i * 313 + 79) % qh) - cy;
-    if (dx > -2 && dx < gw + 2 && dy > -2 && dy < gh + 2) c.fillRect(dx, dy, 1.5, 1.5);
-  }
-  // Layer 3: bright foreground stars
-  for (let i = 0; i < 50; i++) {
-    const dx = ((i * 719 + 233) % qw) - cx;
-    const dy = ((i * 503 + 171) % qh) - cy;
-    if (dx > -4 && dx < gw + 4 && dy > -4 && dy < gh + 4) {
-      c.fillStyle = "rgba(255,255,255,0.85)";
-      c.fillRect(dx, dy, 2, 2);
-    }
-  }
+  for (const s of _sc.l2) { const dx = s.x - cx, dy = s.y - cy; if (dx > -2 && dx < gw + 2 && dy > -2 && dy < gh + 2) c.fillRect(dx, dy, 1.5, 1.5); }
+  c.fillStyle = "rgba(255,255,255,0.85)";
+  for (const s of _sc.l3) { const dx = s.x - cx, dy = s.y - cy; if (dx > -4 && dx < gw + 4 && dy > -4 && dy < gh + 4) c.fillRect(dx, dy, 2, 2); }
 
   // Asteroids
   c.save();
@@ -597,11 +590,6 @@ function _uniRenderHUD(c, gw, gh) {
     c.fillText("[H] Mine nearby asteroids", fuelX + fuelW + 16, fuelY + 10);
   }
 
-  // Map hint
-  c.textAlign = "right";
-  c.fillStyle = "#666";
-  c.font = "10px monospace";
-  c.fillText("[M] Map", gw - 8, gh - 90);
 
   c.textAlign = "left";
 }
@@ -703,8 +691,7 @@ function _uniCheckPOIs() {
 function _uniCheckMapKey() {
   if (uniState !== "flying") return;
   const k = typeof keys !== "undefined" ? keys : {};
-  if ((k["KeyM"] || k["Escape"]) && !_uniInCombat) {
-    k["KeyM"] = false;
+  if (k["Escape"] && !_uniInCombat) {
     k["Escape"] = false;
     uniState = "map";
     if (typeof state !== "undefined") state = "menu";
