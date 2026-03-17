@@ -443,14 +443,15 @@ function generateQuadrantContents(quadrant, systemDanger) {
     const wreckCount = 4 + Math.floor(rng() * 6); // 4-9 wrecks
     const lootPool = ["scrap", "electronics", "polymers", "iron", "copper"];
     for (let i = 0; i < wreckCount; i++) {
+      const wrkHp = 30 + Math.floor(rng() * 60);
       contents.wrecks.push({
         id: "wrk_" + i,
         x: 100 + rng() * 1080,
         y: 80 + rng() * 560,
         loot: lootPool[Math.floor(rng() * lootPool.length)],
         lootQty: 1 + Math.floor(rng() * 3),
-        health: 30 + Math.floor(rng() * 60),
-        maxHealth: 30 + Math.floor(rng() * 60),
+        health: wrkHp,
+        maxHealth: wrkHp,
         salvaged: false,
       });
     }
