@@ -416,7 +416,7 @@ function regenerateUniverse(world) {
 function generateQuadrantContents(quadrant, systemDanger) {
   if (!quadrant || !quadrant.seed) return {};
   const rng = seededRNG(quadrant.seed);
-  const contents = { asteroids: [], pois: [], patrolSpawns: [] };
+  const contents = { asteroids: [], pois: [], patrolSpawns: [], wrecks: [] };
 
   // Asteroids (for mining and debris quadrants)
   if (quadrant.type === "mining" || quadrant.type === "debris") {
@@ -434,6 +434,24 @@ function generateQuadrantContents(quadrant, systemDanger) {
         health: 50 + Math.floor(rng() * 100),
         maxHealth: 50 + Math.floor(rng() * 100),
         depleted: false,
+      });
+    }
+  }
+
+  // Wrecks (debris quadrants — interactable salvage objects)
+  if (quadrant.type === "debris") {
+    const wreckCount = 4 + Math.floor(rng() * 6); // 4-9 wrecks
+    const lootPool = ["scrap", "electronics", "polymers", "iron", "copper"];
+    for (let i = 0; i < wreckCount; i++) {
+      contents.wrecks.push({
+        id: "wrk_" + i,
+        x: 100 + rng() * 1080,
+        y: 80 + rng() * 560,
+        loot: lootPool[Math.floor(rng() * lootPool.length)],
+        lootQty: 1 + Math.floor(rng() * 3),
+        health: 30 + Math.floor(rng() * 60),
+        maxHealth: 30 + Math.floor(rng() * 60),
+        salvaged: false,
       });
     }
   }
