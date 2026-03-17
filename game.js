@@ -96,6 +96,22 @@ if (!IS_MOBILE) {
   });
   document.addEventListener("keyup",   e => { keys[e.code] = false; });
 } else {
+  // Mobile — also track touch position for universe map hover
+  canvas.addEventListener("touchstart", e => {
+    if (e.touches.length > 0) {
+      mouse.x = e.touches[0].clientX * (GAME_W / window.innerWidth);
+      mouse.y = e.touches[0].clientY * (GAME_H / window.innerHeight);
+      mouse.down = true;
+    }
+    initAudio();
+  }, { passive: true });
+  canvas.addEventListener("touchmove", e => {
+    if (e.touches.length > 0) {
+      mouse.x = e.touches[0].clientX * (GAME_W / window.innerWidth);
+      mouse.y = e.touches[0].clientY * (GAME_H / window.innerHeight);
+    }
+  }, { passive: true });
+  canvas.addEventListener("touchend", () => { mouse.down = false; }, { passive: true });
   window.addEventListener("load", buildMobileControls);
 }
 
@@ -256,6 +272,7 @@ function buildMobileControls() {
   ui.appendChild(specialMobileBtn);
 
   const pingMobileBtn = document.createElement("div");
+  pingMobileBtn.id = "mobilePingBtn";
   pingMobileBtn.textContent = "PING";
   pingMobileBtn.style.cssText = "position:absolute;bottom:68px;left:calc(50% + 20px);padding:8px 16px;background:rgba(255,220,0,0.18);border:2px solid rgba(255,220,0,0.7);border-radius:14px;color:#fc0;font:bold 15px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z:10";
   pingMobileBtn.addEventListener("touchstart", e=>{e.preventDefault();activatePing();},{passive:false});
