@@ -217,6 +217,8 @@ async function exitUniverseToMenu() {
   stopPlayTimeTracking();
   setCurrentWorld(null);
   window._activeUniverse = null;
+  // Show universe menu (world select)
+  document.getElementById("universeMenu").style.display = "block";
   await refreshUniverseWorldList();
 }
 
