@@ -40,7 +40,7 @@ const UNI_DISENGAGE_TIME = 600; // 10s at 60fps
 // Quantum
 let _uniQuantumTarget = null;
 let _uniQuantumTimer = 0;
-const UNI_QUANTUM_DURATION = 120;
+// Quantum phases defined near uniStartQuantum
 
 // Map UI
 let _uniMapLevel = "system";
@@ -306,8 +306,12 @@ function uniLoadQuadrant(quad) {
 // when gameMode === "universe" and state === "playing".
 
 function uniUpdate() {
-  if (uniState !== "flying" || typeof player === "undefined" || !player) return;
+  if (typeof player === "undefined" || !player) return;
   _uniFrameCount++;
+
+  // Handle quantum launch/arrive phases (these run during "playing" state)
+  if (uniState === "quantum") { _uniUpdateQuantumInGame(); return; }
+  if (uniState !== "flying") return;
 
   // Fuel drain
   player.fuel = Math.max(0, player.fuel - UNI_FUEL_DRAIN / (player.fuelEfficiency || 1));
@@ -435,7 +439,8 @@ function uniUpdate() {
 // We add: asteroids, POIs, station, mining beam, universe HUD.
 
 function uniRenderOverlay() {
-  if (uniState !== "flying" || typeof ctx === "undefined") return;
+  if (uniState !== "flying" && uniState !== "quantum") return;
+  if (typeof ctx === "undefined") return;
   const c = ctx;
   const gw = typeof GAME_W !== "undefined" ? GAME_W : 1280;
   const gh = typeof GAME_H !== "undefined" ? GAME_H : 720;
@@ -537,6 +542,9 @@ function uniRenderOverlay() {
 
   // Universe HUD (always on top, not affected by camera)
   _uniRenderHUD(c, gw, gh);
+
+  // Quantum travel overlay effects (launch/arrive phases render ON TOP of quadrant)
+  if (uniState === "quantum") _uniRenderQuantumOverlay(c, gw, gh);
 }
 
 // ── HUD ───────────────────────────────────────────────────────
@@ -825,14 +833,22 @@ function _uniCheckMapKey() {
 
 // ── QUANTUM TRAVEL ────────────────────────────────────────────
 
+let _uniQuantumPhase = ""; // "launch" | "travel" | "arrive"
+const UNI_QT_LAUNCH = 40;  // frames for launch phase
+const UNI_QT_TRAVEL = 60;  // frames for travel cutscene
+const UNI_QT_ARRIVE = 35;  // frames for arrive phase
+
 function uniStartQuantum(systemId, areaId, quad) {
   const fuelCost = UNI_QUANTUM_FUEL / (typeof player !== "undefined" && player ? player.fuelEfficiency || 1 : 1);
   if (typeof player !== "undefined" && player && player.fuel < fuelCost) return false;
   if (typeof player !== "undefined" && player) player.fuel -= fuelCost;
 
   _uniQuantumTarget = { systemId, areaId, quadrant: quad };
-  _uniQuantumTimer = UNI_QUANTUM_DURATION;
+  _uniQuantumTimer = UNI_QT_LAUNCH;
+  _uniQuantumPhase = "launch";
   uniState = "quantum";
+  // Stay in playing state — game.js renders the current quadrant, we overlay effects
+  if (typeof state !== "undefined") state = "playing";
   return true;
 }
 
@@ -846,12 +862,41 @@ function uniStartWormhole(toSystemId) {
   _uniCurrentSystem = uni.systems[toSystemId];
   _uniMapSelectedSystem = toSystemId;
   _uniQuantumTarget = { systemId: toSystemId, isWormhole: true };
-  _uniQuantumTimer = 60;
+  _uniQuantumTimer = UNI_QT_TRAVEL; // wormholes skip launch, go straight to travel
+  _uniQuantumPhase = "travel";
   uniState = "quantum";
+  if (typeof state !== "undefined") state = "menu";
+  _startUniMapLoop();
   return true;
 }
 
+// Called from uniUpdate (during "playing" state) for launch/arrive phases
+function _uniUpdateQuantumInGame() {
+  if (uniState !== "quantum") return;
+  if (_uniQuantumPhase === "launch") {
+    _uniQuantumTimer--;
+    if (_uniQuantumTimer <= 0) {
+      // Transition to travel phase — switch to cutscene
+      _uniQuantumPhase = "travel";
+      _uniQuantumTimer = UNI_QT_TRAVEL;
+      if (typeof state !== "undefined") state = "menu";
+      _startUniMapLoop();
+    }
+  } else if (_uniQuantumPhase === "arrive") {
+    _uniQuantumTimer--;
+    if (_uniQuantumTimer <= 0) {
+      // Done — back to normal flying
+      uniState = "flying";
+      _uniQuantumPhase = "";
+      _uniQuantumTarget = null;
+      if (typeof autoSaveUniverse === "function") autoSaveUniverse();
+    }
+  }
+}
+
+// Called from _uniMapTick for the travel cutscene phase
 function _uniUpdateQuantum() {
+  if (_uniQuantumPhase !== "travel") return;
   _uniQuantumTimer--;
   if (_uniQuantumTimer <= 0) {
     if (_uniQuantumTarget && _uniQuantumTarget.quadrant) {
@@ -860,135 +905,104 @@ function _uniUpdateQuantum() {
         _uniCurrentSystem = sys;
         _uniCurrentArea = sys.areas[_uniQuantumTarget.areaId] || null;
         uniLoadQuadrant(_uniQuantumTarget.quadrant);
-        uniState = "flying";
+        // Transition to arrive phase — back to in-game
+        _uniQuantumPhase = "arrive";
+        _uniQuantumTimer = UNI_QT_ARRIVE;
         if (typeof state !== "undefined") state = "playing";
+        _stopUniMapLoop();
         _buildUniUI();
       } else {
-        uniState = "map";
-        _startUniMapLoop();
+        uniState = "map"; _uniQuantumPhase = ""; _startUniMapLoop();
       }
     } else {
-      // Wormhole — back to map in new system
-      uniState = "map";
-      _uniMapLevel = "area";
-      _startUniMapLoop();
+      // Wormhole — back to map
+      uniState = "map"; _uniQuantumPhase = ""; _uniMapLevel = "area"; _startUniMapLoop();
     }
-    _uniQuantumTarget = null;
-    if (typeof autoSaveUniverse === "function") autoSaveUniverse();
+  }
+}
+
+// Render QT effects as overlay on top of the quadrant (launch/arrive phases)
+function _uniRenderQuantumOverlay(c, gw, gh) {
+  if (uniState !== "quantum") return;
+  if (_uniQuantumPhase === "launch") {
+    const dur = UNI_QT_LAUNCH;
+    const pt = 1 - (_uniQuantumTimer / dur); // 0→1
+    // Blue energy converging on player
+    if (typeof player !== "undefined" && player) {
+      const px = player.x + player.w / 2 - (window.camX || 0);
+      const py = player.y + player.h / 2 - (window.camY || 0);
+      // Rings expanding out
+      for (let r = 0; r < 3; r++) {
+        c.save(); c.globalAlpha = (1 - pt) * 0.5;
+        c.strokeStyle = "#44aaff"; c.lineWidth = 2 + pt * 2;
+        const ringR = 20 + r * 20 + pt * 60;
+        c.beginPath(); c.arc(px, py, ringR, 0, Math.PI * 2); c.stroke(); c.restore();
+      }
+      // Particles spiraling in
+      c.fillStyle = "#88ccff";
+      for (let i = 0; i < 16; i++) {
+        const a = i * Math.PI * 2 / 16 + _uniFrameCount * 0.15;
+        const dist = (1 - pt) * 100 + 15;
+        c.globalAlpha = pt * 0.9;
+        c.beginPath(); c.arc(px + Math.cos(a) * dist, py + Math.sin(a) * dist, 2 + pt, 0, Math.PI * 2); c.fill();
+      }
+      c.globalAlpha = 1;
+      // Screen tint
+      c.save(); c.globalAlpha = pt * 0.15; c.fillStyle = "#0044aa"; c.fillRect(0, 0, gw, gh); c.restore();
+      // Text
+      c.textAlign = "center"; c.fillStyle = "rgba(0,170,255," + pt + ")"; c.font = "bold 12px monospace";
+      c.fillText("QUANTUM DRIVE SPOOLING", gw / 2, 50); c.textAlign = "left";
+    }
+  } else if (_uniQuantumPhase === "arrive") {
+    const dur = UNI_QT_ARRIVE;
+    const pt = 1 - (_uniQuantumTimer / dur); // 0→1
+    // Arrival flash — fading blue tint
+    c.save(); c.globalAlpha = (1 - pt) * 0.25; c.fillStyle = "#0066ff"; c.fillRect(0, 0, gw, gh); c.restore();
+    // Speed lines fading out
+    c.save();
+    for (let i = 0; i < 30; i++) {
+      const sy = ((i * 97 + 50) % gh);
+      const len = (1 - pt) * 80;
+      c.strokeStyle = "rgba(150,180,255," + ((1 - pt) * 0.4) + ")";
+      c.lineWidth = 1; c.beginPath(); c.moveTo(gw / 2 - len, sy); c.lineTo(gw / 2 + len, sy); c.stroke();
+    }
+    c.restore();
+    // Text
+    c.textAlign = "center"; c.fillStyle = "rgba(0,255,100," + (1 - pt) + ")"; c.font = "bold 12px monospace";
+    c.fillText("ARRIVING", gw / 2, 50); c.textAlign = "left";
   }
 }
 
 function _uniRenderQuantum(c, gw, gh) {
-  const totalDur = _uniQuantumTarget?.isWormhole ? 60 : UNI_QUANTUM_DURATION;
-  const t = 1 - (_uniQuantumTimer / totalDur);
-  const phase = t < 0.25 ? "launch" : t < 0.75 ? "travel" : "arrive";
-
+  // Only the travel phase renders here (launch/arrive are in-game overlays)
+  const pt = 1 - (_uniQuantumTimer / UNI_QT_TRAVEL);
   c.fillStyle = "#000";
   c.fillRect(0, 0, gw, gh);
 
-  if (phase === "launch") {
-    // Ship in center with blue energy building up
-    const pt = t / 0.25; // 0-1 within this phase
-    // Ship
-    if (typeof player !== "undefined" && player && player.img && player.img.complete) {
-      c.save();
-      c.translate(gw / 2, gh / 2);
-      c.rotate(player.spriteAngleOffset || Math.PI);
-      const scale = 1 + pt * 0.3;
-      c.drawImage(player.img, -player.w * scale / 2, -player.h * scale / 2, player.w * scale, player.h * scale);
-      c.restore();
-    }
-    // Blue energy rings
-    for (let r = 0; r < 3; r++) {
-      const ringR = 30 + r * 25 + pt * 40;
-      c.save();
-      c.globalAlpha = (1 - pt) * 0.5;
-      c.strokeStyle = "#44aaff";
-      c.lineWidth = 2;
-      c.beginPath(); c.arc(gw / 2, gh / 2, ringR, 0, Math.PI * 2); c.stroke();
-      c.restore();
-    }
-    // Blue particles converging
-    c.fillStyle = "#88ccff";
-    for (let i = 0; i < 20; i++) {
-      const a = i * Math.PI * 2 / 20 + _uniFrameCount * 0.1;
-      const dist = (1 - pt) * 120 + 20;
-      c.globalAlpha = pt * 0.8;
-      c.beginPath();
-      c.arc(gw / 2 + Math.cos(a) * dist, gh / 2 + Math.sin(a) * dist, 2, 0, Math.PI * 2);
-      c.fill();
-    }
-    c.globalAlpha = 1;
-    // Text
-    c.textAlign = "center";
-    c.fillStyle = "#0af"; c.font = "bold 14px monospace";
-    c.fillText("SPOOLING QUANTUM DRIVE", gw / 2, gh / 2 + 60);
-
-  } else if (phase === "travel") {
-    // Streaking stars — ship is a streak
-    const pt = (t - 0.25) / 0.5;
-    for (let i = 0; i < 80; i++) {
-      const sx = ((i * 137 + _uniFrameCount * 18) % gw);
-      const sy = ((i * 97 + 50) % gh);
-      const len = 40 + pt * 120;
-      c.strokeStyle = "rgba(150,180,255," + (0.4 + pt * 0.4) + ")";
-      c.lineWidth = 1 + pt;
-      c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx - len, sy); c.stroke();
-    }
-    // Central flash
-    const flashR = 30 + pt * gw * 0.2;
-    const grad = c.createRadialGradient(gw / 2, gh / 2, 0, gw / 2, gh / 2, Math.max(1, flashR));
-    grad.addColorStop(0, "rgba(100,180,255," + (0.4 * (1 - pt)) + ")");
-    grad.addColorStop(1, "rgba(0,0,0,0)");
-    c.fillStyle = grad;
-    c.beginPath(); c.arc(gw / 2, gh / 2, Math.max(1, flashR), 0, Math.PI * 2); c.fill();
-    // Text
-    c.textAlign = "center";
-    c.fillStyle = "#0af"; c.font = "bold 16px monospace";
-    const dest = _uniQuantumTarget?.quadrant?.name || _uniQuantumTarget?.systemId || "Unknown";
-    c.fillText("QUANTUM TRAVEL", gw / 2, gh / 2 - 15);
-    c.fillStyle = "#fff"; c.font = "13px monospace";
-    c.fillText(dest, gw / 2, gh / 2 + 8);
-
-  } else {
-    // Arrive — ship zooms in from left with trail
-    const pt = (t - 0.75) / 0.25;
-    // Background settling
-    for (let i = 0; i < 40; i++) {
-      const sx = ((i * 137 + 50) % gw);
-      const sy = ((i * 97 + 30) % gh);
-      const len = (1 - pt) * 60;
-      c.strokeStyle = "rgba(150,180,255," + ((1 - pt) * 0.3) + ")";
-      c.lineWidth = 1;
-      c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx - len, sy); c.stroke();
-    }
-    // Ship flying in from left
-    const shipX = -60 + pt * (gw / 2 + 60);
-    const shipY = gh / 2;
-    if (typeof player !== "undefined" && player && player.img && player.img.complete) {
-      // Blue trail behind ship
-      c.save();
-      c.globalAlpha = (1 - pt) * 0.6;
-      const trailGrad = c.createLinearGradient(shipX - 100, shipY, shipX, shipY);
-      trailGrad.addColorStop(0, "rgba(0,0,0,0)");
-      trailGrad.addColorStop(1, "rgba(68,170,255,0.5)");
-      c.fillStyle = trailGrad;
-      c.fillRect(shipX - 100, shipY - 8, 100, 16);
-      c.restore();
-      // Ship — rotated to face right (sprite faces left by default due to spriteAngleOffset)
-      c.save();
-      c.translate(shipX, shipY);
-      c.rotate(player.spriteAngleOffset || Math.PI);
-      c.drawImage(player.img, -player.w / 2, -player.h / 2, player.w, player.h);
-      c.restore();
-    }
-    // Arrival text
-    c.textAlign = "center";
-    c.fillStyle = "rgba(0,255,100," + pt + ")"; c.font = "bold 14px monospace";
-    c.fillText("ARRIVING", gw / 2, gh / 2 + 50);
+  // Streaking stars
+  for (let i = 0; i < 80; i++) {
+    const sx = ((i * 137 + _uniFrameCount * 18) % gw);
+    const sy = ((i * 97 + 50) % gh);
+    const len = 40 + pt * 120;
+    c.strokeStyle = "rgba(150,180,255," + (0.4 + pt * 0.4) + ")";
+    c.lineWidth = 1 + pt;
+    c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx - len, sy); c.stroke();
   }
+  // Central flash
+  const flashR = 30 + pt * gw * 0.2;
+  const grad = c.createRadialGradient(gw / 2, gh / 2, 0, gw / 2, gh / 2, Math.max(1, flashR));
+  grad.addColorStop(0, "rgba(100,180,255," + (0.4 * (1 - pt)) + ")");
+  grad.addColorStop(1, "rgba(0,0,0,0)");
+  c.fillStyle = grad;
+  c.beginPath(); c.arc(gw / 2, gh / 2, Math.max(1, flashR), 0, Math.PI * 2); c.fill();
+  // Destination text
+  c.textAlign = "center";
+  c.fillStyle = "#0af"; c.font = "bold 16px monospace";
+  const dest = _uniQuantumTarget?.quadrant?.name || _uniQuantumTarget?.systemId || "Unknown";
+  c.fillText("QUANTUM TRAVEL", gw / 2, gh / 2 - 15);
+  c.fillStyle = "#fff"; c.font = "13px monospace";
+  c.fillText(dest, gw / 2, gh / 2 + 8);
   c.textAlign = "left";
-  c.globalAlpha = 1;
 }
 
 // ── DOCKED (STATION) UI ───────────────────────────────────────
@@ -1308,9 +1322,9 @@ function _uniGenerateMissions(stationId, systemDanger) {
   for (let i = 0; i < count; i++) {
     const type = types[Math.floor(rng() * types.length)];
     const danger = systemDanger || 1;
-    const baseReward = type === "bounty" ? 200 : type === "delivery" ? 150 : type === "mining" ? 120 : type === "explore" ? 250 : 180;
-    const reward = Math.round(baseReward * (0.8 + rng() * 0.8) * (1 + danger * 0.3));
-    const repReward = Math.round(5 + rng() * 15);
+    const baseReward = type === "bounty" ? 800 : type === "delivery" ? 600 : type === "mining" ? 500 : type === "explore" ? 1000 : 700;
+    const reward = Math.round(baseReward * (0.8 + rng() * 0.8) * (1 + danger * 0.5));
+    const repReward = Math.round(10 + rng() * 25);
     const titles = {
       bounty: ["Clear hostiles", "Eliminate patrol", "Destroy raiders", "Hunt pirates"],
       delivery: ["Deliver supplies", "Transport cargo", "Rush delivery", "Freight haul"],
@@ -2174,12 +2188,76 @@ function _renderQuadrantMap(c, gw, gh, uni) {
 
 // ── INPUT HANDLERS ────────────────────────────────────────────
 
+// Recalculate _uniMapHover from given coords (needed for mobile tap before render)
+function _uniRecalcHover(mx, my) {
+  _uniMapHover = null;
+  const uni = window._activeUniverse;
+  if (!uni) return;
+  const gw = typeof GAME_W !== "undefined" ? GAME_W : 1280;
+  const gh = typeof GAME_H !== "undefined" ? GAME_H : 720;
+
+  if (_uniMapLevel === "system") {
+    const systems = Object.values(uni.systems);
+    const cols = 3, rows = Math.ceil(systems.length / cols);
+    const cellW = (gw - 120) / cols, cellH = (gh - 110) / rows;
+    const startX = 60, startY = 50;
+    for (let i = 0; i < systems.length; i++) {
+      const x = startX + (i % cols) * cellW + cellW / 2;
+      const y = startY + Math.floor(i / cols) * cellH + cellH / 2;
+      if (Math.hypot(mx - x, my - y) < 50) { _uniMapHover = systems[i].id; return; }
+    }
+  } else if (_uniMapLevel === "area") {
+    const sys = uni.systems[_uniMapSelectedSystem];
+    if (!sys) return;
+    const areas = Object.values(sys.areas).filter(a => a.type !== "sun");
+    const sunX = gw / 2, sunY = gh / 2;
+    areas.forEach((area, i) => {
+      const angle = (Math.PI * 2 * i / areas.length) - Math.PI / 2;
+      const orbitR = 120 + (i % 3) * 40;
+      const ax = sunX + Math.cos(angle) * orbitR;
+      const ay = sunY + Math.sin(angle) * orbitR;
+      if (Math.hypot(mx - ax, my - ay) < 30) _uniMapHover = area.id;
+    });
+  } else if (_uniMapLevel === "quadrant") {
+    const sys = uni.systems[_uniMapSelectedSystem];
+    if (!sys) return;
+    const area = sys.areas[_uniMapSelectedArea];
+    if (!area) return;
+    const quads = area.quadrants;
+    const cardW = 110, cardH = 90;
+    const posRng = typeof seededRNG === "function" ? seededRNG(typeof deriveEntitySeed === "function" ? deriveEntitySeed(0, _uniMapSelectedArea || "a") : 777) : function() { return Math.random(); };
+    const positions = [];
+    const margin = 60;
+    for (let i = 0; i < quads.length; i++) {
+      let px, py, tries = 0, valid = false;
+      while (tries < 50 && !valid) {
+        px = margin + posRng() * (gw - cardW - margin * 2);
+        py = 40 + posRng() * (gh - cardH - margin - 50);
+        valid = true;
+        for (const p of positions) { if (Math.abs(px - p.x) < cardW + 10 && Math.abs(py - p.y) < cardH + 10) { valid = false; break; } }
+        tries++;
+      }
+      positions.push({ x: px, y: py });
+    }
+    for (let i = 0; i < quads.length; i++) {
+      const x = positions[i].x, y = positions[i].y;
+      if (mx > x && mx < x + cardW && my > y && my < y + cardH) { _uniMapHover = quads[i].id; return; }
+    }
+  }
+}
+
 document.addEventListener("mousedown", function(e) {
   if (uniState === "inactive") return;
   const ds = typeof displayScale !== "undefined" ? displayScale : 1;
   const mx = e.clientX / ds, my = e.clientY / ds;
 
+  // Update mouse position so hover works on mobile
+  if (typeof mouse !== "undefined") { mouse.x = mx; mouse.y = my; }
+
   if (uniState === "map") {
+    // Recalculate hover from click position (needed for mobile where render hasn't set _uniMapHover yet)
+    _uniRecalcHover(mx, my);
+
     // Back button
     if (window._uniMapBackRect) {
       const r = window._uniMapBackRect;
@@ -2387,7 +2465,7 @@ function _buildUniUI() {
   _hideUniUI();
 
   // Hide Arena-specific buttons that don't apply to Universe
-  ["formationBtn","deployBtn","mobileSpecialBtn"].forEach(id => {
+  ["formationBtn","deployBtn","mobileSpecialBtn","mobilePingBtn"].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = "none";
   });
   // Hide Arena HUD and inGameBack
@@ -2466,7 +2544,7 @@ function _buildUniUI() {
 
 function _hideUniUI() {
   if (_uniUI) { _uniUI.remove(); _uniUI = null; }
-  ["formationBtn","deployBtn","mobileSpecialBtn"].forEach(id => {
+  ["formationBtn","deployBtn","mobileSpecialBtn","mobilePingBtn"].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = "";
   });
 }
