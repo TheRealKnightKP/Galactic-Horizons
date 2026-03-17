@@ -661,10 +661,12 @@ function _uniCheckStation() {
     _uniDockedStation = uniStation.data;
     _uniStationTab = "trading";
     _uniTradeSelected = 0;
+    _uniAvailableMissions = null;
+    _uniMissionSelected = -1;
     uniState = "docked";
     if (typeof state !== "undefined") state = "menu";
     if (typeof autoSaveUniverse === "function") autoSaveUniverse();
-    _startUniMapLoop(); // start the docked UI render loop
+    _startUniMapLoop();
   }
 }
 
@@ -756,37 +758,115 @@ function _uniUpdateQuantum() {
 }
 
 function _uniRenderQuantum(c, gw, gh) {
-  const t = 1 - (_uniQuantumTimer / UNI_QUANTUM_DURATION);
+  const totalDur = _uniQuantumTarget?.isWormhole ? 60 : UNI_QUANTUM_DURATION;
+  const t = 1 - (_uniQuantumTimer / totalDur);
+  const phase = t < 0.25 ? "launch" : t < 0.75 ? "travel" : "arrive";
+
   c.fillStyle = "#000";
   c.fillRect(0, 0, gw, gh);
 
-  // Streaking stars
-  for (let i = 0; i < 60; i++) {
-    const sx = ((i * 137 + _uniFrameCount * 12) % gw);
-    const sy = ((i * 97 + 50) % gh);
-    const len = 20 + t * 80;
-    c.strokeStyle = "rgba(150,180,255," + (0.3 + t * 0.5) + ")";
-    c.lineWidth = 1;
-    c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx - len, sy); c.stroke();
+  if (phase === "launch") {
+    // Ship in center with blue energy building up
+    const pt = t / 0.25; // 0-1 within this phase
+    // Ship
+    if (typeof player !== "undefined" && player && player.img && player.img.complete) {
+      c.save();
+      c.translate(gw / 2, gh / 2);
+      c.rotate(0);
+      const scale = 1 + pt * 0.3;
+      c.drawImage(player.img, -player.w * scale / 2, -player.h * scale / 2, player.w * scale, player.h * scale);
+      c.restore();
+    }
+    // Blue energy rings
+    for (let r = 0; r < 3; r++) {
+      const ringR = 30 + r * 25 + pt * 40;
+      c.save();
+      c.globalAlpha = (1 - pt) * 0.5;
+      c.strokeStyle = "#44aaff";
+      c.lineWidth = 2;
+      c.beginPath(); c.arc(gw / 2, gh / 2, ringR, 0, Math.PI * 2); c.stroke();
+      c.restore();
+    }
+    // Blue particles converging
+    c.fillStyle = "#88ccff";
+    for (let i = 0; i < 20; i++) {
+      const a = i * Math.PI * 2 / 20 + _uniFrameCount * 0.1;
+      const dist = (1 - pt) * 120 + 20;
+      c.globalAlpha = pt * 0.8;
+      c.beginPath();
+      c.arc(gw / 2 + Math.cos(a) * dist, gh / 2 + Math.sin(a) * dist, 2, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 1;
+    // Text
+    c.textAlign = "center";
+    c.fillStyle = "#0af"; c.font = "bold 14px monospace";
+    c.fillText("SPOOLING QUANTUM DRIVE", gw / 2, gh / 2 + 60);
+
+  } else if (phase === "travel") {
+    // Streaking stars — ship is a streak
+    const pt = (t - 0.25) / 0.5;
+    for (let i = 0; i < 80; i++) {
+      const sx = ((i * 137 + _uniFrameCount * 18) % gw);
+      const sy = ((i * 97 + 50) % gh);
+      const len = 40 + pt * 120;
+      c.strokeStyle = "rgba(150,180,255," + (0.4 + pt * 0.4) + ")";
+      c.lineWidth = 1 + pt;
+      c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx - len, sy); c.stroke();
+    }
+    // Central flash
+    const flashR = 30 + pt * gw * 0.2;
+    const grad = c.createRadialGradient(gw / 2, gh / 2, 0, gw / 2, gh / 2, Math.max(1, flashR));
+    grad.addColorStop(0, "rgba(100,180,255," + (0.4 * (1 - pt)) + ")");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = grad;
+    c.beginPath(); c.arc(gw / 2, gh / 2, Math.max(1, flashR), 0, Math.PI * 2); c.fill();
+    // Text
+    c.textAlign = "center";
+    c.fillStyle = "#0af"; c.font = "bold 16px monospace";
+    const dest = _uniQuantumTarget?.quadrant?.name || _uniQuantumTarget?.systemId || "Unknown";
+    c.fillText("QUANTUM TRAVEL", gw / 2, gh / 2 - 15);
+    c.fillStyle = "#fff"; c.font = "13px monospace";
+    c.fillText(dest, gw / 2, gh / 2 + 8);
+
+  } else {
+    // Arrive — ship zooms in from left with trail
+    const pt = (t - 0.75) / 0.25;
+    // Background settling
+    for (let i = 0; i < 40; i++) {
+      const sx = ((i * 137 + 50) % gw);
+      const sy = ((i * 97 + 30) % gh);
+      const len = (1 - pt) * 60;
+      c.strokeStyle = "rgba(150,180,255," + ((1 - pt) * 0.3) + ")";
+      c.lineWidth = 1;
+      c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx - len, sy); c.stroke();
+    }
+    // Ship flying in from left
+    const shipX = -60 + pt * (gw / 2 + 60);
+    const shipY = gh / 2;
+    if (typeof player !== "undefined" && player && player.img && player.img.complete) {
+      // Blue trail behind ship
+      c.save();
+      c.globalAlpha = (1 - pt) * 0.6;
+      const trailGrad = c.createLinearGradient(shipX - 100, shipY, shipX, shipY);
+      trailGrad.addColorStop(0, "rgba(0,0,0,0)");
+      trailGrad.addColorStop(1, "rgba(68,170,255,0.5)");
+      c.fillStyle = trailGrad;
+      c.fillRect(shipX - 100, shipY - 8, 100, 16);
+      c.restore();
+      // Ship
+      c.save();
+      c.translate(shipX, shipY);
+      c.drawImage(player.img, -player.w / 2, -player.h / 2, player.w, player.h);
+      c.restore();
+    }
+    // Arrival text
+    c.textAlign = "center";
+    c.fillStyle = "rgba(0,255,100," + pt + ")"; c.font = "bold 14px monospace";
+    c.fillText("ARRIVING", gw / 2, gh / 2 + 50);
   }
-
-  // Flash
-  const flashR = t * gw * 0.3;
-  const grad = c.createRadialGradient(gw / 2, gh / 2, 0, gw / 2, gh / 2, Math.max(1, flashR));
-  grad.addColorStop(0, "rgba(100,180,255," + (0.3 * t) + ")");
-  grad.addColorStop(1, "rgba(0,0,0,0)");
-  c.fillStyle = grad;
-  c.beginPath(); c.arc(gw / 2, gh / 2, Math.max(1, flashR), 0, Math.PI * 2); c.fill();
-
-  c.textAlign = "center";
-  c.fillStyle = "#0af";
-  c.font = "bold 18px monospace";
-  c.fillText("QUANTUM TRAVEL", gw / 2, gh / 2 - 15);
-  c.fillStyle = "#fff";
-  c.font = "14px monospace";
-  const dest = _uniQuantumTarget?.quadrant?.name || _uniQuantumTarget?.systemId || "Unknown";
-  c.fillText(dest, gw / 2, gh / 2 + 10);
   c.textAlign = "left";
+  c.globalAlpha = 1;
 }
 
 // ── DOCKED (STATION) UI ───────────────────────────────────────
@@ -855,8 +935,8 @@ function uniRenderDockedUI() {
   if (_uniStationTab === "trading") _uniRenderTrading(c, contentX, contentY, contentW, contentH, st);
   else if (_uniStationTab === "refuel") _uniRenderRefuel(c, contentX, contentY, contentW, contentH);
   else if (_uniStationTab === "repair") _uniRenderRepair(c, contentX, contentY, contentW, contentH);
-  else if (_uniStationTab === "missions") _uniRenderPlaceholder(c, contentX, contentY, contentW, contentH, "Mission Board", "Missions coming in Phase 1");
-  else if (_uniStationTab === "shipyard") _uniRenderPlaceholder(c, contentX, contentY, contentW, contentH, "Shipyard", "Ship switching coming in Phase 1");
+  else if (_uniStationTab === "missions") _uniRenderMissions(c, contentX, contentY, contentW, contentH, st);
+  else if (_uniStationTab === "shipyard") _uniRenderShipyard(c, contentX, contentY, contentW, contentH);
 
   // Undock button
   const btnW = 140, btnH = 28;
@@ -1091,6 +1171,163 @@ function _uniRenderPlaceholder(c, x, y, w, h, title, msg) {
   c.textAlign = "left";
 }
 
+// ── MISSION BOARD ─────────────────────────────────────────────
+
+let _uniAvailableMissions = null;
+let _uniMissionSelected = -1;
+
+function _uniGenerateMissions(stationId, systemDanger) {
+  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  if (!world) return [];
+  const rng = typeof seededRNG === "function" ? seededRNG(typeof deriveEntitySeed === "function" ? deriveEntitySeed(world.masterSeed, stationId, "missions", Math.floor(Date.now() / 300000)) : 12345) : function(){ return Math.random(); };
+  const types = ["bounty", "delivery", "mining", "explore", "salvage"];
+  const count = 3 + Math.floor(rng() * 3); // 3-5 missions
+  const missions = [];
+  for (let i = 0; i < count; i++) {
+    const type = types[Math.floor(rng() * types.length)];
+    const danger = systemDanger || 1;
+    const baseReward = type === "bounty" ? 200 : type === "delivery" ? 150 : type === "mining" ? 120 : type === "explore" ? 250 : 180;
+    const reward = Math.round(baseReward * (0.8 + rng() * 0.8) * (1 + danger * 0.3));
+    const repReward = Math.round(5 + rng() * 15);
+    const titles = {
+      bounty: ["Clear hostiles", "Eliminate patrol", "Destroy raiders", "Hunt pirates"],
+      delivery: ["Deliver supplies", "Transport cargo", "Rush delivery", "Freight haul"],
+      mining: ["Mine ore", "Extract minerals", "Gather resources", "Rock harvest"],
+      explore: ["Scan anomaly", "Survey sector", "Chart unknown", "Investigate signal"],
+      salvage: ["Recover wreck", "Salvage parts", "Strip derelict", "Scrap collection"],
+    };
+    const titlePool = titles[type] || ["Unknown task"];
+    missions.push({
+      id: "m_" + stationId + "_" + i,
+      type, title: titlePool[Math.floor(rng() * titlePool.length)],
+      reward, repReward,
+      desc: type === "bounty" ? "Destroy " + (2 + Math.floor(rng() * 4)) + " enemies in a patrol sector" :
+            type === "delivery" ? "Transport goods to another station" :
+            type === "mining" ? "Mine " + (2 + Math.floor(rng() * 4)) + " ore in an asteroid field" :
+            type === "explore" ? "Visit and scan a debris or anomaly sector" :
+            "Salvage materials from a wreck field",
+    });
+  }
+  return missions;
+}
+
+function _uniRenderMissions(c, x, y, w, h, station) {
+  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  const activeMissions = world ? (world.player.activeMissions || []) : [];
+
+  if (!_uniAvailableMissions) {
+    _uniAvailableMissions = _uniGenerateMissions(station.id, _uniCurrentSystem?.dangerLevel || 1);
+  }
+
+  c.fillStyle = "#fff"; c.font = "bold 14px monospace"; c.textAlign = "center";
+  c.fillText("MISSION BOARD", x + w / 2, y + 18);
+  c.fillStyle = "#888"; c.font = "10px monospace";
+  c.fillText("Active: " + activeMissions.length + "/5", x + w / 2, y + 32);
+  c.textAlign = "left";
+
+  const rowH = 52;
+  let cy = y + 46;
+  window._uniMissionRows = [];
+  window._uniMissionAcceptRect = null;
+
+  _uniAvailableMissions.forEach((m, idx) => {
+    if (cy + rowH > y + h - 30) return;
+    const isSelected = idx === _uniMissionSelected;
+    const alreadyActive = activeMissions.some(am => am.id === m.id);
+    const typeColors = { bounty: "#ff4444", delivery: "#4488ff", mining: "#ffaa00", explore: "#44ffaa", salvage: "#aa8844" };
+
+    if (isSelected) { c.fillStyle = "rgba(0,170,255,0.1)"; c.fillRect(x, cy, w, rowH - 2); }
+    window._uniMissionRows.push({ idx, y1: cy, y2: cy + rowH - 2, x, w });
+
+    // Type badge
+    c.fillStyle = typeColors[m.type] || "#888"; c.font = "bold 10px monospace";
+    c.fillText(m.type.toUpperCase(), x + 4, cy + 14);
+    // Title
+    c.fillStyle = "#fff"; c.font = "bold 11px monospace";
+    c.fillText(m.title, x + 80, cy + 14);
+    // Description
+    c.fillStyle = "#888"; c.font = "9px monospace";
+    c.fillText(m.desc, x + 4, cy + 28);
+    // Reward
+    c.fillStyle = "#ffcc00"; c.font = "10px monospace";
+    c.fillText(m.reward + " SC  +" + m.repReward + " rep", x + 4, cy + 42);
+
+    // Accept button for selected
+    if (isSelected && !alreadyActive && activeMissions.length < 5) {
+      const btnX = x + w - 80, btnY = cy + 10, btnW = 70, btnH = 24;
+      c.fillStyle = "rgba(0,255,100,0.15)"; c.fillRect(btnX, btnY, btnW, btnH);
+      c.strokeStyle = "#0f0"; c.lineWidth = 1; c.strokeRect(btnX, btnY, btnW, btnH);
+      c.fillStyle = "#0f0"; c.font = "bold 10px monospace"; c.textAlign = "center";
+      c.fillText("ACCEPT", btnX + btnW / 2, btnY + 16);
+      c.textAlign = "left";
+      window._uniMissionAcceptRect = { x: btnX, y: btnY, w: btnW, h: btnH, mission: m };
+    }
+    if (alreadyActive) {
+      c.fillStyle = "#555"; c.font = "bold 10px monospace"; c.textAlign = "right";
+      c.fillText("ACTIVE", x + w - 8, cy + 14); c.textAlign = "left";
+    }
+
+    cy += rowH;
+  });
+}
+
+// ── SHIPYARD ──────────────────────────────────────────────────
+
+function _uniRenderShipyard(c, x, y, w, h) {
+  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  if (!world) return;
+  const ships = world.player.ownedShips || [];
+  const activeIdx = world.player.activeShipIdx || 0;
+
+  c.fillStyle = "#fff"; c.font = "bold 14px monospace"; c.textAlign = "center";
+  c.fillText("SHIPYARD", x + w / 2, y + 18);
+  c.fillStyle = "#888"; c.font = "10px monospace";
+  c.fillText("Switch your active ship", x + w / 2, y + 32);
+  c.textAlign = "left";
+
+  const rowH = 48;
+  let cy = y + 46;
+  window._uniShipyardRows = [];
+
+  ships.forEach((ship, idx) => {
+    if (cy + rowH > y + h - 10) return;
+    const isCurrent = idx === activeIdx;
+    const shipDef = typeof SHIPS !== "undefined" ? SHIPS[ship.key] : null;
+    const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[ship.key] : null;
+
+    if (isCurrent) { c.fillStyle = "rgba(0,255,100,0.08)"; c.fillRect(x, cy, w, rowH - 2); }
+
+    // Ship name
+    c.fillStyle = isCurrent ? "#0f0" : "#fff"; c.font = "bold 12px monospace";
+    c.fillText((isCurrent ? "> " : "  ") + ship.key, x + 4, cy + 16);
+
+    // Stats line
+    c.fillStyle = "#888"; c.font = "9px monospace";
+    const cargoStr = "Cargo:" + (uniStats?.cargoCapacity || 0);
+    const fuelStr = "Fuel:" + Math.floor(ship.fuel || 0) + "/" + (uniStats?.fuelMax || 50);
+    const mineStr = (uniStats?.miningPower || 0) > 0 ? "Mining:" + uniStats.miningPower : "";
+    const hpStr = "HP:" + Math.floor(ship.hp || shipDef?.hp || 100);
+    c.fillText(hpStr + "  " + fuelStr + "  " + cargoStr + "  " + mineStr, x + 20, cy + 30);
+
+    // Switch button (if not current)
+    if (!isCurrent) {
+      const btnX = x + w - 80, btnY = cy + 8, btnW = 70, btnH = 24;
+      c.fillStyle = "rgba(0,170,255,0.15)"; c.fillRect(btnX, btnY, btnW, btnH);
+      c.strokeStyle = "#0af"; c.lineWidth = 1; c.strokeRect(btnX, btnY, btnW, btnH);
+      c.fillStyle = "#0af"; c.font = "bold 10px monospace"; c.textAlign = "center";
+      c.fillText("SWITCH", btnX + btnW / 2, btnY + 16); c.textAlign = "left";
+      window._uniShipyardRows.push({ idx, x: btnX, y: btnY, w: btnW, h: btnH });
+    }
+
+    cy += rowH;
+  });
+
+  if (ships.length === 0) {
+    c.fillStyle = "#666"; c.font = "12px monospace"; c.textAlign = "center";
+    c.fillText("No ships owned", x + w / 2, y + 80); c.textAlign = "left";
+  }
+}
+
 // ── MAP RENDERING (reusing existing code from v1, will be replaced with visual map later) ──
 
 function _startUniMapLoop() {
@@ -1128,12 +1365,19 @@ function _uniMapTick() {
       else if (_uniMapLevel === "quadrant") _renderQuadrantMap(c, gw, gh, uni);
       c.textAlign = "left";
     }
-    // Back hint
-    c.fillStyle = "#666"; c.font = "12px monospace"; c.textAlign = "left";
-    c.fillText(_uniMapLevel === "system" ? "[ESC] Exit Universe" : "[ESC] Back", 10, gh - 10);
+    // Back button (clickable)
+    const backLabel = _uniMapLevel === "system" ? "EXIT UNIVERSE" : "BACK";
+    const backW = _uniMapLevel === "system" ? 130 : 80;
+    const backX = 10, backY = gh - 32, backH = 24;
+    c.fillStyle = "rgba(255,60,60,0.12)"; c.fillRect(backX, backY, backW, backH);
+    c.strokeStyle = _uniMapLevel === "system" ? "#f66" : "#888"; c.lineWidth = 1; c.strokeRect(backX, backY, backW, backH);
+    c.fillStyle = _uniMapLevel === "system" ? "#f66" : "#aaa"; c.font = "bold 11px monospace"; c.textAlign = "center";
+    c.fillText(backLabel, backX + backW / 2, backY + 16);
+    window._uniMapBackRect = { x: backX, y: backY, w: backW, h: backH };
+    c.textAlign = "left";
     if (_uniCurrentSystem) {
       c.textAlign = "right"; c.fillStyle = "#555"; c.font = "11px monospace";
-      c.fillText("Current: " + _uniCurrentSystem.name, gw - 10, gh - 10);
+      c.fillText("Current: " + _uniCurrentSystem.name, gw - 10, gh - 14);
     }
     c.textAlign = "left";
   }
@@ -1644,16 +1888,24 @@ document.addEventListener("mousedown", function(e) {
   const ds = typeof displayScale !== "undefined" ? displayScale : 1;
   const mx = e.clientX / ds, my = e.clientY / ds;
 
-  if (uniState === "map" && _uniMapHover) {
-    if (_uniMapLevel === "system") { _uniMapSelectedSystem = _uniMapHover; _uniMapLevel = "area"; }
-    else if (_uniMapLevel === "area") { _uniMapSelectedArea = _uniMapHover; _uniMapLevel = "quadrant"; }
-    else if (_uniMapLevel === "quadrant") {
-      const sys = window._activeUniverse?.systems[_uniMapSelectedSystem];
-      const area = sys?.areas[_uniMapSelectedArea];
-      const quad = area?.quadrants.find(q => q.id === _uniMapHover);
-      if (quad) {
-        if (quad.type === "wormhole_tunnel" && quad.toSystem) uniStartWormhole(quad.toSystem);
-        else uniStartQuantum(_uniMapSelectedSystem, _uniMapSelectedArea, quad);
+  if (uniState === "map") {
+    // Back button
+    if (window._uniMapBackRect) {
+      const r = window._uniMapBackRect;
+      if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniMapBack(); return; }
+    }
+    // Map element clicks
+    if (_uniMapHover) {
+      if (_uniMapLevel === "system") { _uniMapSelectedSystem = _uniMapHover; _uniMapLevel = "area"; }
+      else if (_uniMapLevel === "area") { _uniMapSelectedArea = _uniMapHover; _uniMapLevel = "quadrant"; }
+      else if (_uniMapLevel === "quadrant") {
+        const sys = window._activeUniverse?.systems[_uniMapSelectedSystem];
+        const area = sys?.areas[_uniMapSelectedArea];
+        const quad = area?.quadrants.find(q => q.id === _uniMapHover);
+        if (quad) {
+          if (quad.type === "wormhole_tunnel" && quad.toSystem) uniStartWormhole(quad.toSystem);
+          else uniStartQuantum(_uniMapSelectedSystem, _uniMapSelectedArea, quad);
+        }
       }
     }
     return;
@@ -1705,6 +1957,63 @@ document.addEventListener("mousedown", function(e) {
         const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
         if (world) { world.player.credits -= r.cost; if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits; }
         window._uniRepairRect = null; return;
+      }
+    }
+    // Mission accept
+    if (_uniStationTab === "missions") {
+      if (window._uniMissionAcceptRect) {
+        const r = window._uniMissionAcceptRect;
+        if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
+          const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+          if (world && r.mission) {
+            if (!world.player.activeMissions) world.player.activeMissions = [];
+            if (world.player.activeMissions.length < 5) {
+              world.player.activeMissions.push({ ...r.mission, status: "active", acceptedAt: Date.now() });
+            }
+          }
+          return;
+        }
+      }
+      if (window._uniMissionRows) {
+        for (const r of window._uniMissionRows) {
+          if (my > r.y1 && my < r.y2 && mx > r.x && mx < r.x + r.w) { _uniMissionSelected = r.idx; return; }
+        }
+      }
+    }
+    // Shipyard switch
+    if (_uniStationTab === "shipyard" && window._uniShipyardRows) {
+      for (const r of window._uniShipyardRows) {
+        if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
+          const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+          if (world) {
+            // Save current ship state
+            const curShip = world.player.ownedShips[world.player.activeShipIdx || 0];
+            if (curShip && typeof player !== "undefined" && player) {
+              curShip.fuel = player.fuel; curShip.hp = player.hp; curShip.shields = player.shields;
+              curShip.cargo = player.cargo ? [...player.cargo] : [];
+            }
+            // Switch
+            world.player.activeShipIdx = r.idx;
+            const newShip = world.player.ownedShips[r.idx];
+            if (newShip && typeof setPlayerShip === "function") {
+              if (typeof playerLoadout !== "undefined") playerLoadout.ship = newShip.key;
+              setPlayerShip(newShip.key);
+              const uniStats = typeof UNIVERSE_SHIP_STATS !== "undefined" ? UNIVERSE_SHIP_STATS[newShip.key] : null;
+              if (player) {
+                player.fuel = newShip.fuel || uniStats?.fuelMax || 50;
+                player.fuelMax = uniStats?.fuelMax || 50;
+                player.fuelEfficiency = uniStats?.fuelEfficiency || 1.0;
+                player.cargo = newShip.cargo ? [...newShip.cargo] : [];
+                player.cargoCapacity = uniStats?.cargoCapacity || 2;
+                player.miningPower = uniStats?.miningPower || 0;
+                player.scanRange = uniStats?.scanRange || 100;
+                if (newShip.hp !== null && newShip.hp !== undefined) player.hp = newShip.hp;
+                if (newShip.shields !== null && newShip.shields !== undefined) player.shields = newShip.shields;
+              }
+            }
+          }
+          return;
+        }
       }
     }
     // Undock button
@@ -1783,10 +2092,12 @@ function _buildUniUI() {
       _uniDockedStation = uniStation.data;
       _uniStationTab = "trading";
       _uniTradeSelected = 0;
+      _uniAvailableMissions = null;
+      _uniMissionSelected = -1;
       uniState = "docked";
       if (typeof state !== "undefined") state = "menu";
       if (typeof autoSaveUniverse === "function") autoSaveUniverse();
-      _startUniMapLoop(); // start the docked UI render loop
+      _startUniMapLoop();
     }
   };
   dockBtn.addEventListener("click", dockAction);
