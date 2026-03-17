@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.9";
+const CACHE = "galactic-horizons-v1.8.10";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -171,4 +171,5 @@ Versions:
 -V1.8.7 - Map fixes and others
 -V1.8.8 - Fixed some stuff
 -V1.8.9 - Fixes and more fixes
+-V1.8.10 - Fixes mc.fixface from fixlandia
 */
