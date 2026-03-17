@@ -66,8 +66,9 @@ const UNI_QUAD_SIZES = {
 };
 
 // Universe-specific entities that sit alongside game.js's enemies array
-let uniAsteroids = [];
+let uniAsteroids = []; uniWrecks = [];
 let uniPOIs = [];
+let uniWrecks = [];
 
 // ── ENTER UNIVERSE ────────────────────────────────────────────
 
@@ -113,7 +114,7 @@ function enterUniverse(world) {
   if (typeof allies !== "undefined") allies = [];
   if (typeof hitEffects !== "undefined") hitEffects = [];
   if (typeof deathEffects !== "undefined") deathEffects = [];
-  uniAsteroids = [];
+  uniAsteroids = []; uniWrecks = [];
   uniPOIs = [];
   uniStation = null;
 
@@ -182,7 +183,7 @@ function exitUniverse() {
   if (typeof window.quadH !== "undefined") { window.quadH = typeof GAME_H !== "undefined" ? GAME_H : 720; }
 
   // Reset entities
-  uniAsteroids = [];
+  uniAsteroids = []; uniWrecks = [];
   uniPOIs = [];
   uniStation = null;
   _uniInCombat = false;
@@ -215,7 +216,7 @@ function uniLoadQuadrant(quad) {
   if (typeof enemyBullets !== "undefined") enemyBullets = [];
   if (typeof hitEffects !== "undefined") hitEffects = [];
   if (typeof deathEffects !== "undefined") deathEffects = [];
-  uniAsteroids = [];
+  uniAsteroids = []; uniWrecks = [];
   uniPOIs = [];
   uniStation = null;
 
@@ -252,6 +253,24 @@ function uniLoadQuadrant(quad) {
     const scaleY = qSize.h / 720;
     uniPOIs.push({ ...poi, x: poi.x * scaleX, y: poi.y * scaleY, discovered: !!discovered, w: 24, h: 24 });
   });
+
+  // Spawn wrecks (debris sectors)
+  if (_uniQuadrantContents.wrecks) {
+    _uniQuadrantContents.wrecks.forEach(wrk => {
+      const deltaKey = _uniCurrentSystem.id + ":" + (_uniCurrentArea?.id || "") + ":" + quad.id + ":" + wrk.id;
+      const salvaged = world && typeof getDelta === "function" ? getDelta(world, deltaKey, "salvaged") : false;
+      if (salvaged) return;
+      const scaleX = qSize.w / 1280;
+      const scaleY = qSize.h / 720;
+      uniWrecks.push({
+        ...wrk,
+        x: wrk.x * scaleX,
+        y: wrk.y * scaleY,
+        w: 35 + Math.floor(wrk.maxHealth / 8),
+        h: 25 + Math.floor(wrk.maxHealth / 10),
+      });
+    });
+  }
 
   // Spawn station
   if (quad.station) {
@@ -411,6 +430,7 @@ function uniUpdate() {
 
   // Mining
   _uniUpdateMining();
+  _uniUpdateSalvaging();
 
   // Station proximity
   _uniCheckStation();
@@ -492,6 +512,47 @@ function uniRenderOverlay() {
   });
   c.restore();
 
+  // Wrecks (debris salvage objects)
+  uniWrecks.forEach(wrk => {
+    if (wrk.salvaged) return;
+    const sx = wrk.x - cx, sy = wrk.y - cy;
+    if (sx < -50 || sx > gw + 50 || sy < -50 || sy > gh + 50) return;
+    c.save();
+    c.translate(sx, sy);
+    c.rotate(wrk.x * 0.01); // slight rotation per wreck
+    // Hull shape — irregular polygon
+    c.fillStyle = "#55443a";
+    c.beginPath();
+    c.moveTo(-wrk.w / 2, -wrk.h / 4);
+    c.lineTo(-wrk.w / 3, -wrk.h / 2);
+    c.lineTo(wrk.w / 4, -wrk.h / 2);
+    c.lineTo(wrk.w / 2, -wrk.h / 6);
+    c.lineTo(wrk.w / 3, wrk.h / 2);
+    c.lineTo(-wrk.w / 4, wrk.h / 3);
+    c.closePath(); c.fill();
+    // Damage marks
+    c.strokeStyle = "#332211"; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(-5, -3); c.lineTo(6, 4); c.stroke();
+    c.beginPath(); c.moveTo(2, -6); c.lineTo(-3, 5); c.stroke();
+    // Glow if near player
+    const pcx = (typeof player !== "undefined" && player) ? player.x + player.w / 2 : 0;
+    const pcy = (typeof player !== "undefined" && player) ? player.y + player.h / 2 : 0;
+    const dist = Math.hypot(wrk.x - pcx, wrk.y - pcy);
+    if (dist < 150) {
+      c.strokeStyle = "rgba(255,170,0,0.4)"; c.lineWidth = 2;
+      c.beginPath(); c.arc(0, 0, wrk.w / 2 + 5, 0, Math.PI * 2); c.stroke();
+    }
+    c.restore();
+    // Salvage progress bar
+    if (wrk._salvageProgress && wrk._salvageProgress > 0) {
+      c.fillStyle = "#333"; c.fillRect(sx - wrk.w / 2, sy - wrk.h / 2 - 10, wrk.w, 5);
+      c.fillStyle = "#ffaa00"; c.fillRect(sx - wrk.w / 2, sy - wrk.h / 2 - 10, wrk.w * (wrk._salvageProgress / wrk.maxHealth), 5);
+    }
+    // Label
+    c.fillStyle = "#aa8855"; c.font = "8px monospace"; c.textAlign = "center";
+    c.fillText("WRECK", sx, sy + wrk.h / 2 + 12); c.textAlign = "left";
+  });
+
   // POIs
   uniPOIs.forEach(poi => {
     const sx = poi.x - cx, sy = poi.y - cy;
@@ -541,6 +602,26 @@ function uniRenderOverlay() {
     c.lineTo(mx, my);
     c.stroke();
     c.restore();
+  }
+
+  // Salvage beam (orange/brown for wrecks)
+  if (typeof player !== "undefined" && player) {
+    const activeWreck = uniWrecks.find(w => w._salvageProgress && w._salvageProgress > 0);
+    if (activeWreck) {
+      const px = player.x + player.w / 2 - cx;
+      const py = player.y + player.h / 2 - cy;
+      const wx = activeWreck.x - cx;
+      const wy = activeWreck.y - cy;
+      const progress = activeWreck._salvageProgress / (activeWreck.maxHealth || 60);
+      c.save();
+      c.globalAlpha = 0.4 + progress * 0.6;
+      c.strokeStyle = "#ff8844";
+      c.lineWidth = 2 + progress * 3;
+      c.shadowColor = "#ff8844";
+      c.shadowBlur = 8;
+      c.beginPath(); c.moveTo(px, py); c.lineTo(wx, wy); c.stroke();
+      c.restore();
+    }
   }
 
   // Universe HUD (always on top, not affected by camera)
@@ -604,10 +685,11 @@ function _uniRenderHUD(c, gw, gh) {
     c.fillText(summary, fuelX, fuelY + fuelH + 34);
   }
 
-  // Mining hint
-  if (player.miningPower > 0) {
+  // Mining/Salvage hint
+  if (player.miningPower > 0 || uniWrecks.length > 0) {
     c.fillStyle = "#ffaa00";
-    c.fillText("[H] Mine nearby asteroids", fuelX + fuelW + 16, fuelY + 10);
+    const hint = uniWrecks.length > 0 ? "[H] Salvage wrecks" : "[H] Mine asteroids";
+    c.fillText(hint, fuelX + fuelW + 16, fuelY + 10);
   }
 
   // Mission tracker (right side) — shows progress
@@ -717,6 +799,56 @@ function _uniUpdateMining() {
   } else {
     _uniMiningTarget = null;
     _uniMiningProgress = Math.max(0, _uniMiningProgress - 0.5);
+  }
+}
+
+// ── WRECK SALVAGING ───────────────────────────────────────────
+// Any ship can salvage wrecks — hold H near a wreck (no miningPower needed)
+
+function _uniUpdateSalvaging() {
+  if (typeof player === "undefined" || !player) return;
+  const k = typeof keys !== "undefined" ? keys : {};
+  const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
+  const salvageRange = 150;
+
+  // Find nearest wreck
+  let nearest = null, nearestDist = salvageRange;
+  uniWrecks.forEach(wrk => {
+    if (wrk.salvaged) return;
+    const d = Math.hypot(wrk.x - pcx, wrk.y - pcy);
+    if (d < nearestDist) { nearestDist = d; nearest = wrk; }
+  });
+
+  if (nearest && k["KeyH"] && _uniCargoCount() < player.cargoCapacity) {
+    nearest._salvageProgress = (nearest._salvageProgress || 0) + 1.2;
+
+    if (nearest._salvageProgress >= nearest.health) {
+      nearest.salvaged = true;
+      nearest._salvageProgress = 0;
+
+      // Add loot to cargo
+      const loot = nearest.loot || "scrap";
+      const qty = nearest.lootQty || 1;
+      const existing = player.cargo.find(c => c.commodity === loot);
+      if (existing) existing.quantity += qty;
+      else player.cargo.push({ commodity: loot, quantity: qty });
+
+      // Record delta
+      const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+      if (world && typeof addDelta === "function") {
+        const deltaKey = _uniCurrentSystem.id + ":" + (_uniCurrentArea?.id || "") + ":" + _uniCurrentQuadrant.id + ":" + nearest.id;
+        addDelta(world, deltaKey, "salvaged", true);
+      }
+      uniWrecks = uniWrecks.filter(w => !w.salvaged);
+
+      // Track salvage missions
+      if (typeof _uniMissionProgress === "function") _uniMissionProgress("salvage", 1);
+    }
+  } else {
+    // Decay progress on all wrecks not being salvaged
+    uniWrecks.forEach(wrk => {
+      if (wrk._salvageProgress > 0) wrk._salvageProgress = Math.max(0, wrk._salvageProgress - 0.3);
+    });
   }
 }
 
@@ -2578,5 +2710,5 @@ function _uniUpdateButtons() {
   const dockBtn = document.getElementById("uniDockBtn");
   const mineBtn = document.getElementById("uniMineBtn");
   if (dockBtn) dockBtn.style.display = (uniStation && uniStation._playerNear && !_uniInCombat) ? "block" : "none";
-  if (mineBtn) mineBtn.style.display = (typeof player !== "undefined" && player && player.miningPower > 0 && uniAsteroids.length > 0) ? "block" : "none";
+  if (mineBtn) mineBtn.style.display = (typeof player !== "undefined" && player && ((player.miningPower > 0 && uniAsteroids.length > 0) || uniWrecks.length > 0)) ? "block" : "none";
 }
