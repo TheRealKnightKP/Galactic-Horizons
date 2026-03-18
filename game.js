@@ -1248,7 +1248,20 @@ function fullUpgradeVengance() {
 }
 
 function createEnemyObject(name, spawnX, spawnY) {
-  const d = ENEMIES[name]; if (!d) return null;
+  // Look up in ENEMIES first, then fall back to UNIVERSE_SHIP_STATS for universe-exclusive ships
+  let d = ENEMIES[name];
+  if (!d && typeof UNIVERSE_SHIP_STATS !== "undefined" && UNIVERSE_SHIP_STATS[name]?.hp) {
+    const u = UNIVERSE_SHIP_STATS[name];
+    d = {
+      hp: u.hp, shields: u.shields || 0, armor: u.armor || 100,
+      speed: u.speed || 1.0, fireRate: 60,
+      weaponType: u.weaponType || "laser_repeater", weaponSize: u.weaponSize || 2,
+      armorType: u.armorType || "medium", size: u.size || 3,
+      image: u.image || "HammerHead.png", color: "#aaaaaa", score: 0,
+      turrets: [],
+    };
+  }
+  if (!d) return null;
   const sizeNum = d.size || 2;
   const ew = Math.round((32 + sizeNum*18)*SIZE_SCALE);
   const eh = Math.round((20 + sizeNum*10)*SIZE_SCALE);
