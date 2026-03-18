@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.22";
+const CACHE = "galactic-horizons-v1.8.23";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -188,4 +188,5 @@ Versions:
 -V1.8.20 - Fixed some other other stuff
 -V.8.21 - Fixed more stuff
 -V1.8.22 - Is it finally fixed?
+-V1.8.23 - Fixing world stuff
 */
