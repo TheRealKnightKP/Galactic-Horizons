@@ -3,6 +3,11 @@
 
 const SAVE_VERSION    = "1.6.0";
 const LEADERBOARD_URL = "https://galactic-horizons.francoandretbr.workers.dev";
+
+// Helper: fetch API without credentials to avoid CORS issues with wildcard origin
+function _apiFetch(path, opts = {}) {
+  return fetch(`${LEADERBOARD_URL}${path}`, { credentials: "omit", ...opts });
+}
 const ADMIN_USER      = "TheRealKnightAdmin";
 const ADMIN_PASS      = "650392026";
 const ADMIN_SAVE = {
@@ -116,7 +121,7 @@ function saveGame() {
 async function _pushSaveToCloud(data) {
   if (!currentAccount?.passwordHash) return;
   try {
-    await fetch(`${LEADERBOARD_URL}/save`, {
+    await _apiFetch("/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -130,7 +135,7 @@ async function _pushSaveToCloud(data) {
 
 async function _pullSaveFromCloud(username, passwordHash) {
   try {
-    const res = await fetch(`${LEADERBOARD_URL}/save?username=${encodeURIComponent(username)}&passwordHash=${encodeURIComponent(passwordHash)}`);
+    const res = await _apiFetch(`/save?username=${encodeURIComponent(username)}&passwordHash=${encodeURIComponent(passwordHash)}`);
     if (!res.ok) return null;
     const data = await res.json();
     return data.saveData || null;
@@ -170,7 +175,7 @@ async function loginAccount(username, password) {
 
   const ph = hashPassword(password);
   try {
-    const res = await fetch(`${LEADERBOARD_URL}/login`, {
+    const res = await _apiFetch("/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, passwordHash: ph }),
@@ -226,7 +231,7 @@ async function registerAccount(username, password) {
 
   const ph = hashPassword(password);
   try {
-    const res = await fetch(`${LEADERBOARD_URL}/register`, {
+    const res = await _apiFetch("/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, passwordHash: ph }),
@@ -260,7 +265,7 @@ async function deleteAccount(username, password) {
   if (username === ADMIN_USER) return { ok: false, error: "Cannot delete admin account" };
   const ph = hashPassword(password);
   try {
-    const res = await fetch(`${LEADERBOARD_URL}/delete`, {
+    const res = await _apiFetch("/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, passwordHash: ph }),
@@ -315,7 +320,7 @@ async function submitLeaderboard() {
   const entries = {};
   LB_CATEGORIES.forEach(c => { entries[c.id] = c.stat(); });
   try {
-    await fetch(`${LEADERBOARD_URL}/submit`, {
+    await _apiFetch("/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -329,7 +334,7 @@ async function submitLeaderboard() {
 
 async function fetchLeaderboard(category) {
   try {
-    const res = await fetch(`${LEADERBOARD_URL}/top?cat=${category}&n=10`);
+    const res = await _apiFetch(`/top?cat=${category}&n=10`);
     if (!res.ok) return null;
     return await res.json();
   } catch { return null; }
@@ -432,8 +437,7 @@ function showLoginFromMenu() {
 function _exitSave() {
   if (!currentAccount || currentAccount.username === "guest" || currentAccount.isAdmin) return;
   saveGame(); // saves locally immediately (sync-safe)
-  // Best-effort cloud push — navigator.sendBeacon is fire-and-forget,
-  // survives page unload better than fetch()
+  // Best-effort cloud push — use keepalive fetch instead of sendBeacon to avoid CORS credential issues
   if (navigator.onLine && currentAccount.passwordHash) {
     try {
       const data = buildSaveData();
@@ -442,7 +446,13 @@ function _exitSave() {
         passwordHash: currentAccount.passwordHash,
         saveData: data,
       });
-      navigator.sendBeacon(`${LEADERBOARD_URL}/save`, new Blob([payload], { type: "application/json" }));
+      _apiFetch("/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive: true,
+        credentials: "omit",
+      }).catch(() => {});
     } catch { /* silent */ }
   }
 }
