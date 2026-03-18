@@ -404,9 +404,7 @@ function uniUpdate() {
       if (player.cargo && _uniCargoCount() < player.cargoCapacity) {
         const lootTable = ["scrap", "iron", "copper", "electronics"];
         const loot = lootTable[Math.floor(Math.random() * lootTable.length)];
-        const existing = player.cargo.find(c => c.commodity === loot);
-        if (existing) existing.quantity += 1 + Math.floor(Math.random() * 3);
-        else player.cargo.push({ commodity: loot, quantity: 1 + Math.floor(Math.random() * 3) });
+        _uniAddCargo(loot, 1 + Math.floor(Math.random() * 3));
       }
     });
 
@@ -753,6 +751,21 @@ function _uniCargoCount() {
   return player.cargo.reduce((sum, c) => sum + c.quantity, 0);
 }
 
+// Safe cargo add — respects capacity, returns amount actually added
+function _uniAddCargo(commodity, qty) {
+  if (typeof player === "undefined" || !player) return 0;
+  if (!player.cargo) player.cargo = [];
+  const cap = player.cargoCapacity || 2;
+  const cur = _uniCargoCount();
+  const space = Math.max(0, cap - cur);
+  const toAdd = Math.min(qty, space);
+  if (toAdd <= 0) return 0;
+  const existing = player.cargo.find(c => c.commodity === commodity);
+  if (existing) existing.quantity += toAdd;
+  else player.cargo.push({ commodity, quantity: toAdd });
+  return toAdd;
+}
+
 // ── MINING ────────────────────────────────────────────────────
 
 function _uniUpdateMining() {
@@ -781,9 +794,7 @@ function _uniUpdateMining() {
       _uniMiningTarget = null;
 
       // Add ore to cargo
-      const existing = player.cargo.find(c => c.commodity === nearest.oreType);
-      if (existing) existing.quantity += 1;
-      else player.cargo.push({ commodity: nearest.oreType, quantity: 1 });
+      _uniAddCargo(nearest.oreType, 1);
 
       // Record delta
       const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
@@ -829,9 +840,7 @@ function _uniUpdateSalvaging() {
       // Add loot to cargo
       const loot = nearest.loot || "scrap";
       const qty = nearest.lootQty || 1;
-      const existing = player.cargo.find(c => c.commodity === loot);
-      if (existing) existing.quantity += qty;
-      else player.cargo.push({ commodity: loot, quantity: qty });
+      _uniAddCargo(loot, qty);
 
       // Record delta
       const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
@@ -1320,9 +1329,7 @@ function _uniTradeBuy(commodityKey, price, stationId) {
   world.player.credits -= price;
   if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
   if (typeof modifyStationStock === "function") modifyStationStock(world, stationId, commodityKey, -1);
-  const existing = player.cargo.find(ci => ci.commodity === commodityKey);
-  if (existing) existing.quantity += 1;
-  else player.cargo.push({ commodity: commodityKey, quantity: 1 });
+  _uniAddCargo(commodityKey, 1);
 }
 
 function _uniTradeSell(commodityKey, price, stationId) {
@@ -1534,9 +1541,6 @@ function _uniGenerateMissions(stationId, systemDanger) {
   for (let i = 0; i < count; i++) {
     const type = types[Math.floor(rng() * types.length)];
     const danger = systemDanger || 1;
-    const baseReward = type === "bounty" ? 800 : type === "delivery" ? 600 : type === "mining" ? 500 : type === "explore" ? 1000 : 700;
-    const reward = Math.round(baseReward * (0.8 + rng() * 0.8) * (1 + danger * 0.5));
-    const repReward = Math.round(10 + rng() * 25);
     const titles = {
       bounty: ["Clear hostiles", "Eliminate patrol", "Destroy raiders", "Hunt pirates"],
       delivery: ["Deliver supplies", "Transport cargo", "Rush delivery", "Freight haul"],
@@ -1549,24 +1553,26 @@ function _uniGenerateMissions(stationId, systemDanger) {
     // Concrete goals with progress tracking
     let goal = 0, goalDesc = "";
     if (type === "bounty") {
-      goal = 2 + Math.floor(rng() * 4); // 2-5 kills
+      goal = 2 + Math.floor(rng() * 4);
       goalDesc = "Destroy " + goal + " enemies";
     } else if (type === "delivery") {
-      const commodities = ["iron", "copper", "food", "water", "electronics"];
-      const commodity = commodities[Math.floor(rng() * commodities.length)];
-      goal = 1; // deliver to any OTHER station
-      goalDesc = "Deliver " + commodity + " to another station";
-      missions._deliveryCommodity = commodity;
+      goal = 1;
+      goalDesc = "Deliver cargo to another station";
     } else if (type === "mining") {
-      goal = 2 + Math.floor(rng() * 4); // 2-5 ore
+      goal = 2 + Math.floor(rng() * 4);
       goalDesc = "Mine " + goal + " ore from asteroids";
     } else if (type === "explore") {
-      goal = 1; // visit 1 new sector
-      goalDesc = "Visit a new sector";
+      goal = 1;
+      goalDesc = "Scan an anomaly sector";
     } else if (type === "salvage") {
-      goal = 2 + Math.floor(rng() * 3); // 2-4 salvage
+      goal = 2 + Math.floor(rng() * 3);
       goalDesc = "Collect " + goal + " salvage from debris";
     }
+
+    // Reward scales with goal count — per-unit reward * goal * danger
+    const perUnit = type === "bounty" ? 350 : type === "delivery" ? 800 : type === "mining" ? 250 : type === "explore" ? 1200 : 300;
+    const reward = Math.round(perUnit * goal * (0.9 + rng() * 0.3) * (1 + danger * 0.3));
+    const repReward = Math.round((5 + rng() * 10) * goal);
 
     missions.push({
       id: "m_" + stationId + "_" + i,
