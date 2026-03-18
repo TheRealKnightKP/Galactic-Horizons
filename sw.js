@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.21";
+const CACHE = "galactic-horizons-v1.8.22";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -187,4 +187,5 @@ Versions:
 -V1.8.19 - Fixed saves and other stuff that broke the game
 -V1.8.20 - Fixed some other other stuff
 -V.8.21 - Fixed more stuff
+-V1.8.22 - Is it finally fixed?
 */
