@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.26";
+const CACHE = "galactic-horizons-v1.8.27";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -48,6 +48,10 @@ const ASSETS = [
   "./assets/Leviathan.png",
   "./assets/Medic.png",
   "./assets/Tempest.png",
+  "./assets/EldritchStation",
+  "./assets/HarvesterStation",
+  "./assets/CivilianStation",
+  "./assets/WardenStation",
 ];
 
 self.addEventListener("install", e => {
@@ -192,4 +196,5 @@ Versions:
 -V1.8.24 - More fixes
 -V1.8.25 - Combat mission fixes
 -V1.8.26 - Combat mission fixes 2 electric bogaloo
+-V1.8.27 - Fixed some stuff and added station assets
 */
