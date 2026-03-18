@@ -64,7 +64,6 @@ function resizeCanvas() {
     container.style.left     = "0px";
     container.style.top      = "0px";
     container.style.position = "fixed";
-    container.style.zIndex   = "1";
   }
 
   _starCanvas = null;
