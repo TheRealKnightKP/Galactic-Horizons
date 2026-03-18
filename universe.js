@@ -22,7 +22,8 @@ let _uniCurrentQuadrant = null;
 let _uniQuadrantContents = null;
 
 // Station
-let uniStation = null;
+let uniStation = null; uniWormhole = null;
+let uniWormhole = null; // wormhole portal entity in wormhole_tunnel quadrants
 let _uniDockedStation = null;
 let _uniStationTab = "trading";
 let _uniTradeSelected = 0;
@@ -30,7 +31,7 @@ let _uniTradeSelected = 0;
 // Mining
 let _uniMiningTarget = null;
 let _uniMiningProgress = 0;
-const UNI_MINE_RATE = 1.5;
+const UNI_MINE_RATE = 4.0;
 
 // Combat tracking (universe layer watches, game.js does actual combat)
 let _uniInCombat = false;
@@ -116,7 +117,7 @@ function enterUniverse(world) {
   if (typeof deathEffects !== "undefined") deathEffects = [];
   uniAsteroids = []; uniWrecks = [];
   uniPOIs = [];
-  uniStation = null;
+  uniStation = null; uniWormhole = null;
 
   // If player was in a quadrant, load it
   if (p.currentQuadrantId && p.currentAreaId) {
@@ -185,7 +186,7 @@ function exitUniverse() {
   // Reset entities
   uniAsteroids = []; uniWrecks = [];
   uniPOIs = [];
-  uniStation = null;
+  uniStation = null; uniWormhole = null;
   _uniInCombat = false;
 
   if (typeof autoSaveUniverse === "function") autoSaveUniverse();
@@ -218,7 +219,7 @@ function uniLoadQuadrant(quad) {
   if (typeof deathEffects !== "undefined") deathEffects = [];
   uniAsteroids = []; uniWrecks = [];
   uniPOIs = [];
-  uniStation = null;
+  uniStation = null; uniWormhole = null;
 
   // Generate contents from seed
   const dangerLevel = _uniCurrentSystem?.dangerLevel || 1;
@@ -282,6 +283,18 @@ function uniLoadQuadrant(quad) {
       data: quad.station,
       dockRange: 150,
       _playerNear: false,
+    };
+  }
+
+  // Spawn wormhole portal in wormhole_tunnel quadrants
+  if (quad.type === "wormhole_tunnel" && quad.toSystem) {
+    uniWormhole = {
+      x: qSize.w * 0.65, y: qSize.h * 0.45,
+      w: 70, h: 70,
+      toSystem: quad.toSystem,
+      enterRange: 130,
+      _playerNear: false,
+      _animT: 0,
     };
   }
 
@@ -432,6 +445,7 @@ function uniUpdate() {
 
   // Station proximity
   _uniCheckStation();
+  _uniCheckWormhole();
 
   // POI discovery
   _uniCheckPOIs();
@@ -578,6 +592,63 @@ function uniRenderOverlay() {
       c.fillStyle = "#0f0";
       c.font = "bold 12px monospace";
       c.fillText("DOCK", sx + uniStation.w / 2, sy + uniStation.h + 18);
+    }
+    c.textAlign = "left";
+  }
+
+  // Wormhole portal
+  if (uniWormhole) {
+    uniWormhole._animT = (uniWormhole._animT || 0) + 0.03;
+    const wt = uniWormhole._animT;
+    const wx = uniWormhole.x + uniWormhole.w / 2 - cx;
+    const wy = uniWormhole.y + uniWormhole.h / 2 - cy;
+    const wr = uniWormhole.w / 2;
+    // Outer glow
+    c.save();
+    const wGlow = c.createRadialGradient(wx, wy, 0, wx, wy, wr * 2.5);
+    wGlow.addColorStop(0, "rgba(120,50,200,0.15)");
+    wGlow.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = wGlow;
+    c.beginPath(); c.arc(wx, wy, wr * 2.5, 0, Math.PI * 2); c.fill();
+    // Main vortex
+    const pulse = 0.6 + Math.sin(wt * 2) * 0.2;
+    c.globalAlpha = pulse;
+    const wCore = c.createRadialGradient(wx, wy, 0, wx, wy, wr * 1.3);
+    wCore.addColorStop(0, "#cc88ff");
+    wCore.addColorStop(0.4, "#7722cc");
+    wCore.addColorStop(0.8, "#330066");
+    wCore.addColorStop(1, "rgba(20,0,40,0)");
+    c.fillStyle = wCore;
+    c.beginPath(); c.arc(wx, wy, wr * 1.3, 0, Math.PI * 2); c.fill();
+    // Spiral arms
+    c.globalAlpha = 0.6;
+    c.strokeStyle = "#aa66ee"; c.lineWidth = 2.5;
+    for (let s = 0; s < 4; s++) {
+      const sa = wt * 1.5 + s * Math.PI / 2;
+      c.beginPath(); c.arc(wx, wy, wr * 0.7, sa, sa + 1.3); c.stroke();
+    }
+    // Inner bright core
+    c.globalAlpha = 0.8;
+    c.fillStyle = "#eeccff";
+    c.beginPath(); c.arc(wx, wy, wr * 0.2, 0, Math.PI * 2); c.fill();
+    // Orbiting particles
+    c.globalAlpha = 0.7;
+    c.fillStyle = "#cc88ff";
+    for (let p = 0; p < 8; p++) {
+      const pa = wt * 2 + p * Math.PI / 4;
+      const pd = wr * (0.5 + Math.sin(wt + p) * 0.3);
+      c.beginPath(); c.arc(wx + Math.cos(pa) * pd, wy + Math.sin(pa) * pd, 2, 0, Math.PI * 2); c.fill();
+    }
+    c.restore();
+    // Label
+    c.fillStyle = "#aa88ff"; c.font = "bold 10px monospace"; c.textAlign = "center";
+    c.fillText("WORMHOLE", wx, wy - wr - 10);
+    const destSys = window._activeUniverse?.systems[uniWormhole.toSystem];
+    c.fillStyle = "#8866cc"; c.font = "9px monospace";
+    c.fillText("-> " + (destSys?.name || uniWormhole.toSystem), wx, wy - wr - 0);
+    if (uniWormhole._playerNear) {
+      c.fillStyle = "#cc88ff"; c.font = "bold 12px monospace";
+      c.fillText("ENTER", wx, wy + wr + 20);
     }
     c.textAlign = "left";
   }
@@ -887,6 +958,24 @@ function _uniCheckStation() {
   }
 }
 
+// ── WORMHOLE CHECK ────────────────────────────────────────────
+
+function _uniCheckWormhole() {
+  if (!uniWormhole || typeof player === "undefined" || !player || _uniInCombat) return;
+  const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
+  const wcx = uniWormhole.x + uniWormhole.w / 2, wcy = uniWormhole.y + uniWormhole.h / 2;
+  const dist = Math.hypot(pcx - wcx, pcy - wcy);
+
+  uniWormhole._playerNear = dist < uniWormhole.enterRange;
+
+  const k = typeof keys !== "undefined" ? keys : {};
+  if (uniWormhole._playerNear && k["KeyE"]) {
+    k["KeyE"] = false;
+    // Travel to destination system's wormhole area
+    uniStartWormhole(uniWormhole.toSystem);
+  }
+}
+
 // ── POI CHECK ─────────────────────────────────────────────────
 
 function _uniCheckPOIs() {
@@ -1004,10 +1093,27 @@ function uniStartWormhole(toSystemId) {
 
   const uni = window._activeUniverse;
   if (!uni || !uni.systems[toSystemId]) return false;
-  _uniCurrentSystem = uni.systems[toSystemId];
+
+  // Find destination system's wormhole area and its tunnel quadrant
+  const destSys = uni.systems[toSystemId];
+  let destArea = null, destQuad = null;
+  for (const area of Object.values(destSys.areas)) {
+    if (area.type === "wormhole") {
+      destArea = area;
+      destQuad = area.quadrants.find(q => q.type === "wormhole_tunnel");
+      break;
+    }
+  }
+
+  _uniCurrentSystem = destSys;
   _uniMapSelectedSystem = toSystemId;
-  _uniQuantumTarget = { systemId: toSystemId, isWormhole: true };
-  _uniQuantumTimer = UNI_QT_TRAVEL; // wormholes skip launch, go straight to travel
+  _uniQuantumTarget = {
+    systemId: toSystemId,
+    areaId: destArea?.id || null,
+    quadrant: destQuad || null,
+    isWormhole: true,
+  };
+  _uniQuantumTimer = UNI_QT_TRAVEL + 20; // slightly longer for wormholes
   _uniQuantumPhase = "travel";
   uniState = "quantum";
   if (typeof state !== "undefined") state = "menu";
@@ -1119,32 +1225,54 @@ function _uniRenderQuantumOverlay(c, gw, gh) {
 }
 
 function _uniRenderQuantum(c, gw, gh) {
-  // Only the travel phase renders here (launch/arrive are in-game overlays)
-  const pt = 1 - (_uniQuantumTimer / UNI_QT_TRAVEL);
-  c.fillStyle = "#000";
+  const totalDur = _uniQuantumTarget?.isWormhole ? (UNI_QT_TRAVEL + 20) : UNI_QT_TRAVEL;
+  const pt = Math.min(1, 1 - (_uniQuantumTimer / totalDur));
+  const isWH = _uniQuantumTarget?.isWormhole;
+  const starColor = isWH ? "rgba(160,100,240," : "rgba(150,180,255,";
+  const flashColor = isWH ? "rgba(140,60,220," : "rgba(100,180,255,";
+  const textColor = isWH ? "#aa66ee" : "#0af";
+
+  c.fillStyle = isWH ? "#0a001a" : "#000";
   c.fillRect(0, 0, gw, gh);
 
-  // Streaking stars
+  // Streaking stars/particles
   for (let i = 0; i < 80; i++) {
     const sx = ((i * 137 + _uniFrameCount * 18) % gw);
     const sy = ((i * 97 + 50) % gh);
     const len = 40 + pt * 120;
-    c.strokeStyle = "rgba(150,180,255," + (0.4 + pt * 0.4) + ")";
+    c.strokeStyle = starColor + (0.4 + pt * 0.4) + ")";
     c.lineWidth = 1 + pt;
     c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx - len, sy); c.stroke();
   }
+
+  // Wormhole spiral tunnel effect
+  if (isWH) {
+    c.save();
+    for (let r = 0; r < 5; r++) {
+      const ringR = 60 + r * 50 - pt * 30;
+      c.globalAlpha = (1 - pt) * 0.2;
+      c.strokeStyle = "#8844cc"; c.lineWidth = 2;
+      c.beginPath();
+      c.ellipse(gw / 2, gh / 2, ringR, ringR * 0.3, _uniFrameCount * 0.03 + r, 0, Math.PI * 2);
+      c.stroke();
+    }
+    c.restore();
+  }
+
   // Central flash
   const flashR = 30 + pt * gw * 0.2;
   const grad = c.createRadialGradient(gw / 2, gh / 2, 0, gw / 2, gh / 2, Math.max(1, flashR));
-  grad.addColorStop(0, "rgba(100,180,255," + (0.4 * (1 - pt)) + ")");
+  grad.addColorStop(0, flashColor + (0.4 * (1 - pt)) + ")");
   grad.addColorStop(1, "rgba(0,0,0,0)");
   c.fillStyle = grad;
   c.beginPath(); c.arc(gw / 2, gh / 2, Math.max(1, flashR), 0, Math.PI * 2); c.fill();
-  // Destination text
+
+  // Text
   c.textAlign = "center";
-  c.fillStyle = "#0af"; c.font = "bold 16px monospace";
+  c.fillStyle = textColor; c.font = "bold 16px monospace";
+  const label = isWH ? "WORMHOLE TRANSIT" : "QUANTUM TRAVEL";
   const dest = _uniQuantumTarget?.quadrant?.name || _uniQuantumTarget?.systemId || "Unknown";
-  c.fillText("QUANTUM TRAVEL", gw / 2, gh / 2 - 15);
+  c.fillText(label, gw / 2, gh / 2 - 15);
   c.fillStyle = "#fff"; c.font = "13px monospace";
   c.fillText(dest, gw / 2, gh / 2 + 8);
   c.textAlign = "left";
@@ -2535,10 +2663,7 @@ function _uniHandleClick(mx, my) {
         const sys = window._activeUniverse?.systems[_uniMapSelectedSystem];
         const area = sys?.areas[_uniMapSelectedArea];
         const quad = area?.quadrants.find(q => q.id === _uniMapHover);
-        if (quad) {
-          if (quad.type === "wormhole_tunnel" && quad.toSystem) uniStartWormhole(quad.toSystem);
-          else uniStartQuantum(_uniMapSelectedSystem, _uniMapSelectedArea, quad);
-        }
+        if (quad) { uniStartQuantum(_uniMapSelectedSystem, _uniMapSelectedArea, quad); }
       }
     }
     return;
@@ -2621,8 +2746,6 @@ function _uniMapBack() {
     _stopUniMapLoop();
   }
 }
-
-
 // ── UNIVERSE UI ───────────────────────────────────────────────
 // Buttons for both mobile and desktop. Hides Arena-specific buttons.
 
@@ -2684,6 +2807,20 @@ function _buildUniUI() {
   dockBtn.addEventListener("touchstart", e => { e.preventDefault(); dockAction(); }, { passive: false });
   ui.appendChild(dockBtn);
 
+  // WORMHOLE button
+  const whBtn = document.createElement("div");
+  whBtn.id = "uniWormholeBtn";
+  whBtn.textContent = "ENTER WORMHOLE";
+  whBtn.style.cssText = "position:absolute;top:76px;right:10px;padding:8px 14px;display:none;" + btnCss + "background:rgba(120,50,200,0.2);border:2px solid rgba(160,80,240,0.7);color:#aa66ee;font-size:11px";
+  const whAction = () => {
+    if (uniWormhole && uniWormhole._playerNear && !_uniInCombat) {
+      uniStartWormhole(uniWormhole.toSystem);
+    }
+  };
+  whBtn.addEventListener("click", whAction);
+  whBtn.addEventListener("touchstart", e => { e.preventDefault(); whAction(); }, { passive: false });
+  ui.appendChild(whBtn);
+
   // MINE button
   const mineBtn = document.createElement("div");
   mineBtn.id = "uniMineBtn";
@@ -2720,6 +2857,8 @@ function _uniUpdateButtons() {
   if (!_uniUI) return;
   const dockBtn = document.getElementById("uniDockBtn");
   const mineBtn = document.getElementById("uniMineBtn");
+  const whBtn = document.getElementById("uniWormholeBtn");
   if (dockBtn) dockBtn.style.display = (uniStation && uniStation._playerNear && !_uniInCombat) ? "block" : "none";
+  if (whBtn) whBtn.style.display = (uniWormhole && uniWormhole._playerNear && !_uniInCombat) ? "block" : "none";
   if (mineBtn) mineBtn.style.display = (typeof player !== "undefined" && player && ((player.miningPower > 0 && uniAsteroids.length > 0) || uniWrecks.length > 0)) ? "block" : "none";
 }
