@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.25";
+const CACHE = "galactic-horizons-v1.8.26";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -191,4 +191,5 @@ Versions:
 -V1.8.23 - Fixing world stuff
 -V1.8.24 - More fixes
 -V1.8.25 - Combat mission fixes
+-V1.8.26 - Combat mission fixes 2 electric bogaloo
 */
