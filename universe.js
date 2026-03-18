@@ -37,7 +37,6 @@ const UNI_MINE_RATE = 4.0;
 let _uniInCombat = false;
 let _uniDisengageTimer = 0;
 const UNI_DISENGAGE_TIME = 600; // 10s at 60fps
-let _uniPatrolAliveLastFrame = new Set(); // tracks which patrol enemies were alive last frame
 
 // Quantum
 let _uniQuantumTarget = null;
@@ -120,11 +119,17 @@ function enterUniverse(world) {
   uniPOIs = [];
   uniStation = null; uniWormhole = null;
 
-  // Hook game.js kill event — DISABLED, using direct tracking in uniUpdate instead
-  // (hook approach was unreliable — direct frame-by-frame tracking is cleaner)
+  // Hook game.js kill event — fires synchronously when enemy dies, before array cleanup
+  // Simple counter approach: increment a pending kill count, drain it in uniUpdate
+  window._uniPendingBountyKills = 0;
+  window._uniPendingSalvageKills = 0;
   window.recordKill = (e) => {
-    // In arena mode, this gets overridden by challenges.js — leave it alone
     if (window.gameMode !== "universe") return;
+    if (e && e._uniPatrol && !e.isPassive) {
+      window._uniPendingBountyKills++;
+    } else if (e && e._uniPatrol && e.isPassive) {
+      window._uniPendingSalvageKills++;
+    }
   };
 
   // If player was in a quadrant, load it
@@ -228,7 +233,8 @@ function uniLoadQuadrant(quad) {
   uniAsteroids = []; uniWrecks = [];
   uniPOIs = [];
   uniStation = null; uniWormhole = null;
-  _uniPatrolAliveLastFrame = new Set(); // reset kill tracking for new quadrant
+  window._uniPendingBountyKills = 0; // reset kill counters for new quadrant
+  window._uniPendingSalvageKills = 0;
 
   // Generate contents from seed
   const dangerLevel = _uniCurrentSystem?.dangerLevel || 1;
@@ -382,32 +388,18 @@ function uniUpdate() {
   // Auto-save every 30 seconds
   if (_uniFrameCount % 1800 === 0 && typeof autoSaveUniverse === "function") autoSaveUniverse();
 
-  // ── Direct kill tracking — no hook dependency ──────────────
-  // Compare patrol enemies alive this frame vs last frame.
-  // Anything newly dead = bounty kill or salvage opportunity.
-  if (typeof enemies !== "undefined") {
+  // ── Drain pending kill counters (set by window.recordKill hook) ──
+  if (window._uniPendingBountyKills > 0) {
     const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
-    const aliveNow = new Set();
-    enemies.forEach(e => {
-      if (!e._uniPatrol) return;
-      const id = e._uniId || (e._uniId = Math.random().toString(36).slice(2));
-      if (!e.dead) {
-        aliveNow.add(id);
-      } else if (_uniPatrolAliveLastFrame.has(id)) {
-        // Was alive last frame, now dead = just killed
-        if (!e.isPassive) {
-          // Bounty kill — give credits and advance mission
-          if (world) {
-            world.player.credits = (world.player.credits || 0) + (e.score || 80);
-          }
-          _uniMissionProgress("bounty", 1);
-        } else {
-          // Passive ship killed — counts as salvage opportunity
-          _uniMissionProgress("salvage", 1);
-        }
-      }
-    });
-    _uniPatrolAliveLastFrame = aliveNow;
+    if (world) {
+      world.player.credits = (world.player.credits || 0) + window._uniPendingBountyKills * 80;
+    }
+    _uniMissionProgress("bounty", window._uniPendingBountyKills);
+    window._uniPendingBountyKills = 0;
+  }
+  if (window._uniPendingSalvageKills > 0) {
+    _uniMissionProgress("salvage", window._uniPendingSalvageKills);
+    window._uniPendingSalvageKills = 0;
   }
 
   // Track combat state based on aggroed enemies
