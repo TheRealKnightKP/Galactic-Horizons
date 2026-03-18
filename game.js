@@ -64,6 +64,7 @@ function resizeCanvas() {
     container.style.left     = "0px";
     container.style.top      = "0px";
     container.style.position = "fixed";
+    container.style.zIndex   = "1";
   }
 
   _starCanvas = null;
@@ -226,8 +227,10 @@ function buildMobileControls() {
     rightKnob.style.left = (50 + dx) + "px";
     rightKnob.style.top  = (50 + dy) + "px";
     if (dist > 6) {
-      mouse.x = (player.x + player.w / 2) + (dx / maxR) * 800;
-      mouse.y = (player.y + player.h / 2) + (dy / maxR) * 800;
+      const camOfsX = window.gameMode === "universe" ? (window.camX || 0) : 0;
+      const camOfsY = window.gameMode === "universe" ? (window.camY || 0) : 0;
+      mouse.x = (player.x + player.w / 2) - camOfsX + (dx / maxR) * 800;
+      mouse.y = (player.y + player.h / 2) - camOfsY + (dy / maxR) * 800;
     }
   }, { passive: false });
   rightBase.addEventListener("touchend", e => {
