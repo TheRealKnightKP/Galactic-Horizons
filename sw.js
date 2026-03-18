@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.18";
+const CACHE = "galactic-horizons-v1.8.19";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -71,10 +71,13 @@ self.addEventListener("activate", e => {
 });
  
 self.addEventListener("fetch", e => {
+  // Skip cross-origin requests (API calls to Cloudflare worker) — let browser handle CORS normally
+  if (!e.request.url.startsWith(self.location.origin)) return;
   e.respondWith(
     caches.match(e.request).then(r => r || fetch(e.request).catch(() => new Response("Offline", { status: 503 })))
   );
 });
+
 
 /*
 Versions:
@@ -180,4 +183,5 @@ Versions:
 -V1.8.16 - Fixing some missions, markers, and exiting
 -V1.8.17 - Wreckage updates and hud updates
 -V1.8.18 - Wreckage and exit fixes
+-V1.8.19 - Fixed saves and other stuff that broke the game
 */
