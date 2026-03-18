@@ -426,13 +426,14 @@ function generateQuadrantContents(quadrant, systemDanger) {
     const count = 8 + Math.floor(rng() * 12); // 8-19 asteroids
     for (let i = 0; i < count; i++) {
       const ore = orePool[Math.floor(rng() * orePool.length)];
+      const astHp = 50 + Math.floor(rng() * 100);
       contents.asteroids.push({
         id: "ast_" + i,
-        x: 80 + rng() * 1120,  // within 1280 width, with margin
-        y: 60 + rng() * 600,   // within 720 height, with margin
+        x: 80 + rng() * 1120,
+        y: 60 + rng() * 600,
         oreType: ore,
-        health: 50 + Math.floor(rng() * 100),
-        maxHealth: 50 + Math.floor(rng() * 100),
+        health: astHp,
+        maxHealth: astHp,
         depleted: false,
       });
     }
@@ -480,14 +481,18 @@ function generateQuadrantContents(quadrant, systemDanger) {
       const p = PATROL_TEMPLATES[k];
       return p.dangerMin <= (systemDanger || 1);
     });
-    if (validPatrols.length > 0 && rng() < 0.7) {
-      const patrolKey = validPatrols[Math.floor(rng() * validPatrols.length)];
-      contents.patrolSpawns.push({
-        templateKey: patrolKey,
-        x: 600 + rng() * 500,
-        y: 100 + rng() * 520,
-        aggroRange: 250 + Math.floor(rng() * 150),
-      });
+    if (validPatrols.length > 0) {
+      // Spawn 1-3 patrol groups in patrol sectors
+      const patrolCount = 1 + Math.floor(rng() * 2);
+      for (let p = 0; p < patrolCount; p++) {
+        const patrolKey = validPatrols[Math.floor(rng() * validPatrols.length)];
+        contents.patrolSpawns.push({
+          templateKey: patrolKey,
+          x: 200 + rng() * 800,
+          y: 100 + rng() * 520,
+          aggroRange: 250 + Math.floor(rng() * 150),
+        });
+      }
     }
   }
 
