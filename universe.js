@@ -37,6 +37,7 @@ const UNI_MINE_RATE = 4.0;
 let _uniInCombat = false;
 let _uniDisengageTimer = 0;
 const UNI_DISENGAGE_TIME = 600; // 10s at 60fps
+let _uniPatrolAliveLastFrame = new Set(); // tracks which patrol enemies were alive last frame
 
 // Quantum
 let _uniQuantumTarget = null;
@@ -118,6 +119,13 @@ function enterUniverse(world) {
   uniAsteroids = []; uniWrecks = [];
   uniPOIs = [];
   uniStation = null; uniWormhole = null;
+
+  // Hook game.js kill event — DISABLED, using direct tracking in uniUpdate instead
+  // (hook approach was unreliable — direct frame-by-frame tracking is cleaner)
+  window.recordKill = (e) => {
+    // In arena mode, this gets overridden by challenges.js — leave it alone
+    if (window.gameMode !== "universe") return;
+  };
 
   // If player was in a quadrant, load it
   if (p.currentQuadrantId && p.currentAreaId) {
@@ -220,6 +228,7 @@ function uniLoadQuadrant(quad) {
   uniAsteroids = []; uniWrecks = [];
   uniPOIs = [];
   uniStation = null; uniWormhole = null;
+  _uniPatrolAliveLastFrame = new Set(); // reset kill tracking for new quadrant
 
   // Generate contents from seed
   const dangerLevel = _uniCurrentSystem?.dangerLevel || 1;
@@ -271,6 +280,28 @@ function uniLoadQuadrant(quad) {
         h: 25 + Math.floor(wrk.maxHealth / 10),
       });
     });
+  }
+
+  // Spawn anomaly POI if an active explore mission targets this quadrant
+  const world2 = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+  if (world2 && world2.player.activeMissions) {
+    const exploreMission = world2.player.activeMissions.find(
+      m => m.type === "explore" && m.status === "active" && m.anomalyQuadId === quad.id && m.progress < m.goal
+    );
+    if (exploreMission) {
+      uniPOIs.push({
+        id: "anomaly_" + quad.id,
+        type: "anomaly",
+        x: qSize.w * (0.3 + Math.random() * 0.4),
+        y: qSize.h * (0.3 + Math.random() * 0.4),
+        w: 36, h: 36,
+        discovered: false,
+        missionId: exploreMission.id,
+        label: "Anomaly Signal",
+        color: "#44ffaa",
+        scanRange: 180,
+      });
+    }
   }
 
   // Spawn station
@@ -351,6 +382,34 @@ function uniUpdate() {
   // Auto-save every 30 seconds
   if (_uniFrameCount % 1800 === 0 && typeof autoSaveUniverse === "function") autoSaveUniverse();
 
+  // ── Direct kill tracking — no hook dependency ──────────────
+  // Compare patrol enemies alive this frame vs last frame.
+  // Anything newly dead = bounty kill or salvage opportunity.
+  if (typeof enemies !== "undefined") {
+    const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+    const aliveNow = new Set();
+    enemies.forEach(e => {
+      if (!e._uniPatrol) return;
+      const id = e._uniId || (e._uniId = Math.random().toString(36).slice(2));
+      if (!e.dead) {
+        aliveNow.add(id);
+      } else if (_uniPatrolAliveLastFrame.has(id)) {
+        // Was alive last frame, now dead = just killed
+        if (!e.isPassive) {
+          // Bounty kill — give credits and advance mission
+          if (world) {
+            world.player.credits = (world.player.credits || 0) + (e.score || 80);
+          }
+          _uniMissionProgress("bounty", 1);
+        } else {
+          // Passive ship killed — counts as salvage opportunity
+          _uniMissionProgress("salvage", 1);
+        }
+      }
+    });
+    _uniPatrolAliveLastFrame = aliveNow;
+  }
+
   // Track combat state based on aggroed enemies
   const aggroedCount = (typeof enemies !== "undefined" ? enemies : []).filter(e => e._uniPatrol && e.aggroed).length;
   if (aggroedCount > 0 && !_uniInCombat) {
@@ -418,23 +477,6 @@ function uniUpdate() {
         const lootTable = ["scrap", "iron", "copper", "electronics"];
         const loot = lootTable[Math.floor(Math.random() * lootTable.length)];
         _uniAddCargo(loot, 1 + Math.floor(Math.random() * 3));
-      }
-    });
-
-    // Credit rewards from kills
-    enemies.forEach(e => {
-      if (!e._uniPatrol || !e.dead || e._credited) return;
-      e._credited = true;
-      const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
-      if (world) {
-        world.player.credits += e.score || 50;
-        if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
-      }
-      // Mission tracking
-      if (e.isPassive) {
-        if (typeof _uniMissionProgress === "function") _uniMissionProgress("salvage", 1);
-      } else {
-        if (typeof _uniMissionProgress === "function") _uniMissionProgress("bounty", 1);
       }
     });
   }
@@ -1692,6 +1734,41 @@ function _uniGenerateMissions(stationId, systemDanger) {
     } else if (type === "explore") {
       goal = 1;
       goalDesc = "Scan an anomaly sector";
+    } else if (type === "explore") {
+      goal = 1;
+      // Pick a non-station quadrant in the current system as anomaly target
+      let anomalyQuadId = null;
+      let anomalyQuadName = "Unknown Sector";
+      const sys = typeof _uniCurrentSystem !== "undefined" ? _uniCurrentSystem : null;
+      if (sys) {
+        const scanableTypes = ["open", "debris", "patrol", "mission"];
+        const allQuads = [];
+        Object.values(sys.areas).forEach(area => {
+          area.quadrants.forEach(q => {
+            if (scanableTypes.includes(q.type)) allQuads.push(q);
+          });
+        });
+        if (allQuads.length > 0) {
+          const pick = allQuads[Math.floor(rng() * allQuads.length)];
+          anomalyQuadId = pick.id;
+          anomalyQuadName = pick.name || pick.id;
+        }
+      }
+      goalDesc = "Scan anomaly in: " + anomalyQuadName;
+      missions.push({
+        id: "m_" + stationId + "_" + i,
+        type,
+        title: titlePool[Math.floor(rng() * titlePool.length)],
+        reward: Math.round(1200 * (0.9 + rng() * 0.3) * (1 + danger * 0.3)),
+        repReward: Math.round((5 + rng() * 10)),
+        goal, goalDesc,
+        progress: 0,
+        originStation: stationId,
+        deliveryCommodity: null,
+        anomalyQuadId,
+        anomalyQuadName,
+      });
+      continue;
     } else if (type === "salvage") {
       goal = 2 + Math.floor(rng() * 3);
       goalDesc = "Collect " + goal + " salvage from debris";
