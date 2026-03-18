@@ -256,8 +256,16 @@ function uniLoadQuadrant(quad) {
       y: ast.y * scaleY,
       w: 30 + Math.floor(ast.maxHealth / 5),
       h: 30 + Math.floor(ast.maxHealth / 5),
-      color: ast.oreType === "gold" ? "#ffcc44" : ast.oreType === "quantanium" ? "#44ffcc" :
-             ast.oreType === "scrap" ? "#888" : ast.oreType === "electronics" ? "#88aaff" : "#aa8866",
+      color: ({
+        iron:        "#cc8866",  // rusty brown-red
+        copper:      "#cc6633",  // copper orange
+        titanium:    "#aabbcc",  // steel blue-grey
+        gold:        "#ffcc44",  // bright gold
+        quantanium:  "#44ffcc",  // teal glow
+        scrap:       "#778877",  // dull grey-green
+        electronics: "#6688ff",  // blue-purple
+        polymers:    "#88cc88",  // muted green
+      })[ast.oreType] || "#aa8866",
     });
   });
 
@@ -312,14 +320,27 @@ function uniLoadQuadrant(quad) {
 
   // Spawn station
   if (quad.station) {
+    const sysFaction = _uniCurrentSystem?.defaultFaction || quad.station.faction || "civilian";
+    const stationImages = {
+      civilian: "CivilianStation.png",
+      warden:   "WardenStation.png",
+      harvester: "HarvesterStation.png",
+      eldritch:  "EldritchStation.png",
+    };
+    const stationImg = typeof getImage === "function"
+      ? getImage(stationImages[sysFaction] || stationImages.civilian)
+      : null;
     uniStation = {
-      x: qSize.w * 0.5 - 40, y: qSize.h * 0.35,
-      w: 80, h: 80,
+      x: qSize.w * 0.5 - 80, y: qSize.h * 0.35 - 80,
+      w: 160, h: 160,
       color: "#00ff88",
       name: quad.station.name,
       data: quad.station,
-      dockRange: 150,
+      faction: sysFaction,
+      img: stationImg,
+      dockRange: 180,
       _playerNear: false,
+      _animT: 0,
     };
   }
 
@@ -396,10 +417,13 @@ function uniUpdate() {
     }
     _uniMissionProgress("bounty", window._uniPendingBountyKills);
     window._uniPendingBountyKills = 0;
+    // Save immediately so progress persists if game closes
+    if (typeof autoSaveUniverse === "function") autoSaveUniverse();
   }
   if (window._uniPendingSalvageKills > 0) {
     _uniMissionProgress("salvage", window._uniPendingSalvageKills);
     window._uniPendingSalvageKills = 0;
+    if (typeof autoSaveUniverse === "function") autoSaveUniverse();
   }
 
   // Track combat state based on aggroed enemies
@@ -541,19 +565,36 @@ function uniRenderOverlay() {
     if (ast.depleted) return;
     const sx = ast.x - cx, sy = ast.y - cy;
     if (sx < -60 || sx > gw + 60 || sy < -60 || sy > gh + 60) return;
+    const r = ast.w / 2;
+
+    // Glow for rare ores
+    const rareOres = { gold: "#ffcc44", quantanium: "#44ffcc", electronics: "#6688ff" };
+    if (rareOres[ast.oreType]) {
+      c.save();
+      c.globalAlpha = 0.18 + 0.07 * Math.sin(_uniFrameCount * 0.05 + ast.x * 0.01);
+      c.fillStyle = rareOres[ast.oreType];
+      c.beginPath(); c.arc(sx, sy, r + 8, 0, Math.PI * 2); c.fill();
+      c.restore();
+    }
+
     c.fillStyle = ast.color;
-    c.beginPath();
-    c.arc(sx, sy, ast.w / 2, 0, Math.PI * 2);
-    c.fill();
-    c.strokeStyle = "rgba(255,255,255,0.15)";
-    c.lineWidth = 1;
-    c.stroke();
+    c.beginPath(); c.arc(sx, sy, r, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = "rgba(255,255,255,0.12)";
+    c.lineWidth = 1; c.stroke();
+
+    // Ore label
+    c.fillStyle = "rgba(255,255,255,0.55)";
+    c.font = "7px monospace";
+    c.textAlign = "center";
+    c.fillText(ast.oreType, sx, sy + r + 10);
+    c.textAlign = "left";
+
     // Health bar if damaged
     if (ast.health < ast.maxHealth) {
       c.fillStyle = "#333";
-      c.fillRect(sx - ast.w / 2, sy - ast.h / 2 - 10, ast.w, 5);
+      c.fillRect(sx - r, sy - r - 10, ast.w, 5);
       c.fillStyle = "#ffcc00";
-      c.fillRect(sx - ast.w / 2, sy - ast.h / 2 - 10, ast.w * (ast.health / ast.maxHealth), 5);
+      c.fillRect(sx - r, sy - r - 10, ast.w * (ast.health / ast.maxHealth), 5);
     }
   });
   c.restore();
@@ -613,19 +654,48 @@ function uniRenderOverlay() {
   // Station
   if (uniStation) {
     const sx = uniStation.x - cx, sy = uniStation.y - cy;
-    c.fillStyle = "#0a1a0a";
-    c.fillRect(sx, sy, uniStation.w, uniStation.h);
-    c.strokeStyle = uniStation._playerNear ? "#0f0" : "#00ff88";
-    c.lineWidth = uniStation._playerNear ? 3 : 1.5;
-    c.strokeRect(sx, sy, uniStation.w, uniStation.h);
-    c.fillStyle = "#00ff88";
-    c.font = "bold 10px monospace";
-    c.textAlign = "center";
-    c.fillText(uniStation.name, sx + uniStation.w / 2, sy - 8);
+    const sw = uniStation.w, sh = uniStation.h;
+    uniStation._animT = (uniStation._animT || 0) + 0.005;
+
+    // Draw station image if loaded, otherwise fallback rectangle
+    if (uniStation.img && uniStation.img.complete && uniStation.img.naturalWidth > 0) {
+      c.save();
+      c.translate(sx + sw / 2, sy + sh / 2);
+      c.rotate(uniStation._animT * 0.15); // slow rotation
+      c.imageSmoothingEnabled = true;
+      c.imageSmoothingQuality = "high";
+      c.drawImage(uniStation.img, -sw / 2, -sh / 2, sw, sh);
+      c.restore();
+    } else {
+      c.fillStyle = "#0a1a0a";
+      c.fillRect(sx, sy, sw, sh);
+      c.strokeStyle = uniStation._playerNear ? "#0f0" : "#00ff88";
+      c.lineWidth = uniStation._playerNear ? 3 : 1.5;
+      c.strokeRect(sx, sy, sw, sh);
+    }
+
+    // Dock range indicator when near
     if (uniStation._playerNear) {
-      c.fillStyle = "#0f0";
-      c.font = "bold 12px monospace";
-      c.fillText("DOCK", sx + uniStation.w / 2, sy + uniStation.h + 18);
+      c.save();
+      c.globalAlpha = 0.15 + 0.05 * Math.sin(uniStation._animT * 4);
+      c.strokeStyle = "#00ff88";
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.arc(sx + sw / 2, sy + sh / 2, uniStation.dockRange, 0, Math.PI * 2);
+      c.stroke();
+      c.restore();
+    }
+
+    // Name label
+    const factionColors = { civilian: "#00ff88", warden: "#4488ff", harvester: "#ff8844", eldritch: "#ff2244" };
+    c.fillStyle = factionColors[uniStation.faction] || "#00ff88";
+    c.font = "bold 11px monospace";
+    c.textAlign = "center";
+    c.fillText(uniStation.name, sx + sw / 2, sy - 10);
+    if (uniStation._playerNear) {
+      c.fillStyle = "#ffffff";
+      c.font = "bold 13px monospace";
+      c.fillText("[E] DOCK", sx + sw / 2, sy + sh + 20);
     }
     c.textAlign = "left";
   }
@@ -1725,9 +1795,6 @@ function _uniGenerateMissions(stationId, systemDanger) {
       goalDesc = "Mine " + goal + " ore from asteroids";
     } else if (type === "explore") {
       goal = 1;
-      goalDesc = "Scan an anomaly sector";
-    } else if (type === "explore") {
-      goal = 1;
       // Pick a non-station quadrant in the current system as anomaly target
       let anomalyQuadId = null;
       let anomalyQuadName = "Unknown Sector";
@@ -1746,7 +1813,7 @@ function _uniGenerateMissions(stationId, systemDanger) {
           anomalyQuadName = pick.name || pick.id;
         }
       }
-      goalDesc = "Scan anomaly in: " + anomalyQuadName;
+      goalDesc = anomalyQuadId ? "Scan anomaly in: " + anomalyQuadName : "Scan an anomaly sector";
       missions.push({
         id: "m_" + stationId + "_" + i,
         type,
