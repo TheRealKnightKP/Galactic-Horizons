@@ -332,6 +332,14 @@ function uniLoadQuadrant(quad) {
       stationImg_key = (sysFaction === "civilian" && dangerLevel <= 1) ? "WardenStation.png" : "CivilianStation.png";
     }
     const stationImg = typeof getImage === "function" ? getImage(stationImg_key) : null;
+    // On mobile images may not be ready immediately — attach onload if needed
+    if (stationImg && !stationImg._uniReady) {
+      if (stationImg.complete && stationImg.naturalWidth > 0) {
+        stationImg._uniReady = true;
+      } else {
+        stationImg.onload = () => { stationImg._uniReady = true; };
+      }
+    }
     uniStation = {
       x: qSize.w * 0.5 - 80, y: qSize.h * 0.35 - 80,
       w: 160, h: 160,
@@ -701,21 +709,16 @@ function uniRenderOverlay() {
     const sw = uniStation.w, sh = uniStation.h;
     uniStation._animT = (uniStation._animT || 0) + 0.005;
 
-    // Draw station image — try/catch handles not-yet-loaded gracefully
-    let drewImage = false;
-    if (uniStation.img) {
-      try {
-        c.save();
-        c.translate(sx + sw / 2, sy + sh / 2);
-        c.rotate(uniStation._animT * 0.15);
-        c.imageSmoothingEnabled = true;
-        c.imageSmoothingQuality = "high";
-        c.drawImage(uniStation.img, -sw / 2, -sh / 2, sw, sh);
-        c.restore();
-        drewImage = true;
-      } catch(e) { /* image not ready yet */ }
-    }
-    if (!drewImage) {
+    // Draw station image if loaded, otherwise fallback rectangle
+    if (uniStation.img && uniStation.img._uniReady) {
+      c.save();
+      c.translate(sx + sw / 2, sy + sh / 2);
+      c.rotate(uniStation._animT * 0.15);
+      c.imageSmoothingEnabled = true;
+      c.imageSmoothingQuality = "high";
+      c.drawImage(uniStation.img, -sw / 2, -sh / 2, sw, sh);
+      c.restore();
+    } else {
       c.fillStyle = "#0a1a0a";
       c.fillRect(sx, sy, sw, sh);
       c.strokeStyle = uniStation._playerNear ? "#0f0" : "#00ff88";
