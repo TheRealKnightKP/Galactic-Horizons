@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.30";
+const CACHE = "galactic-horizons-v1.8.31";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -200,4 +200,5 @@ Versions:
 -V1.8.28 - Fixed exploration missions and added warden stations
 -V1.8.29 - Fixed mobile loading for stations (No, i didnt)
 -V1.8.30 - Fixed mobile loading for stations for real now
+-V1.8.31 - Fixing img loading everywhere again
 */
