@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.8.31";
+const CACHE = "galactic-horizons-v1.8.32";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -48,10 +48,10 @@ const ASSETS = [
   "./assets/Leviathan.png",
   "./assets/Medic.png",
   "./assets/Tempest.png",
-  "./assets/EldritchStation",
-  "./assets/HarvesterStation",
-  "./assets/CivilianStation",
-  "./assets/WardenStation",
+  "./assets/EldritchStation.png",
+  "./assets/HarvesterStation.png",
+  "./assets/CivilianStation.png",
+  "./assets/WardenStation.png",
 ];
 
 self.addEventListener("install", e => {
