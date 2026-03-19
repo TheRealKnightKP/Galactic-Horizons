@@ -321,15 +321,17 @@ function uniLoadQuadrant(quad) {
   // Spawn station
   if (quad.station) {
     const sysFaction = _uniCurrentSystem?.defaultFaction || quad.station.faction || "civilian";
+    const dangerLevel = _uniCurrentSystem?.dangerLevel || 1;
     const stationImages = {
-      civilian: "CivilianStation.png",
-      warden:   "WardenStation.png",
       harvester: "HarvesterStation.png",
       eldritch:  "EldritchStation.png",
     };
-    const stationImg = typeof getImage === "function"
-      ? getImage(stationImages[sysFaction] || stationImages.civilian)
-      : null;
+    // Civilian systems: safe low-danger = Warden military presence, frontier high-danger = independent civilian
+    let stationImg_key = stationImages[sysFaction];
+    if (!stationImg_key) {
+      stationImg_key = (sysFaction === "civilian" && dangerLevel <= 1) ? "WardenStation.png" : "CivilianStation.png";
+    }
+    const stationImg = typeof getImage === "function" ? getImage(stationImg_key) : null;
     uniStation = {
       x: qSize.w * 0.5 - 80, y: qSize.h * 0.35 - 80,
       w: 160, h: 160,
@@ -386,9 +388,6 @@ function uniLoadQuadrant(quad) {
     player.vx = 0;
     player.vy = 0;
   }
-
-  // Track explore missions — visiting any new sector counts
-  if (typeof _uniMissionProgress === "function") _uniMissionProgress("explore", 1);
 }
 
 // ── UNIVERSE UPDATE (called from game.js gameLoop) ────────────
@@ -643,12 +642,57 @@ function uniRenderOverlay() {
   // POIs
   uniPOIs.forEach(poi => {
     const sx = poi.x - cx, sy = poi.y - cy;
-    if (sx < -40 || sx > gw + 40 || sy < -40 || sy > gh + 40) return;
-    c.fillStyle = poi.discovered ? "#44ff88" : "rgba(255,255,255,0.3)";
-    c.font = poi.discovered ? "bold 13px monospace" : "11px monospace";
-    c.textAlign = "center";
-    c.fillText(poi.discovered ? "[" + poi.type + "]" : "?", sx, sy);
-    c.textAlign = "left";
+    if (sx < -80 || sx > gw + 80 || sy < -80 || sy > gh + 80) return;
+
+    if (poi.type === "anomaly") {
+      // Anomaly signal — pulsing rings + diamond icon
+      const pulse = 0.5 + 0.5 * Math.sin(_uniFrameCount * 0.06);
+      if (!poi.discovered) {
+        // Outer scan range indicator (faint)
+        c.save();
+        c.globalAlpha = 0.08 + 0.04 * pulse;
+        c.strokeStyle = "#44ffaa";
+        c.lineWidth = 1;
+        c.beginPath(); c.arc(sx, sy, poi.scanRange || 180, 0, Math.PI * 2); c.stroke();
+        c.restore();
+        // Pulsing rings
+        for (let r = 1; r <= 3; r++) {
+          c.save();
+          c.globalAlpha = (0.6 - r * 0.15) * pulse;
+          c.strokeStyle = "#44ffaa";
+          c.lineWidth = 1.5;
+          c.beginPath(); c.arc(sx, sy, 10 + r * 12, 0, Math.PI * 2); c.stroke();
+          c.restore();
+        }
+        // Diamond center
+        c.save();
+        c.globalAlpha = 0.7 + 0.3 * pulse;
+        c.fillStyle = "#44ffaa";
+        c.beginPath();
+        c.moveTo(sx, sy - 10); c.lineTo(sx + 8, sy);
+        c.lineTo(sx, sy + 10); c.lineTo(sx - 8, sy);
+        c.closePath(); c.fill();
+        c.restore();
+        // Label
+        c.fillStyle = "#44ffaa"; c.font = "bold 9px monospace"; c.textAlign = "center";
+        c.fillText("📡 ANOMALY SIGNAL", sx, sy - 18);
+        c.textAlign = "left";
+      } else {
+        // Scanned — show as completed
+        c.fillStyle = "#00ff88"; c.font = "bold 10px monospace"; c.textAlign = "center";
+        c.fillText("✓ SCANNED", sx, sy - 10);
+        c.fillStyle = "rgba(0,255,136,0.3)";
+        c.beginPath(); c.arc(sx, sy, 14, 0, Math.PI * 2); c.fill();
+        c.textAlign = "left";
+      }
+    } else {
+      // Regular POI — simple icon
+      c.fillStyle = poi.discovered ? "#ffcc44" : "rgba(255,255,255,0.25)";
+      c.font = poi.discovered ? "bold 11px monospace" : "10px monospace";
+      c.textAlign = "center";
+      c.fillText(poi.discovered ? "◆ " + (poi.type || "POI").toUpperCase() : "?", sx, sy);
+      c.textAlign = "left";
+    }
   });
 
   // Station
@@ -1087,15 +1131,27 @@ function _uniCheckPOIs() {
   const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
   uniPOIs.forEach(poi => {
     if (poi.discovered) return;
-    if (Math.hypot(poi.x - pcx, poi.y - pcy) < (player.scanRange || 100) * 0.5) {
+    const scanDist = poi.type === "anomaly" ? (poi.scanRange || 180) : (player.scanRange || 100) * 0.5;
+    if (Math.hypot(poi.x - pcx, poi.y - pcy) < scanDist) {
       poi.discovered = true;
       const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
       if (world && typeof addDelta === "function") {
         const deltaKey = _uniCurrentSystem.id + ":" + (_uniCurrentArea?.id || "") + ":" + _uniCurrentQuadrant.id + ":" + poi.id;
         addDelta(world, deltaKey, "discovered", true);
       }
-      // Track explore missions
-      _uniMissionProgress("explore", 1);
+      if (poi.type === "anomaly" && poi.missionId) {
+        // Only advance the specific explore mission this anomaly belongs to
+        if (world && world.player.activeMissions) {
+          const m = world.player.activeMissions.find(m => m.id === poi.missionId && m.status === "active");
+          if (m) {
+            m.progress = Math.min((m.progress || 0) + 1, m.goal);
+            if (m.progress >= m.goal) m.status = "complete";
+            if (typeof autoSaveUniverse === "function") autoSaveUniverse();
+            // Show scan notification
+            if (typeof showSpecialToast === "function") showSpecialToast("📡 Anomaly scanned! Mission updated.");
+          }
+        }
+      }
     }
   });
 }
