@@ -701,16 +701,21 @@ function uniRenderOverlay() {
     const sw = uniStation.w, sh = uniStation.h;
     uniStation._animT = (uniStation._animT || 0) + 0.005;
 
-    // Draw station image if loaded, otherwise fallback rectangle
-    if (uniStation.img && uniStation.img.complete && uniStation.img.naturalWidth > 0) {
-      c.save();
-      c.translate(sx + sw / 2, sy + sh / 2);
-      c.rotate(uniStation._animT * 0.15); // slow rotation
-      c.imageSmoothingEnabled = true;
-      c.imageSmoothingQuality = "high";
-      c.drawImage(uniStation.img, -sw / 2, -sh / 2, sw, sh);
-      c.restore();
-    } else {
+    // Draw station image — try/catch handles not-yet-loaded gracefully
+    let drewImage = false;
+    if (uniStation.img) {
+      try {
+        c.save();
+        c.translate(sx + sw / 2, sy + sh / 2);
+        c.rotate(uniStation._animT * 0.15);
+        c.imageSmoothingEnabled = true;
+        c.imageSmoothingQuality = "high";
+        c.drawImage(uniStation.img, -sw / 2, -sh / 2, sw, sh);
+        c.restore();
+        drewImage = true;
+      } catch(e) { /* image not ready yet */ }
+    }
+    if (!drewImage) {
       c.fillStyle = "#0a1a0a";
       c.fillRect(sx, sy, sw, sh);
       c.strokeStyle = uniStation._playerNear ? "#0f0" : "#00ff88";
