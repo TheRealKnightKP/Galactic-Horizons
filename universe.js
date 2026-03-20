@@ -387,6 +387,10 @@ function uniLoadQuadrant(quad) {
       e.isPassive = template.hasPassive && idx === 0;
       e.flees = !!template.flees;
       e.isGuard = !!template.isGuard;
+      e.isWarAttacker = !!ps.isWarAttacker;
+      e.isWarDefender = !!ps.isWarDefender;
+      e.warFaction = ps.warFaction || null;
+      e.enemyFaction = ps.enemyFaction || null;
       e.faction = template.faction;
       e._uniPatrol = true;
       if (typeof enemies !== "undefined") enemies.push(e);
@@ -555,6 +559,27 @@ function uniUpdate() {
       }
     });
 
+    // War participants — attack each other, only aggro player if player attacks them
+    if (typeof enemies !== "undefined") {
+      enemies.forEach(e => {
+        if (!e._uniPatrol || e.dead || e.isPassive || e.flees) return;
+        if (!e.isWarAttacker && !e.isWarDefender) return;
+        // Find nearest enemy of opposing faction and force aggro on them
+        if (!e._warTarget || e._warTarget.dead) {
+          e._warTarget = null;
+          let closest = null, closestDist = 9999;
+          enemies.forEach(other => {
+            if (!other._uniPatrol || other.dead) return;
+            if (other.warFaction !== e.enemyFaction) return;
+            const d = Math.hypot(e.x - other.x, e.y - other.y);
+            if (d < closestDist) { closestDist = d; closest = other; }
+          });
+          if (closest) e._warTarget = closest;
+        }
+        // Mark as aggroed so game.js AI engages — game.js will target nearest enemy naturally
+        if (e._warTarget && !e.aggroed) e.aggroed = true;
+      });
+    }
     // Rep change on killing combat patrol ships
     enemies.forEach(e => {
       if (!e._uniPatrol || !e.dead || e._repProcessed || e.isPassive || e.flees) return;
@@ -775,13 +800,17 @@ function uniRenderOverlay() {
   if (uniStation) {
     const sx = uniStation.x - cx, sy = uniStation.y - cy;
     const sw = uniStation.w, sh = uniStation.h;
-    uniStation._animT = (uniStation._animT || 0) + 0.005;
-
     // Draw station image if loaded, otherwise fallback rectangle
     if (uniStation.img && uniStation.img._uniReady) {
+      // Delay rotation start so image renders static first, then begins spinning
+      if (!uniStation._imgShown) uniStation._imgShown = 0;
+      uniStation._imgShown++;
+      if (uniStation._imgShown > 60) { // 1 second static before rotating
+        uniStation._animT = (uniStation._animT || 0) + 0.003;
+      }
       c.save();
       c.translate(sx + sw / 2, sy + sh / 2);
-      c.rotate(uniStation._animT * 0.15);
+      c.rotate(uniStation._animT || 0);
       c.imageSmoothingEnabled = true;
       c.imageSmoothingQuality = "high";
       c.drawImage(uniStation.img, -sw / 2, -sh / 2, sw, sh);
@@ -1732,25 +1761,57 @@ function _uniTryStartWar(world, uni) {
   const duration = WAR_CONFIG.durationMinJumps +
     Math.floor(Math.random() * (WAR_CONFIG.durationMaxJumps - WAR_CONFIG.durationMinJumps + 1));
 
-  world.activeWars.push({
+  const war = {
     systemId: pick.sysId,
     systemName: pick.sysDef.name,
     attackerFaction: atkFaction,
     defenderFaction: defFaction,
     jumpsRemaining: duration,
     playerResolved: false,
-  });
+  };
+  world.activeWars.push(war);
+
+  // Inject a warzone quadrant into the live universe system
+  if (uni && uni.systems[pick.sysId]) {
+    const sys = uni.systems[pick.sysId];
+    const warzoneQuad = {
+      id: "warzone_" + pick.sysId + "_" + Date.now(),
+      type: "warzone",
+      name: "War Zone",
+      seed: Math.floor(Math.random() * 0xFFFFFF),
+      fixed: false,
+      warData: { attackerFaction: atkFaction, defenderFaction: defFaction },
+    };
+    // Add to first non-station area
+    for (const area of Object.values(sys.areas)) {
+      if (area.type !== "station" && area.type !== "sun" && area.type !== "wormhole") {
+        if (!area.quadrants) area.quadrants = [];
+        // Remove old warzone if exists
+        area.quadrants = area.quadrants.filter(q => q.type !== "warzone");
+        area.quadrants.push(warzoneQuad);
+        break;
+      }
+    }
+  }
 }
 
 function _uniApplyWarResult(world, systemId, winnerFaction, loserFaction) {
   if (!world.factionInfluence) world.factionInfluence = {};
   if (!world.factionInfluence[systemId]) {
-    world.factionInfluence[systemId] = { ...(SYSTEM_START_INFLUENCE[systemId] || { warden: 33, harvester: 33, eldritch: 33 }) };
+    world.factionInfluence[systemId] = { ...(typeof SYSTEM_START_INFLUENCE !== "undefined" ? (SYSTEM_START_INFLUENCE[systemId] || { warden: 33, harvester: 33, eldritch: 33 }) : { warden: 33, harvester: 33, eldritch: 33 }) };
   }
   const inf = world.factionInfluence[systemId];
   const gain = WAR_CONFIG.influenceGain;
   inf[winnerFaction] = Math.min(100, (inf[winnerFaction] || 0) + gain);
   inf[loserFaction] = Math.max(0, (inf[loserFaction] || 0) - gain);
+
+  // Remove warzone quadrant from live universe
+  const uni = window._activeUniverse;
+  if (uni && uni.systems[systemId]) {
+    for (const area of Object.values(uni.systems[systemId].areas)) {
+      if (area.quadrants) area.quadrants = area.quadrants.filter(q => q.type !== "warzone");
+    }
+  }
 
   // Check if capital fell
   if (typeof FACTION_CAPITALS !== "undefined") {
