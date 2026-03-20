@@ -78,7 +78,7 @@ const SYSTEM_DEFS = {
     desc: "The heart of civilized space. Central trade hub, well-patrolled by Wardens.",
     defaultFaction: "civilian",
     sunHealth: 100,
-    connections: ["ashfall", "meridian"],
+    connections: ["ashfall", "meridian", "haven_reach"],
     areas: [
       // FIXED areas — these exist in every world, same positions
       { id: "solara_sun",     type: "sun",      name: "Solara Star",       fixed: true },
@@ -115,7 +115,7 @@ const SYSTEM_DEFS = {
     desc: "Frontier system. Rich mining but thin patrols. Opportunists thrive here.",
     defaultFaction: "civilian",
     sunHealth: 100,
-    connections: ["meridian", "thornreach"],
+    connections: ["meridian", "thornreach", "vantage"],
     areas: [
       { id: "kestrel_sun",    type: "sun",      name: "Kestrel Star",      fixed: true },
       { id: "dusthaven",      type: "planet",   name: "Dusthaven",         biome: "desert",       fixed: true },
@@ -132,7 +132,7 @@ const SYSTEM_DEFS = {
     desc: "Lawless border system. No permanent Warden presence. Rich but dangerous.",
     defaultFaction: "civilian",
     sunHealth: 100,
-    connections: ["solara", "duskfall", "char"],
+    connections: ["solara", "duskfall", "char", "voidspine"],
     areas: [
       { id: "ashfall_sun",    type: "sun",      name: "Ashfall Star",      fixed: true },
       { id: "cinderrock",     type: "planet",   name: "Cinderrock",        biome: "scorched",     fixed: true },
@@ -151,7 +151,7 @@ const SYSTEM_DEFS = {
     desc: "Border system between civilian space and Harvester territory. Tense and profitable.",
     defaultFaction: "civilian",
     sunHealth: 85,
-    connections: ["meridian", "ashfall", "thornreach", "char"],
+    connections: ["meridian", "ashfall", "thornreach", "char", "crossroads"],
     areas: [
       { id: "duskfall_sun",   type: "sun",      name: "Duskfall Star",     fixed: true },
       { id: "twilight",       type: "planet",   name: "Twilight",          biome: "tundra",       fixed: true },
@@ -170,7 +170,7 @@ const SYSTEM_DEFS = {
     desc: "Harvester frontier. Bone-ships patrol the lanes. The sun burns dim.",
     defaultFaction: "harvester",
     sunHealth: 65,
-    connections: ["kestrel", "duskfall", "marrow"],
+    connections: ["kestrel", "duskfall", "marrow", "cinderdeep", "vantage", "crossroads"],
     areas: [
       { id: "thornreach_sun", type: "sun",      name: "Thornreach Star",   fixed: true },
       { id: "spireworld",     type: "planet",   name: "Spireworld",        biome: "harvester_city",  fixed: true },
@@ -188,7 +188,7 @@ const SYSTEM_DEFS = {
     desc: "Deep Harvester space. Their capital. Cities built from bone and sun-fire.",
     defaultFaction: "harvester",
     sunHealth: 45,
-    connections: ["thornreach", "char", "hollow"],
+    connections: ["thornreach", "char", "hollow", "bonefield"],
     areas: [
       { id: "marrow_sun",     type: "sun",      name: "Marrow Star",       fixed: true },
       { id: "ostara",         type: "planet",   name: "Ostara",            biome: "harvester_city",  fixed: true },
@@ -207,7 +207,7 @@ const SYSTEM_DEFS = {
     desc: "Contested hellscape. Harvester and Eldritch forces clash over a dying sun.",
     defaultFaction: "eldritch",
     sunHealth: 30,
-    connections: ["ashfall", "duskfall", "marrow", "hollow"],
+    connections: ["ashfall", "duskfall", "marrow", "hollow", "voidspine", "bonefield", "crossroads"],
     areas: [
       { id: "char_sun",       type: "sun",      name: "Char Star",         fixed: true },
       { id: "scorchworld",    type: "planet",   name: "Scorchworld",       biome: "corrupted",    fixed: true },
@@ -237,8 +237,115 @@ const SYSTEM_DEFS = {
     dangerLevel: 5,
   },
 
-  // TODO: Expand to 30 systems post-Phase 2
-  // Additional civilian, harvester, eldritch, and contested systems
+  // === NEW CIVILIAN SYSTEMS ===
+  haven_reach: {
+    name: "Haven Reach",
+    desc: "Quiet agricultural system. Peaceful, but close enough to the frontier to feel the tension.",
+    defaultFaction: "civilian",
+    sunHealth: 100,
+    connections: ["solara", "vantage"],
+    areas: [
+      { id: "haven_reach_sun",  type: "sun",      name: "Reach Star",        fixed: true },
+      { id: "farmworld",        type: "planet",   name: "Farmworld",         biome: "temperate",    fixed: true },
+      { id: "reach_belt",       type: "belt",     name: "Reach Dusts",       biome: "asteroid" },
+      { id: "wh_solara_hr",     type: "wormhole", name: "Solara Gate",       targetSystem: "solara",     fixed: true },
+      { id: "wh_vantage_hr",    type: "wormhole", name: "Vantage Passage",   targetSystem: "vantage",    fixed: true },
+    ],
+    dangerLevel: 1,
+  },
+
+  vantage: {
+    name: "Vantage",
+    desc: "High-traffic trading corridor. Ships from all factions pass through here.",
+    defaultFaction: "civilian",
+    sunHealth: 95,
+    connections: ["haven_reach", "kestrel", "thornreach", "crossroads"],
+    areas: [
+      { id: "vantage_sun",      type: "sun",      name: "Vantage Star",      fixed: true },
+      { id: "tradepost",        type: "planet",   name: "Tradepost",         biome: "industrial",   fixed: true },
+      { id: "vantage_belt",     type: "belt",     name: "Transit Belt",      biome: "asteroid" },
+      { id: "vantage_debris",   type: "anomaly",  name: "Old Convoy Wreck",  biome: "derelict" },
+      { id: "wh_haven_reach_v", type: "wormhole", name: "Haven Gate",        targetSystem: "haven_reach", fixed: true },
+      { id: "wh_kestrel_v",     type: "wormhole", name: "Kestrel Passage",   targetSystem: "kestrel",     fixed: true },
+      { id: "wh_thornreach_v",  type: "wormhole", name: "Thornreach Rift",   targetSystem: "thornreach",  fixed: true },
+    ],
+    dangerLevel: 2,
+  },
+
+  // === NEW HARVESTER SYSTEMS ===
+  cinderdeep: {
+    name: "Cinderdeep",
+    desc: "Harvester industrial heartland. Massive mining operations strip nearby asteroids bare.",
+    defaultFaction: "harvester",
+    sunHealth: 70,
+    connections: ["thornreach", "bonefield"],
+    areas: [
+      { id: "cinderdeep_sun",   type: "sun",      name: "Cinderdeep Star",   fixed: true },
+      { id: "scorchmoon",       type: "planet",   name: "Scorchmoon",        biome: "volcanic",     fixed: true },
+      { id: "cinder_belt",      type: "belt",     name: "Strip Fields",      biome: "asteroid" },
+      { id: "cinder_mine",      type: "belt",     name: "Private Dig Site",  biome: "asteroid" },
+      { id: "suneater_cinder",  type: "anomaly",  name: "Suneater Array",    biome: "sun_harvester", fixed: true },
+      { id: "wh_thornreach_cd", type: "wormhole", name: "Thornreach Gate",   targetSystem: "thornreach",  fixed: true },
+      { id: "wh_bonefield_cd",  type: "wormhole", name: "Bonefield Passage", targetSystem: "bonefield",   fixed: true },
+    ],
+    dangerLevel: 3,
+  },
+
+  bonefield: {
+    name: "Bonefield",
+    desc: "Ancient Harvester graveyard system. Ships from a lost war drift here. Rich salvage, heavy patrols.",
+    defaultFaction: "harvester",
+    sunHealth: 55,
+    connections: ["cinderdeep", "char", "marrow"],
+    areas: [
+      { id: "bonefield_sun",    type: "sun",      name: "Dim Star",          fixed: true },
+      { id: "boneyard_prime",   type: "anomaly",  name: "Boneyard Prime",    biome: "derelict",     fixed: true },
+      { id: "bonefield_belt",   type: "belt",     name: "Bone Drift",        biome: "asteroid" },
+      { id: "bonefield_debris", type: "anomaly",  name: "Fleet Wreckage",    biome: "derelict" },
+      { id: "wh_cinderdeep_bf", type: "wormhole", name: "Cinderdeep Gate",   targetSystem: "cinderdeep",  fixed: true },
+      { id: "wh_char_bf",       type: "wormhole", name: "Char Wound",        targetSystem: "char",        fixed: true },
+      { id: "wh_marrow_bf",     type: "wormhole", name: "Marrow Passage",    targetSystem: "marrow",      fixed: true },
+    ],
+    dangerLevel: 4,
+  },
+
+  // === NEW ELDRITCH SYSTEM ===
+  voidspine: {
+    name: "Voidspine",
+    desc: "Eldritch staging ground. Ships gather here before raids into civilian space.",
+    defaultFaction: "eldritch",
+    sunHealth: 20,
+    connections: ["char", "ashfall"],
+    areas: [
+      { id: "voidspine_sun",    type: "sun",      name: "Dying Ember",       fixed: true },
+      { id: "rupture",          type: "planet",   name: "Rupture",           biome: "corrupted",    fixed: true },
+      { id: "voidspine_belt",   type: "belt",     name: "Shard Field",       biome: "asteroid" },
+      { id: "void_staging",     type: "anomaly",  name: "Void Staging Area", biome: "eldritch_core", fixed: true },
+      { id: "wh_char_vs",       type: "wormhole", name: "Char Gate",         targetSystem: "char",    fixed: true },
+      { id: "wh_ashfall_vs",    type: "wormhole", name: "Ashfall Tear",      targetSystem: "ashfall", fixed: true },
+    ],
+    dangerLevel: 5,
+  },
+
+  // === CONTESTED SYSTEM (no default faction — always a war zone) ===
+  crossroads: {
+    name: "Crossroads",
+    desc: "No faction controls this system. All three want it. It is always burning.",
+    defaultFaction: "civilian",  // neutral starting point
+    sunHealth: 60,
+    connections: ["duskfall", "thornreach", "char", "vantage"],
+    areas: [
+      { id: "crossroads_sun",   type: "sun",      name: "Crossroads Star",   fixed: true },
+      { id: "no_mans_land",     type: "planet",   name: "No Man's Land",     biome: "scorched",     fixed: true },
+      { id: "crossroads_belt",  type: "belt",     name: "Contested Belt",    biome: "asteroid" },
+      { id: "battleground",     type: "anomaly",  name: "Eternal Battleground", biome: "derelict", fixed: true },
+      { id: "wh_duskfall_cr",   type: "wormhole", name: "Duskfall Gate",     targetSystem: "duskfall",   fixed: true },
+      { id: "wh_thornreach_cr", type: "wormhole", name: "Thornreach Rift",   targetSystem: "thornreach", fixed: true },
+      { id: "wh_char_cr",       type: "wormhole", name: "Char Passage",      targetSystem: "char",       fixed: true },
+      { id: "wh_vantage_cr",    type: "wormhole", name: "Vantage Gate",      targetSystem: "vantage",    fixed: true },
+    ],
+    dangerLevel: 4,
+  },
 };
 
 // ── AREA TYPES ────────────────────────────────────────────────
@@ -679,18 +786,25 @@ const FACTION_CAPITALS = {
 
 // Starting influence values per system
 const SYSTEM_START_INFLUENCE = {
-  // Civilian systems: Wardens have strong presence in core, weak in frontier
-  solara:     { warden: 80, harvester: 5,  eldritch: 0  },
-  meridian:   { warden: 75, harvester: 8,  eldritch: 0  },
-  kestrel:    { warden: 50, harvester: 15, eldritch: 0  },
-  ashfall:    { warden: 30, harvester: 20, eldritch: 5  },
-  duskfall:   { warden: 35, harvester: 35, eldritch: 5  },
+  // Civilian systems
+  solara:      { warden: 80, harvester: 5,  eldritch: 0  },
+  meridian:    { warden: 75, harvester: 8,  eldritch: 0  },
+  kestrel:     { warden: 50, harvester: 15, eldritch: 0  },
+  ashfall:     { warden: 30, harvester: 20, eldritch: 5  },
+  duskfall:    { warden: 35, harvester: 35, eldritch: 5  },
+  haven_reach: { warden: 70, harvester: 5,  eldritch: 0  },
+  vantage:     { warden: 40, harvester: 25, eldritch: 10 },
   // Harvester systems
-  thornreach: { warden: 10, harvester: 70, eldritch: 5  },
-  marrow:     { warden: 5,  harvester: 85, eldritch: 5  },
+  thornreach:  { warden: 10, harvester: 70, eldritch: 5  },
+  marrow:      { warden: 5,  harvester: 85, eldritch: 5  },
+  cinderdeep:  { warden: 5,  harvester: 80, eldritch: 5  },
+  bonefield:   { warden: 5,  harvester: 65, eldritch: 15 },
   // Eldritch systems
-  char:       { warden: 5,  harvester: 30, eldritch: 60 },
-  hollow:     { warden: 0,  harvester: 10, eldritch: 85 },
+  char:        { warden: 5,  harvester: 30, eldritch: 60 },
+  hollow:      { warden: 0,  harvester: 10, eldritch: 85 },
+  voidspine:   { warden: 0,  harvester: 5,  eldritch: 80 },
+  // Contested
+  crossroads:  { warden: 25, harvester: 25, eldritch: 25 },
 };
 
 // ── WORLD GENERATION FLOW ─────────────────────────────────────
