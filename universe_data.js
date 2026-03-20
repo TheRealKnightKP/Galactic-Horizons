@@ -283,7 +283,7 @@ const SYSTEM_DEFS = {
       { id: "cinderdeep_sun",   type: "sun",      name: "Cinderdeep Star",   fixed: true },
       { id: "scorchmoon",       type: "planet",   name: "Scorchmoon",        biome: "volcanic",     fixed: true },
       { id: "cinder_belt",      type: "belt",     name: "Strip Fields",      biome: "asteroid" },
-      { id: "cinder_mine",      type: "belt",     name: "Private Dig Site",  biome: "asteroid" },
+      { id: "cinder_mine",      type: "private_mine", name: "Private Dig Site",  biome: "asteroid" },
       { id: "suneater_cinder",  type: "anomaly",  name: "Suneater Array",    biome: "sun_harvester", fixed: true },
       { id: "wh_thornreach_cd", type: "wormhole", name: "Thornreach Gate",   targetSystem: "thornreach",  fixed: true },
       { id: "wh_bonefield_cd",  type: "wormhole", name: "Bonefield Passage", targetSystem: "bonefield",   fixed: true },
