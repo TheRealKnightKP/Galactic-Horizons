@@ -1,4 +1,3 @@
-// saves.js — Arena Evolution V1.6.0
 // Local save/load, account system, leaderboard (Cloudflare Workers)
 
 const SAVE_VERSION    = "1.6.0";
@@ -353,7 +352,7 @@ function buildLoginUI() {
 
   overlay.innerHTML = `
     <div style="background:#0a0e1a;border:1px solid #0af;border-radius:12px;padding:32px;width:320px;color:#ccc">
-      <div style="color:#0af;font:bold 18px monospace;margin-bottom:20px;text-align:center">⚔ WARDEN ARENA</div>
+      <div style="color:#0af;font:bold 18px monospace;margin-bottom:20px;text-align:center">✦ GALACTIC HORIZONS</div>
       <div id="loginError" style="color:#f44;font:11px monospace;min-height:16px;margin-bottom:8px;text-align:center"></div>
       <div id="loginMode" style="display:flex;gap:8px;margin-bottom:16px">
         <button onclick="loginSetMode('login')" id="btnModeLogin" style="flex:1;background:#0a0e1a;border:1px solid #0af;color:#0af;padding:6px;font:11px monospace;cursor:pointer">Login</button>
