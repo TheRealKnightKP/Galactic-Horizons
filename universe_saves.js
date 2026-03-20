@@ -427,10 +427,8 @@ function generateQuadrantContents(quadrant, systemDanger, systemFaction) {
   const contents = { asteroids: [], pois: [], patrolSpawns: [], wrecks: [] };
 
   // ── ASTEROIDS ────────────────────────────────────────────────
-  if (quadrant.type === "mining" || quadrant.type === "debris") {
-    const orePool = quadrant.type === "mining"
-      ? ["iron", "iron", "iron", "copper", "copper", "titanium", "gold", "quantanium"]
-      : ["scrap", "scrap", "iron", "copper", "electronics", "polymers"];
+  if (quadrant.type === "mining") {
+    const orePool = ["iron", "iron", "iron", "copper", "copper", "titanium", "gold", "quantanium"];
     const count = 8 + Math.floor(rng() * 12);
     for (let i = 0; i < count; i++) {
       const ore = orePool[Math.floor(rng() * orePool.length)];
