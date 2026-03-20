@@ -620,6 +620,76 @@ function generateQuadrantContents(quadrant, systemDanger, systemFaction) {
     }
   }
 
+  // ── WARZONE (active faction conflict) ────────────────────────
+  if (quadrant.type === "warzone" && quadrant.warData) {
+    const atkFaction = quadrant.warData.attackerFaction;
+    const defFaction = quadrant.warData.defenderFaction;
+
+    // Faction → patrol template mapping
+    const factionTemplates = {
+      warden:    danger >= 3 ? "warden_heavy"     : danger >= 2 ? "warden_medium"    : "warden_light",
+      harvester: danger >= 4 ? "harvester_fleet"  : danger >= 3 ? "harvester_patrol" : "harvester_scout",
+      eldritch:  danger >= 5 ? "eldritch_terror"  : danger >= 4 ? "eldritch_raid"    : "eldritch_scout",
+      civilian:  "warden_light",
+    };
+
+    const atkTemplate = factionTemplates[atkFaction] || "warden_light";
+    const defTemplate = factionTemplates[defFaction] || "warden_light";
+    const shipCount = WAR_CONFIG ? WAR_CONFIG.warzoneAttackers.min + Math.floor(rng() * (WAR_CONFIG.warzoneAttackers.max - WAR_CONFIG.warzoneAttackers.min + 1)) : 4;
+    const groupCount = Math.ceil(shipCount / 3);
+
+    // Spawn attackers on left side
+    for (let g = 0; g < groupCount; g++) {
+      contents.patrolSpawns.push({
+        templateKey: atkTemplate,
+        x: 100 + rng() * 300,
+        y: 100 + rng() * 520,
+        aggroRange: 180,
+        isWarAttacker: true,
+        warFaction: atkFaction,
+        enemyFaction: defFaction,
+        patrolPath: [
+          { x: 100 + rng() * 250, y: 100 + rng() * 300 },
+          { x: 300 + rng() * 200, y: 250 + rng() * 200 },
+          { x: 150 + rng() * 200, y: 350 + rng() * 150 },
+        ],
+      });
+    }
+
+    // Spawn defenders on right side
+    for (let g = 0; g < groupCount; g++) {
+      contents.patrolSpawns.push({
+        templateKey: defTemplate,
+        x: 700 + rng() * 300,
+        y: 100 + rng() * 520,
+        aggroRange: 180,
+        isWarDefender: true,
+        warFaction: defFaction,
+        enemyFaction: atkFaction,
+        patrolPath: [
+          { x: 800 + rng() * 200, y: 100 + rng() * 300 },
+          { x: 650 + rng() * 200, y: 250 + rng() * 200 },
+          { x: 750 + rng() * 150, y: 380 + rng() * 150 },
+        ],
+      });
+    }
+
+    // Debris field — both sides have taken losses
+    const wreckCount = 3 + Math.floor(rng() * 4);
+    for (let i = 0; i < wreckCount; i++) {
+      const wrkHp = 20 + Math.floor(rng() * 40);
+      contents.wrecks.push({
+        id: "war_wrk_" + i,
+        x: 200 + rng() * 800,
+        y: 80 + rng() * 560,
+        loot: rng() < 0.4 ? "armor_plating" : rng() < 0.5 ? "electronics" : "scrap",
+        lootQty: 1 + Math.floor(rng() * 2),
+        health: wrkHp, maxHealth: wrkHp,
+        salvaged: false, isMilitary: true,
+      });
+    }
+  }
+
   return contents;
 }
 
