@@ -268,6 +268,8 @@ const QUADRANT_TYPES = {
   debris:          { hasStation: false, hasAsteroids: true,  hasPatrols: false, fixed: false, desc: "Wreckage field — salvage opportunities" },
   wormhole_tunnel: { hasStation: false, hasAsteroids: false, hasPatrols: false, fixed: true,  desc: "Wormhole interior — obstacle course" },
   sun_zone:        { hasStation: false, hasAsteroids: false, hasPatrols: false, fixed: true,  desc: "Star proximity zone — hazardous" },
+  private_mine:    { hasStation: false, hasAsteroids: true,  hasPatrols: true,  fixed: false, desc: "Harvester private mining operation — locked asteroids, guards, rare ore" },
+  warzone:         { hasStation: false, hasAsteroids: false, hasPatrols: true,  fixed: false, desc: "Active faction conflict — combat zone" },
 };
 
 const QUADRANT_TEMPLATE = {
@@ -300,45 +302,61 @@ const STATION_TEMPLATE = {
 
 // ── COMMODITIES ───────────────────────────────────────────────
 const COMMODITY_DEFS = {
-  // COMMON
-  iron:        { name: "Iron",          basePrice: 10,   volatility: 0.05, category: "metal",    rarity: "common" },
-  copper:      { name: "Copper",        basePrice: 15,   volatility: 0.08, category: "metal",    rarity: "common" },
-  titanium:    { name: "Titanium",      basePrice: 25,   volatility: 0.10, category: "metal",    rarity: "common" },
-  ice:         { name: "Ice",           basePrice: 5,    volatility: 0.03, category: "resource", rarity: "common" },
-  food:        { name: "Food Supplies", basePrice: 8,    volatility: 0.04, category: "supply",   rarity: "common" },
-  scrap:       { name: "Scrap Metal",   basePrice: 3,    volatility: 0.02, category: "salvage",  rarity: "common" },
+  // COMMON — low value, easy to find, high volatility is low
+  iron:          { name: "Iron",            basePrice: 18,    volatility: 0.06,  category: "metal",     rarity: "common",   sellMult: 0.55 },
+  copper:        { name: "Copper",          basePrice: 28,    volatility: 0.08,  category: "metal",     rarity: "common",   sellMult: 0.55 },
+  titanium:      { name: "Titanium",        basePrice: 55,    volatility: 0.10,  category: "metal",     rarity: "common",   sellMult: 0.60 },
+  ice:           { name: "Ice",             basePrice: 12,    volatility: 0.04,  category: "resource",  rarity: "common",   sellMult: 0.50 },
+  food:          { name: "Food Supplies",   basePrice: 20,    volatility: 0.05,  category: "supply",    rarity: "common",   sellMult: 0.55 },
+  scrap:         { name: "Scrap Metal",     basePrice: 8,     volatility: 0.03,  category: "salvage",   rarity: "common",   sellMult: 0.50 },
 
-  // UNCOMMON
-  gold:        { name: "Gold",          basePrice: 80,   volatility: 0.15, category: "metal",    rarity: "uncommon" },
-  electronics: { name: "Electronics",   basePrice: 60,   volatility: 0.12, category: "tech",     rarity: "uncommon" },
-  medSupplies: { name: "Med Supplies",  basePrice: 45,   volatility: 0.10, category: "supply",   rarity: "uncommon" },
-  fuel_cells:  { name: "Fuel Cells",    basePrice: 35,   volatility: 0.08, category: "fuel",     rarity: "uncommon" },
-  polymers:    { name: "Polymers",      basePrice: 30,   volatility: 0.07, category: "material", rarity: "uncommon" },
+  // UNCOMMON — moderate value, found in specific locations
+  gold:          { name: "Gold",            basePrice: 220,   volatility: 0.18,  category: "metal",     rarity: "uncommon", sellMult: 0.65, miningPowerMin: 2 },
+  electronics:   { name: "Electronics",     basePrice: 180,   volatility: 0.15,  category: "tech",      rarity: "uncommon", sellMult: 0.60 },
+  medSupplies:   { name: "Med Supplies",    basePrice: 120,   volatility: 0.12,  category: "supply",    rarity: "uncommon", sellMult: 0.60 },
+  fuel_cells:    { name: "Fuel Cells",      basePrice: 90,    volatility: 0.10,  category: "fuel",      rarity: "uncommon", sellMult: 0.58 },
+  polymers:      { name: "Polymers",        basePrice: 75,    volatility: 0.09,  category: "material",  rarity: "uncommon", sellMult: 0.58 },
 
-  // RARE
-  quantanium:  { name: "Quantanium",    basePrice: 200,  volatility: 0.30, category: "exotic",   rarity: "rare" },
-  starmetal:   { name: "Star Metal",    basePrice: 150,  volatility: 0.25, category: "metal",    rarity: "rare" },
-  biodata:     { name: "Biodata",       basePrice: 120,  volatility: 0.20, category: "tech",     rarity: "rare" },
+  // RARE — high value, harder to acquire
+  quantanium:    { name: "Quantanium",      basePrice: 850,   volatility: 0.35,  category: "exotic",    rarity: "rare",     sellMult: 0.70, miningPowerMin: 3 },
+  starmetal:     { name: "Star Metal",      basePrice: 600,   volatility: 0.28,  category: "metal",     rarity: "rare",     sellMult: 0.68 },
+  biodata:       { name: "Biodata",         basePrice: 450,   volatility: 0.22,  category: "tech",      rarity: "rare",     sellMult: 0.65 },
+
+  // SALVAGE-ONLY materials
+  armor_plating: { name: "Armor Plating",   basePrice: 380,   volatility: 0.20,  category: "salvage",   rarity: "rare",     sellMult: 0.65, salvageOnly: true },
+  quantum_cores: { name: "Quantum Cores",   basePrice: 1400,  volatility: 0.45,  category: "salvage",   rarity: "exotic",   sellMult: 0.72, salvageOnly: true, tractorBeamRequired: true },
+
+  // PRIVATE MINE exclusives (Harvester systems only)
+  platinum_hq:   { name: "HQ Platinum",     basePrice: 1200,  volatility: 0.38,  category: "metal",     rarity: "exotic",   sellMult: 0.72, miningPowerMin: 2, privateOnly: true },
+  uranium:       { name: "Uranium",          basePrice: 950,   volatility: 0.30,  category: "resource",  rarity: "exotic",   sellMult: 0.70, miningPowerMin: 2, privateOnly: true },
+  rhodium:       { name: "Rhodium",          basePrice: 2200,  volatility: 0.50,  category: "metal",     rarity: "exotic",   sellMult: 0.75, miningPowerMin: 3, privateOnly: true },
 
   // FACTION-SPECIFIC
-  harv_resin:  { name: "Harvester Resin",  basePrice: 90,  volatility: 0.18, category: "harvester", rarity: "rare" },
-  void_shard:  { name: "Void Shard",       basePrice: 250, volatility: 0.35, category: "eldritch",  rarity: "rare" },
+  harv_resin:    { name: "Harvester Resin", basePrice: 280,   volatility: 0.20,  category: "harvester", rarity: "rare",     sellMult: 0.62 },
+  void_shard:    { name: "Void Shard",      basePrice: 1100,  volatility: 0.40,  category: "eldritch",  rarity: "exotic",   sellMult: 0.70 },
 
   // ILLEGAL
-  narcotics:   { name: "Narcotics",     basePrice: 180,  volatility: 0.40, category: "illegal",  rarity: "rare" },
-  weapons:     { name: "Weapons Cache", basePrice: 140,  volatility: 0.25, category: "illegal",  rarity: "uncommon" },
+  narcotics:     { name: "Narcotics",       basePrice: 520,   volatility: 0.45,  category: "illegal",   rarity: "rare",     sellMult: 0.68 },
+  weapons:       { name: "Weapons Cache",   basePrice: 420,   volatility: 0.30,  category: "illegal",   rarity: "uncommon", sellMult: 0.65 },
 };
 
 function calculatePrice(commodityKey, stationSeed, eventMult, factionMult) {
   const def = COMMODITY_DEFS[commodityKey];
   if (!def) return 0;
   const rng = seededRNG(stationSeed + commodityKey.length);
-  const stationMult = 0.7 + rng() * 0.6;
+  const stationMult = 0.75 + rng() * 0.5;
   // Time-based fluctuation — changes every 30 seconds, not every frame
   const timeBucket = Math.floor(Date.now() / 30000);
   const timeRng = seededRNG(stationSeed + timeBucket + commodityKey.length * 7);
   const fluctuation = 1 + (timeRng() - 0.5) * 2 * def.volatility;
   return Math.round(def.basePrice * stationMult * (eventMult || 1) * (factionMult || 1) * fluctuation);
+}
+
+function getSellPrice(commodityKey, stationSeed, eventMult, factionMult) {
+  const def = COMMODITY_DEFS[commodityKey];
+  if (!def) return 0;
+  const buyPrice = calculatePrice(commodityKey, stationSeed, eventMult, factionMult);
+  return Math.round(buyPrice * (def.sellMult || 0.55));
 }
 
 // ── UNIVERSE SHIPS ────────────────────────────────────────────
@@ -514,12 +532,20 @@ const PATROL_TEMPLATES = {
   warden_medium:    { ships: ["Rouge", "Raptor", "Raptor"],            faction: "warden",    dangerMin: 2 },
   warden_heavy:     { ships: ["Corsair", "Rouge", "Raptor"],           faction: "warden",    dangerMin: 3 },
 
+  // Civilian passive ships (flee on contact, lootable if destroyed)
+  civilian_hauler:  { ships: ["Hauler"],                               faction: "civilian",  dangerMin: 1, hasPassive: true, flees: true },
+  civilian_convoy:  { ships: ["Hauler", "Hauler", "Raptor"],          faction: "civilian",  dangerMin: 1, hasPassive: true, flees: true, isConvoy: true },
+
   // Harvester patrols
   harvester_scout:  { ships: ["Raptor", "Raptor"],                     faction: "harvester", dangerMin: 2 },
   harvester_patrol: { ships: ["Rouge", "Rouge", "Raptor", "Raptor"],   faction: "harvester", dangerMin: 3 },
   harvester_fleet:  { ships: ["Corsair", "Bulwark", "Rouge", "Rouge"], faction: "harvester", dangerMin: 4 },
-  harvester_mining: { ships: ["MiningVessel", "Raptor"],               faction: "harvester", dangerMin: 2, hasPassive: true },
-  harvester_hauler: { ships: ["Hauler", "Rouge"],                      faction: "harvester", dangerMin: 3, hasPassive: true },
+  harvester_mining: { ships: ["MiningVessel", "Raptor"],               faction: "harvester", dangerMin: 2, hasPassive: true, flees: true },
+  harvester_hauler: { ships: ["Hauler", "Rouge"],                      faction: "harvester", dangerMin: 3, hasPassive: true, flees: true },
+
+  // Private mine guards (used in private_mine quadrants only)
+  priv_mine_light:  { ships: ["Raptor", "Raptor", "Raptor"],           faction: "harvester", dangerMin: 2, isGuard: true },
+  priv_mine_heavy:  { ships: ["Rouge", "Rouge", "Corsair", "Raptor"],  faction: "harvester", dangerMin: 3, isGuard: true },
 
   // Eldritch patrols
   eldritch_scout:   { ships: ["ShadowComet"],                          faction: "eldritch",  dangerMin: 3 },
@@ -599,6 +625,74 @@ function getShopShipsForStation(stationFaction) {
   return ships;
 }
 
+// ── FACTION REPUTATION HELPERS ────────────────────────────────
+function getPlayerRep(world, faction) {
+  if (!world || !world.player || !world.player.factionRep) return 0;
+  return world.player.factionRep[faction] || 0;
+}
+
+function changePlayerRep(world, faction, amount) {
+  if (!world || !world.player) return;
+  if (!world.player.factionRep) world.player.factionRep = { warden: 0, harvester: 0, eldritch: 0 };
+  world.player.factionRep[faction] = Math.max(-100, Math.min(100, (world.player.factionRep[faction] || 0) + amount));
+}
+
+function getRepPriceMult(world, faction) {
+  const rep = getPlayerRep(world, faction);
+  const tier = getRepTier(rep);
+  return FACTION_REP.priceMult[tier] || 1.0;
+}
+
+function isStationAccessible(world, stationFaction) {
+  if (!stationFaction || stationFaction === "civilian") return true;
+  const rep = getPlayerRep(world, stationFaction);
+  return getRepTier(rep) !== "hostile";
+}
+
+function doPatrolsAggro(world, patrolFaction) {
+  if (!patrolFaction || patrolFaction === "civilian") return false;
+  const rep = getPlayerRep(world, patrolFaction);
+  const tier = getRepTier(rep);
+  return tier === "hostile" || tier === "unfriendly";
+}
+
+// ── NPC WAR SYSTEM ────────────────────────────────────────────
+const WAR_CONFIG = {
+  chancePerJump:      0.15,   // 15% per jump that a new war starts somewhere
+  maxActiveWars:      2,      // max simultaneous wars in universe
+  durationMinJumps:   3,      // war lasts at least this many player jumps
+  durationMaxJumps:   8,      // war lasts at most this many jumps before auto-resolve
+  cooldownJumps:      10,     // jumps before same system can have another war
+  influenceGain:      20,     // % influence winner gains
+  influenceLoss:      20,     // % influence loser loses
+  capitalThreshold:   20,     // if capital faction drops below this %, faction is scattered
+  warzoneAttackers:   { min: 4, max: 8 },
+  warzoneDefenders:   { min: 4, max: 8 },
+  capitalDefBonus:    2,      // capital warzones have 2x defenders
+};
+
+const FACTION_CAPITALS = {
+  warden:    "solara",
+  harvester: "marrow",
+  eldritch:  "hollow",
+};
+
+// Starting influence values per system
+const SYSTEM_START_INFLUENCE = {
+  // Civilian systems: Wardens have strong presence in core, weak in frontier
+  solara:     { warden: 80, harvester: 5,  eldritch: 0  },
+  meridian:   { warden: 75, harvester: 8,  eldritch: 0  },
+  kestrel:    { warden: 50, harvester: 15, eldritch: 0  },
+  ashfall:    { warden: 30, harvester: 20, eldritch: 5  },
+  duskfall:   { warden: 35, harvester: 35, eldritch: 5  },
+  // Harvester systems
+  thornreach: { warden: 10, harvester: 70, eldritch: 5  },
+  marrow:     { warden: 5,  harvester: 85, eldritch: 5  },
+  // Eldritch systems
+  char:       { warden: 5,  harvester: 30, eldritch: 60 },
+  hollow:     { warden: 0,  harvester: 10, eldritch: 85 },
+};
+
 // ── WORLD GENERATION FLOW ─────────────────────────────────────
 // 1. Player creates new world → random masterSeed
 // 2. SYSTEM_DEFS are fixed (names, connections, areas) — same every world
@@ -608,13 +702,5 @@ function getShopShipsForStation(stationFaction) {
 //    - Non-fixed areas generate seed-based quadrants (4-6 per area)
 // 5. For each non-fixed quadrant: seed-generate contents (asteroids, POIs, patrol routes)
 // 6. Planets get their own seed: planetSeed = deriveEntitySeed(masterSeed, planetId)
-//    - Used for surface POI generation when planets are added
 // 7. Player starts: one starter ship, 1000 Sol Credits, neutral rep with all factions
 // 8. Save = masterSeed + empty delta list + fresh player state
-//
-// On load:
-// 1. Read masterSeed + deltas + player from save
-// 2. Regenerate all fixed + seed-based content
-// 3. Apply deltas (commodity changes, depleted asteroids, discovered POIs, etc.)
-// 4. Restore player state
-// 5. Ready to play
