@@ -1659,9 +1659,9 @@ function _uniCheckMapKey() {
 // ── QUANTUM TRAVEL ────────────────────────────────────────────
 
 let _uniQuantumPhase = ""; // "launch" | "travel" | "arrive"
-const UNI_QT_LAUNCH = 40;  // frames for launch phase
-const UNI_QT_TRAVEL = 60;  // frames for travel cutscene
-const UNI_QT_ARRIVE = 35;  // frames for arrive phase
+const UNI_QT_LAUNCH = 50;  // frames for launch phase
+const UNI_QT_TRAVEL = 120; // frames for travel cutscene
+const UNI_QT_ARRIVE = 60;  // frames for arrive phase
 
 // ── NPC WAR SYSTEM ────────────────────────────────────────────
 
@@ -1912,21 +1912,39 @@ function _uniRenderQuantumOverlay(c, gw, gh) {
     }
   } else if (_uniQuantumPhase === "arrive") {
     const dur = UNI_QT_ARRIVE;
-    const pt = 1 - (_uniQuantumTimer / dur); // 0→1
-    // Arrival flash — fading blue tint
-    c.save(); c.globalAlpha = (1 - pt) * 0.25; c.fillStyle = "#0066ff"; c.fillRect(0, 0, gw, gh); c.restore();
-    // Speed lines fading out
+    const pt = 1 - (_uniQuantumTimer / dur); // 0→1 as time passes
+    const px = typeof player !== "undefined" && player ? player.x + player.w / 2 - (window.camX || 0) : gw / 2;
+    const py = typeof player !== "undefined" && player ? player.y + player.h / 2 - (window.camY || 0) : gh / 2;
+
+    // Radial burst from ship center, fading out
     c.save();
-    for (let i = 0; i < 30; i++) {
-      const sy = ((i * 97 + 50) % gh);
-      const len = (1 - pt) * 80;
-      c.strokeStyle = "rgba(150,180,255," + ((1 - pt) * 0.4) + ")";
-      c.lineWidth = 1; c.beginPath(); c.moveTo(gw / 2 - len, sy); c.lineTo(gw / 2 + len, sy); c.stroke();
+    for (let i = 0; i < 24; i++) {
+      const angle = (i / 24) * Math.PI * 2;
+      const len = pt * 180;
+      const alpha = (1 - pt) * 0.7;
+      c.strokeStyle = "rgba(100,200,255," + alpha + ")";
+      c.lineWidth = 1.5 - pt;
+      c.beginPath();
+      c.moveTo(px, py);
+      c.lineTo(px + Math.cos(angle) * len, py + Math.sin(angle) * len);
+      c.stroke();
     }
+    // Expanding ring
+    for (let r = 0; r < 3; r++) {
+      const ringR = pt * 200 + r * 40;
+      const alpha = (1 - pt) * (0.5 - r * 0.12);
+      if (alpha <= 0) continue;
+      c.globalAlpha = alpha;
+      c.strokeStyle = "#44ccff"; c.lineWidth = 2 - r * 0.5;
+      c.beginPath(); c.arc(px, py, ringR, 0, Math.PI * 2); c.stroke();
+    }
+    // Screen flash fading
+    c.globalAlpha = (1 - pt) * 0.2;
+    c.fillStyle = "#0066ff"; c.fillRect(0, 0, gw, gh);
     c.restore();
     // Text
     c.textAlign = "center"; c.fillStyle = "rgba(0,255,100," + (1 - pt) + ")"; c.font = "bold 12px monospace";
-    c.fillText("ARRIVING", gw / 2, 50); c.textAlign = "left";
+    c.fillText("ARRIVED: " + (_uniCurrentSystem?.name || ""), gw / 2, 50); c.textAlign = "left";
   }
 }
 
@@ -2904,96 +2922,166 @@ function _drawPlanet(c, x, y, r, biome) {
 // SYSTEM MAP — zoomed out, shows all systems as suns
 function _renderSystemMap(c, gw, gh, uni) {
   // Star field background
-  c.fillStyle = "rgba(150,160,200,0.3)";
-  for (let i = 0; i < 200; i++) {
-    c.fillRect((i * 367 + 11) % gw, (i * 211 + 53) % gh, 1, 1);
-  }
+  c.fillStyle = "rgba(150,160,200,0.25)";
+  for (let i = 0; i < 200; i++) c.fillRect((i * 367 + 11) % gw, (i * 211 + 53) % gh, 1, 1);
 
   c.fillStyle = "#aaa"; c.font = "bold 16px monospace"; c.textAlign = "center";
-  c.fillText("STARMAP", gw / 2, 28);
+  c.fillText("STARMAP", gw / 2, 24);
 
-  const systems = Object.values(uni.systems);
-  const cols = 3, rows = Math.ceil(systems.length / cols);
-  const cellW = (gw - 120) / cols, cellH = (gh - 110) / rows;
-  const startX = 60, startY = 50;
+  const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
   const mx = typeof mouse !== "undefined" ? mouse.x : 0;
   const my = typeof mouse !== "undefined" ? mouse.y : 0;
   _uniMapHover = null;
 
-  // Wormhole connection lines
+  // Hand-crafted hexagonal layout — factions grouped, Crossroads center
+  // X=0..1 Y=0..1 normalized coords
+  const LAYOUT = {
+    // WARDEN/CIVILIAN ZONE — top left cluster
+    haven_reach: { nx: 0.08, ny: 0.18 },
+    solara:      { nx: 0.18, ny: 0.08 },
+    meridian:    { nx: 0.32, ny: 0.08 },
+    ashfall:     { nx: 0.08, ny: 0.36 },
+    kestrel:     { nx: 0.42, ny: 0.18 },
+    duskfall:    { nx: 0.28, ny: 0.30 },
+    vantage:     { nx: 0.42, ny: 0.36 },
+
+    // CROSSROADS — center
+    crossroads:  { nx: 0.50, ny: 0.52 },
+
+    // HARVESTER ZONE — bottom left / middle
+    thornreach:  { nx: 0.32, ny: 0.52 },
+    cinderdeep:  { nx: 0.18, ny: 0.64 },
+    marrow:      { nx: 0.32, ny: 0.72 },
+    bonefield:   { nx: 0.18, ny: 0.84 },
+
+    // ELDRITCH ZONE — right side
+    char:        { nx: 0.68, ny: 0.44 },
+    voidspine:   { nx: 0.82, ny: 0.34 },
+    hollow:      { nx: 0.82, ny: 0.56 },
+  };
+
+  const PAD_X = 60, PAD_Y = 40;
+  const mapW = gw - PAD_X * 2, mapH = gh - PAD_Y * 2 - 30;
+
+  function sysPos(id) {
+    const l = LAYOUT[id];
+    if (!l) return { x: gw / 2, y: gh / 2 };
+    return { x: PAD_X + l.nx * mapW, y: PAD_Y + 30 + l.ny * mapH };
+  }
+
+  const systems = Object.values(uni.systems);
+  const factionColor = { warden: "#4488ff", harvester: "#ff8844", eldritch: "#cc2244", civilian: "#66aacc" };
+
+  // Draw connection lines
   c.save();
+  const drawn = new Set();
   for (const sys of systems) {
-    const si = systems.indexOf(sys);
-    const sx = startX + (si % cols) * cellW + cellW / 2;
-    const sy = startY + Math.floor(si / cols) * cellH + cellH / 2;
-    for (const connId of sys.connections) {
-      const ci = systems.findIndex(s => s.id === connId);
-      if (ci < 0 || ci <= si) continue;
-      const cx2 = startX + (ci % cols) * cellW + cellW / 2;
-      const cy2 = startY + Math.floor(ci / cols) * cellH + cellH / 2;
-      // Animated dashed wormhole line
-      c.strokeStyle = "rgba(120,80,200,0.25)";
-      c.lineWidth = 1.5;
-      c.setLineDash([8, 6]);
-      c.lineDashOffset = -_uniFrameCount * 0.5;
-      c.beginPath(); c.moveTo(sx, sy); c.lineTo(cx2, cy2); c.stroke();
+    const p1 = sysPos(sys.id);
+    for (const connId of (sys.connections || [])) {
+      const key = [sys.id, connId].sort().join(":");
+      if (drawn.has(key)) continue;
+      drawn.add(key);
+      const p2 = sysPos(connId);
+      c.strokeStyle = "rgba(100,120,180,0.22)";
+      c.lineWidth = 1;
+      c.setLineDash([6, 5]);
+      c.lineDashOffset = -_uniFrameCount * 0.4;
+      c.beginPath(); c.moveTo(p1.x, p1.y); c.lineTo(p2.x, p2.y); c.stroke();
     }
   }
-  c.setLineDash([]);
-  c.restore();
+  c.setLineDash([]); c.restore();
 
   // Draw each system
-  for (let i = 0; i < systems.length; i++) {
-    const sys = systems[i];
-    const x = startX + (i % cols) * cellW + cellW / 2;
-    const y = startY + Math.floor(i / cols) * cellH + cellH / 2;
-    const sunR = 16;
+  for (const sys of systems) {
+    const { x, y } = sysPos(sys.id);
+    const sunR = sys.id === "crossroads" ? 14 : 13;
     const isCurrent = _uniCurrentSystem && sys.id === _uniCurrentSystem.id;
-    const hovered = Math.hypot(mx - x, my - y) < sunR * 3;
+    const hovered = Math.hypot(mx - x, my - y) < sunR * 3.5;
     if (hovered) _uniMapHover = sys.id;
 
     // Draw sun
     _drawSun(c, x, y, sunR, sys.sunHealth, sys.faction);
 
-    // Draw tiny orbiting planets
-    const planets = Object.values(sys.areas).filter(a => a.type === "planet" || a.type === "moon");
-    planets.forEach((p, pi) => {
-      const orbitR = sunR * 2.2 + pi * 12;
-      const angle = _uniFrameCount * 0.005 * (1 + pi * 0.3) + pi * 1.8;
-      const px = x + Math.cos(angle) * orbitR;
-      const py = y + Math.sin(angle) * orbitR;
-      // Orbit ring
-      c.save(); c.globalAlpha = 0.08; c.strokeStyle = "#fff"; c.lineWidth = 0.5;
+    // Orbiting planets (small)
+    const planets = Object.values(sys.areas).filter(a => a.type === "planet");
+    planets.slice(0, 2).forEach((p, pi) => {
+      const orbitR = sunR * 2.0 + pi * 10;
+      const angle = _uniFrameCount * 0.004 * (1 + pi * 0.3) + pi * 1.8;
+      const px2 = x + Math.cos(angle) * orbitR;
+      const py2 = y + Math.sin(angle) * orbitR;
+      c.save(); c.globalAlpha = 0.07; c.strokeStyle = "#fff"; c.lineWidth = 0.5;
       c.beginPath(); c.arc(x, y, orbitR, 0, Math.PI * 2); c.stroke(); c.restore();
-      _drawPlanet(c, px, py, 3 + (p.type === "moon" ? 0 : 1), p.biome);
+      _drawPlanet(c, px2, py2, 2.5, p.biome);
     });
 
-    // Hover highlight ring
-    if (hovered) {
-      c.save(); c.globalAlpha = 0.2; c.strokeStyle = "#fff"; c.lineWidth = 1.5;
-      c.beginPath(); c.arc(x, y, sunR * 3, 0, Math.PI * 2); c.stroke(); c.restore();
+    // War marker — flashing red warning
+    const activeWars = world ? getActiveWarsInSystem(world, sys.id) : [];
+    if (activeWars.length > 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(_uniFrameCount * 0.12);
+      c.save();
+      c.globalAlpha = 0.3 + 0.4 * pulse;
+      c.strokeStyle = "#ff2222"; c.lineWidth = 2;
+      c.beginPath(); c.arc(x, y, sunR * 3.2, 0, Math.PI * 2); c.stroke();
+      c.globalAlpha = pulse * 0.15;
+      c.fillStyle = "#ff2222"; c.beginPath(); c.arc(x, y, sunR * 3.2, 0, Math.PI * 2); c.fill();
+      c.restore();
+      // War icon
+      c.fillStyle = "rgba(255,50,50," + (0.7 + 0.3 * pulse) + ")";
+      c.font = "bold 9px monospace"; c.textAlign = "center";
+      c.fillText("WAR", x, y - sunR * 3.5);
     }
 
-    // Current system indicator
+    // Current system ring
     if (isCurrent) {
       c.save(); c.globalAlpha = 0.35 + Math.sin(_uniFrameCount * 0.05) * 0.15;
       c.strokeStyle = "#00ff88"; c.lineWidth = 2;
-      c.beginPath(); c.arc(x, y, sunR * 3.2, 0, Math.PI * 2); c.stroke(); c.restore();
-      c.fillStyle = "#00ff88"; c.font = "bold 8px monospace"; c.textAlign = "center";
-      c.fillText("YOU", x, y - sunR * 3.2 - 6);
+      c.beginPath(); c.arc(x, y, sunR * 3.0, 0, Math.PI * 2); c.stroke(); c.restore();
+      c.fillStyle = "#00ff88"; c.font = "bold 7px monospace"; c.textAlign = "center";
+      c.fillText("YOU", x, y - sunR * 3.2 - 4);
+    }
+
+    // Hover ring
+    if (hovered && !isCurrent) {
+      c.save(); c.globalAlpha = 0.15; c.strokeStyle = "#fff"; c.lineWidth = 1.5;
+      c.beginPath(); c.arc(x, y, sunR * 2.8, 0, Math.PI * 2); c.stroke(); c.restore();
     }
 
     // System name
-    c.fillStyle = isCurrent ? "#00ff88" : hovered ? "#fff" : "#aaa";
-    c.font = "bold 10px monospace"; c.textAlign = "center";
-    c.fillText(sys.name, x, y + sunR * 3 + 14);
-    // Danger
-    c.fillStyle = "#555"; c.font = "8px monospace";
-    c.fillText("Danger " + sys.dangerLevel, x, y + sunR * 3 + 24);
+    const nameY = y + sunR * 2.6 + 12;
+    c.fillStyle = isCurrent ? "#00ff88" : hovered ? "#fff" : "#bbb";
+    c.font = "bold 9px monospace"; c.textAlign = "center";
+    c.fillText(sys.name, x, nameY);
+    // Danger level
+    c.fillStyle = "#555"; c.font = "7px monospace";
+    c.fillText("Danger " + sys.dangerLevel, x, nameY + 10);
+
+    // Faction hold bar
+    const inf = (world?.factionInfluence?.[sys.id]) ||
+      (typeof SYSTEM_START_INFLUENCE !== "undefined" ? SYSTEM_START_INFLUENCE[sys.id] : null) ||
+      { warden: 33, harvester: 33, eldritch: 33 };
+    const total = (inf.warden || 0) + (inf.harvester || 0) + (inf.eldritch || 0);
+    if (total > 0) {
+      const barW = 48, barH = 4;
+      const barX = x - barW / 2, barY = nameY + 13;
+      c.fillStyle = "#111"; c.fillRect(barX, barY, barW, barH);
+      let bx = barX;
+      for (const [fac, col] of [["warden", "#4488ff"], ["harvester", "#ff8844"], ["eldritch", "#cc2244"]]) {
+        const w = Math.round(barW * ((inf[fac] || 0) / total));
+        if (w > 0) { c.fillStyle = col; c.fillRect(bx, barY, w, barH); bx += w; }
+      }
+      // Dominant faction % label
+      const dom = Object.entries(inf).sort((a, b) => b[1] - a[1])[0];
+      if (dom) {
+        const pct = Math.round((dom[1] / total) * 100);
+        c.fillStyle = factionColor[dom[0]] || "#888";
+        c.font = "6px monospace"; c.textAlign = "center";
+        c.fillText(dom[0].slice(0, 3).toUpperCase() + " " + pct + "%", x, barY + barH + 8);
+      }
+    }
   }
 
-  c.textAlign = "center"; c.fillStyle = "#555"; c.font = "10px monospace";
-  c.fillText("Select a system", gw / 2, gh - 16);
+  c.textAlign = "center"; c.fillStyle = "#444"; c.font = "9px monospace";
+  c.fillText("Select a system", gw / 2, gh - 12);
   c.textAlign = "left";
 }
 
