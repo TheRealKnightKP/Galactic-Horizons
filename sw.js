@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.9.5";
+const CACHE = "galactic-horizons-v1.9.6";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -209,4 +209,5 @@ Versions:
 -V1.9.3 - Fixing issues
 -V1.9.4 - Fixed salvage stuff
 -V1.9.5 - Fixed qt jump rendering
+-V1.9.6 - Fixed qt jump rendering 2 electric yea whatever
 */
