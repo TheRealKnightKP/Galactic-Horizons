@@ -430,8 +430,10 @@ const COMMODITY_DEFS = {
   biodata:       { name: "Biodata",         basePrice: 450,   volatility: 0.22,  category: "tech",      rarity: "rare",     sellMult: 0.65 },
 
   // SALVAGE-ONLY materials
-  armor_plating: { name: "Armor Plating",   basePrice: 380,   volatility: 0.20,  category: "salvage",   rarity: "rare",     sellMult: 0.65, salvageOnly: true },
-  quantum_cores: { name: "Quantum Cores",   basePrice: 1400,  volatility: 0.45,  category: "salvage",   rarity: "exotic",   sellMult: 0.72, salvageOnly: true, tractorBeamRequired: true },
+  armor_plating:    { name: "Armor Plating",     basePrice: 1200,  volatility: 0.20,  category: "salvage",   rarity: "rare",     sellMult: 0.65, salvageOnly: true },
+  quantum_cores:    { name: "Quantum Cores",      basePrice: 8500,  volatility: 0.45,  category: "salvage",   rarity: "exotic",   sellMult: 0.72, salvageOnly: true, tractorBeamRequired: true },
+  void_capacitor:   { name: "Void Capacitor",     basePrice: 22000, volatility: 0.55,  category: "salvage",   rarity: "exotic",   sellMult: 0.74, salvageOnly: true, tractorBeamRequired: true },
+  crystallized_fuel:{ name: "Crystallized Fuel",  basePrice: 6000,  volatility: 0.40,  category: "salvage",   rarity: "exotic",   sellMult: 0.70, salvageOnly: true },
 
   // PRIVATE MINE exclusives (Harvester systems only)
   platinum_hq:   { name: "HQ Platinum",     basePrice: 1200,  volatility: 0.38,  category: "metal",     rarity: "exotic",   sellMult: 0.72, miningPowerMin: 2, privateOnly: true },
