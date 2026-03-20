@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.9.9";
+const CACHE = "galactic-horizons-v1.9.10";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -213,4 +213,5 @@ Versions:
 -V1.9.7 - Fixing qt jump cutscene, system layout, wars, and other fixes
 -V1.9.8 - Fixed qt cutscene and other stuff (20/3/2026)
 -V1.9.9 - Private mines with guard detection cones, a hacking minigame to crack locked asteroids, alarms, ship loss and recovery, faction hold bars on the starmap, NPC wars with real battles, a redesigned system map, fixed quantum jump effects, and a mountain of bug fixes.
+-V1.9.10 - Private mines fixes
 */
