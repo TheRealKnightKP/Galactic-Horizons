@@ -380,6 +380,19 @@ function regenerateUniverse(world) {
             fixed: false,
           });
         }
+      } else if (areaDef.type === "private_mine") {
+        // Private mines: 3-5 quadrants, all private_mine type — Harvester only
+        const quadCount = 3 + Math.floor(areaRng() * 3);
+        for (let qi = 0; qi < quadCount; qi++) {
+          const qSeed = deriveEntitySeed(areaSeed, qi);
+          area.quadrants.push({
+            id: areaDef.id + "_q" + qi,
+            type: "private_mine",
+            name: areaDef.name + " Sector " + (qi + 1),
+            seed: qSeed,
+            fixed: false,
+          });
+        }
       } else if (areaDef.type === "anomaly") {
         // Anomalies get: 1-2 special quadrants
         area.quadrants.push({
