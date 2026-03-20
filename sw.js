@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.9.7";
+const CACHE = "galactic-horizons-v1.9.8";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -211,4 +211,5 @@ Versions:
 -V1.9.5 - Fixed qt jump rendering
 -V1.9.6 - Fixed qt jump rendering 2 electric yea whatever
 -V1.9.7 - Fixing qt jump cutscene, system layout, wars, and other fixes
+-V1.9.8 - Fixed qt cutscene and other stuff
 */
