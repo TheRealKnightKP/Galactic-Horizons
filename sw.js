@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.9.3";
+const CACHE = "galactic-horizons-v1.9.4";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -207,4 +207,5 @@ Versions:
 -V1.9.1 - Salvage fixes and New systems
 -V1.9.2 - Fixed economy stuff
 -V1.9.3 - Fixing issues
+-V1.9.4 - Fixed salvage stuff
 */
