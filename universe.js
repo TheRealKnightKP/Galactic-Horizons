@@ -997,67 +997,100 @@ function _uniRenderSalvageMinigame(c, gw, gh) {
   const px = (gw - pw) / 2, py = (gh - ph) / 2;
   mg.panelX = px; mg.panelY = py;
 
-  // Panel
+  // Panel background
   c.save();
-  c.fillStyle = "rgba(0,0,0,0.88)";
+  c.fillStyle = "rgba(0,0,0,0.90)";
   c.strokeStyle = "#ff8844";
   c.lineWidth = 2;
   c.fillRect(px, py, pw, ph);
   c.strokeRect(px, py, pw, ph);
 
   // Title
-  c.fillStyle = "#ff8844"; c.font = "bold 12px monospace"; c.textAlign = "center";
-  const isMil = mg.wrk.isMilitary;
-  c.fillText("SALVAGE: " + (isMil ? "MILITARY WRECK" : "CIVILIAN WRECK"), px + pw / 2, py + 18);
-  c.fillStyle = "#777"; c.font = "10px monospace";
-  c.fillText("Hold and drag along each line", px + pw / 2, py + 30);
+  c.fillStyle = "#ff8844"; c.font = "bold 11px monospace"; c.textAlign = "center";
+  c.fillText("SALVAGE: " + (mg.wrk.isMilitary ? "MILITARY WRECK" : "CIVILIAN WRECK"), px + pw / 2, py + 15);
+  c.fillStyle = "#666"; c.font = "9px monospace";
+  c.fillText("Hold and drag to strip components", px + pw / 2, py + 26);
 
-  // Draw lines
-  const linesAreaX = px + 15, linesAreaY = py + 42;
-  mg.lines.forEach((line, li) => {
-    if (!line.points || line.points.length < 2) return;
-    const lineColor = line.completed ? "#44ff88" : line.failed ? "#ff4444" : li === mg.activeLineIdx ? "#ffcc00" : "#446688";
-    c.strokeStyle = lineColor;
-    c.lineWidth = line.tolerance / 2;
-    c.globalAlpha = 0.25;
+  // Content area offset
+  const areaX = px + 10, areaY = py + 32;
+  const d = mg.debris;
+
+  // Draw debris pieces (only cells still in mask show)
+  for (let gy = 0; gy < d.GRID_H; gy++) {
+    for (let gx = 0; gx < d.GRID_W; gx++) {
+      if (d.mask[gy * d.GRID_W + gx] !== 1) continue;
+      const cx2 = areaX + gx * d.CELL;
+      const cy2 = areaY + gy * d.CELL;
+      // Color based on position — gives it texture
+      const shade = 0.7 + 0.3 * ((gx + gy) % 3 === 0 ? 1 : 0);
+      c.fillStyle = mg.wrk.isMilitary
+        ? `rgba(80,100,120,${shade})`
+        : `rgba(100,80,60,${shade})`;
+      c.fillRect(cx2, cy2, d.CELL, d.CELL);
+    }
+  }
+
+  // Draw eraser circle at cursor position
+  if (mg.mouseDown) {
+    const localMx = mg.mx - areaX;
+    const localMy = mg.my - areaY;
+    c.save();
+    c.globalAlpha = 0.35;
+    c.fillStyle = "#ffffff";
     c.beginPath();
-    c.moveTo(linesAreaX + line.points[0].x, linesAreaY + line.points[0].y);
-    for (let i = 1; i < line.points.length; i++) {
-      c.lineTo(linesAreaX + line.points[i].x, linesAreaY + line.points[i].y);
-    }
-    c.stroke();
-
-    // Core line
-    c.globalAlpha = 1;
-    c.lineWidth = 2;
+    c.arc(mg.mx, mg.my, mg.eraserRadius, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+    c.strokeStyle = "#ffcc44"; c.lineWidth = 1.5;
     c.beginPath();
-    c.moveTo(linesAreaX + line.points[0].x, linesAreaY + line.points[0].y);
-    for (let i = 1; i < line.points.length; i++) {
-      c.lineTo(linesAreaX + line.points[i].x, linesAreaY + line.points[i].y);
-    }
+    c.arc(mg.mx, mg.my, mg.eraserRadius, 0, Math.PI * 2);
     c.stroke();
-
-    // Progress dot on active line
-    if (li === mg.activeLineIdx && !line.completed && !line.failed) {
-      const prog = Math.min(line.progress, line.points.length - 1);
-      const floorP = Math.floor(prog);
-      const frac = prog - floorP;
-      const p1 = line.points[Math.min(floorP, line.points.length - 1)];
-      const p2 = line.points[Math.min(floorP + 1, line.points.length - 1)];
-      const dotX = linesAreaX + p1.x + (p2.x - p1.x) * frac;
-      const dotY = linesAreaY + p1.y + (p2.y - p1.y) * frac;
-      c.fillStyle = "#ffcc00";
-      c.beginPath(); c.arc(dotX, dotY, 5, 0, Math.PI * 2); c.fill();
+    // Unused — suppress lint
+    void localMx; void localMy;
+  } else {
+    // Show cursor outline when hovering over panel
+    if (mg.mx > px && mg.mx < px + pw && mg.my > py && mg.my < py + ph) {
+      c.strokeStyle = "rgba(255,200,100,0.5)"; c.lineWidth = 1;
+      c.beginPath();
+      c.arc(mg.mx, mg.my, mg.eraserRadius, 0, Math.PI * 2);
+      c.stroke();
     }
-  });
+  }
+
+  // Progress bar
+  const pct = d.totalFilled > 0 ? d.erased / d.totalFilled : 0;
+  const barX = px + 10, barY = py + ph - 42, barW = pw - 80, barH = 10;
+  c.fillStyle = "#222"; c.fillRect(barX, barY, barW, barH);
+  const barColor = pct >= mg.threshold ? "#44ff88" : "#ff8844";
+  c.fillStyle = barColor; c.fillRect(barX, barY, barW * pct, barH);
+  c.strokeStyle = "#555"; c.lineWidth = 1; c.strokeRect(barX, barY, barW, barH);
+  // Threshold marker
+  c.strokeStyle = "#ffcc44"; c.lineWidth = 1;
+  c.beginPath();
+  c.moveTo(barX + barW * mg.threshold, barY - 2);
+  c.lineTo(barX + barW * mg.threshold, barY + barH + 2);
+  c.stroke();
+
+  c.fillStyle = pct >= mg.threshold ? "#44ff88" : "#aaa";
+  c.font = "9px monospace"; c.textAlign = "left";
+  c.fillText(Math.round(pct * 100) + "% stripped", barX, barY + barH + 12);
+
+  if (pct >= mg.threshold) {
+    c.fillStyle = "#44ff88"; c.font = "bold 10px monospace"; c.textAlign = "center";
+    c.fillText("DONE! Close to collect loot.", px + pw / 2, barY + barH + 12);
+  }
 
   // Close button
-  const closeX = px + pw - 50, closeY = py + ph - 28, closeW = 44, closeH = 22;
-  c.globalAlpha = 1;
-  c.fillStyle = "rgba(100,0,0,0.7)"; c.fillRect(closeX, closeY, closeW, closeH);
-  c.strokeStyle = "#f44"; c.lineWidth = 1; c.strokeRect(closeX, closeY, closeW, closeH);
-  c.fillStyle = "#f44"; c.font = "10px monospace"; c.textAlign = "center";
-  c.fillText("CLOSE", closeX + closeW / 2, closeY + 14);
+  const closeX = px + pw - 66, closeY = py + ph - 44, closeW = 58, closeH = 36;
+  c.fillStyle = pct >= mg.threshold ? "rgba(0,120,60,0.8)" : "rgba(100,0,0,0.7)";
+  c.fillRect(closeX, closeY, closeW, closeH);
+  c.strokeStyle = pct >= mg.threshold ? "#44ff88" : "#f44";
+  c.lineWidth = 1; c.strokeRect(closeX, closeY, closeW, closeH);
+  c.fillStyle = pct >= mg.threshold ? "#44ff88" : "#f44";
+  c.font = "bold 10px monospace"; c.textAlign = "center";
+  c.fillText(pct >= mg.threshold ? "COLLECT" : "ABANDON", closeX + closeW / 2, closeY + 14);
+  c.font = "8px monospace";
+  c.fillText(pct >= mg.threshold ? "loot ready" : "lose loot", closeX + closeW / 2, closeY + 26);
   mg._closeBtn = { x: closeX, y: closeY, w: closeW, h: closeH };
 
   c.restore();
@@ -1333,40 +1366,86 @@ function _uniCompleteMining(ast) {
 }
 
 // ── WRECK SALVAGING MINIGAME ──────────────────────────────────
-// Center-screen panel, game keeps running, player locked in place
-let _uniSalvageMinigame = null; // null or { wrk, lines, activeLine, mouseDown, ... }
+// Center panel, game keeps running, player locked.
+// Shows a debris shape made of filled polygons.
+// Player holds mouse/finger and drags — a circle eraser strips the shape.
+// Progress = how much of the shape has been erased.
+// Reach threshold = loot awarded.
 
-function _generateSalvageLines(wrk) {
+let _uniSalvageMinigame = null;
+
+function _uniGenerateDebrisShape(wrk) {
+  // Generate an irregular debris silhouette as a set of filled triangles
+  // that the player needs to erase with the circle brush
   const isMilitary = wrk.isMilitary;
-  const lineCount = isMilitary ? 4 + Math.floor(Math.random() * 3) : 2 + Math.floor(Math.random() * 3);
-  const lines = [];
-  for (let i = 0; i < lineCount; i++) {
-    const points = [];
-    const segments = isMilitary ? 3 + Math.floor(Math.random() * 3) : 2 + Math.floor(Math.random() * 2);
-    let x = 20 + Math.random() * 60;
-    let y = 30 + (i / lineCount) * 160 + Math.random() * 20;
-    points.push({ x, y });
-    for (let s = 0; s < segments; s++) {
-      x += 40 + Math.random() * 60;
-      y += (Math.random() - 0.5) * 50;
-      y = Math.max(20, Math.min(210, y));
-      points.push({ x, y });
-    }
-    lines.push({
-      points,
-      tolerance: isMilitary ? 14 : 22,
-      completed: false,
-      failed: false,
-      progress: 0, // 0..1
-      playerProgress: 0, // segment index player has reached
-    });
+  const cx = 160, cy = 110; // center of the panel content area
+  const scale = isMilitary ? 1.3 : 1.0;
+  const pieces = [];
+  // Main hull chunk
+  const hullPts = [];
+  const numPts = 7 + Math.floor(Math.random() * 5);
+  for (let i = 0; i < numPts; i++) {
+    const angle = (i / numPts) * Math.PI * 2;
+    const r = (35 + Math.random() * 25) * scale;
+    hullPts.push({ x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r });
   }
-  return lines;
+  pieces.push({ pts: hullPts, color: isMilitary ? "#556677" : "#665544" });
+
+  // Detached fragment chunks
+  const fragCount = 2 + Math.floor(Math.random() * 3);
+  for (let f = 0; f < fragCount; f++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = (50 + Math.random() * 30) * scale;
+    const fx = cx + Math.cos(angle) * dist;
+    const fy = cy + Math.sin(angle) * dist;
+    const pts = [];
+    const fPts = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < fPts; i++) {
+      const a = (i / fPts) * Math.PI * 2;
+      const r = (10 + Math.random() * 12) * scale;
+      pts.push({ x: fx + Math.cos(a) * r, y: fy + Math.sin(a) * r });
+    }
+    pieces.push({ pts, color: isMilitary ? "#445566" : "#554433" });
+  }
+
+  // Build a pixel mask — 320x220 offscreen grid of cells (4px each)
+  // Each cell is 1 if it's inside any piece, 0 if empty
+  const GRID_W = 80, GRID_H = 55, CELL = 4;
+  const mask = new Uint8Array(GRID_W * GRID_H);
+  let totalFilled = 0;
+  for (let gy = 0; gy < GRID_H; gy++) {
+    for (let gx = 0; gx < GRID_W; gx++) {
+      const px = gx * CELL + CELL / 2;
+      const py = gy * CELL + CELL / 2;
+      for (const piece of pieces) {
+        if (_pointInPolygon(px, py, piece.pts)) {
+          mask[gy * GRID_W + gx] = 1;
+          totalFilled++;
+          break;
+        }
+      }
+    }
+  }
+
+  return { pieces, mask, totalFilled, erased: 0, GRID_W, GRID_H, CELL };
+}
+
+function _pointInPolygon(px, py, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
+    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
 }
 
 function _uniUpdateSalvaging() {
   if (typeof player === "undefined" || !player) return;
-  if (_uniSalvageMinigame) return; // minigame handles itself via render + input
+  if (_uniSalvageMinigame) {
+    // Lock player during minigame
+    player.vx = 0; player.vy = 0;
+    return;
+  }
 
   const k = typeof keys !== "undefined" ? keys : {};
   const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
@@ -1390,34 +1469,26 @@ function _uniUpdateSalvaging() {
 }
 
 function _uniStartSalvageMinigame(wrk) {
-  const lines = _generateSalvageLines(wrk);
+  const debris = _uniGenerateDebrisShape(wrk);
   _uniSalvageMinigame = {
     wrk,
-    lines,
-    activeLineIdx: 0,
+    debris,
     mouseDown: false,
-    touchDown: false,
-    lastMx: 0, lastMy: 0,
-    panelX: 0, panelY: 0, // set in render
-    panelW: 340, panelH: 280,
-    done: false,
-    resultTimer: 0,
+    mx: 0, my: 0,
+    panelX: 0, panelY: 0, panelW: 340, panelH: 260,
+    eraserRadius: wrk.isMilitary ? 14 : 20, // military = harder (smaller eraser)
+    threshold: 0.65, // need to erase 65% to complete
   };
-  // Setup mouse/touch input
-  window._uniSalvageMouseDown = false;
-  window._uniSalvageMx = 0;
-  window._uniSalvageMy = 0;
 }
 
 function _uniCloseSalvageMinigame(completed) {
   if (!_uniSalvageMinigame) return;
   const mg = _uniSalvageMinigame;
   if (completed) {
-    const completedLines = mg.lines.filter(l => l.completed).length;
-    const totalLines = mg.lines.length;
+    const pct = mg.debris.totalFilled > 0 ? mg.debris.erased / mg.debris.totalFilled : 0;
     const loot = mg.wrk.loot || "scrap";
     const fullQty = mg.wrk.lootQty || 1;
-    const actualQty = Math.max(1, Math.round(fullQty * (completedLines / totalLines)));
+    const actualQty = Math.max(1, Math.round(fullQty * Math.min(1, pct / mg.threshold)));
     _uniAddCargo(loot, actualQty);
     mg.wrk.salvaged = true;
     const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
@@ -3324,19 +3395,19 @@ function _uniHandleClick(mx, my) {
     return;
   }
 
-  // Salvage minigame close button
+  // Salvage minigame — close button or start erasing
   if (_uniSalvageMinigame) {
     const mg = _uniSalvageMinigame;
+    mg.mx = mx; mg.my = my;
     if (mg._closeBtn) {
       const b = mg._closeBtn;
       if (mx > b.x && mx < b.x + b.w && my > b.y && my < b.y + b.h) {
-        _uniCloseSalvageMinigame(false);
+        const pct = mg.debris.totalFilled > 0 ? mg.debris.erased / mg.debris.totalFilled : 0;
+        _uniCloseSalvageMinigame(pct >= mg.threshold);
         return;
       }
     }
-    // Start drag on active line
     mg.mouseDown = true;
-    mg.lastMx = mx; mg.lastMy = my;
     return;
   }
 
@@ -3416,9 +3487,12 @@ document.addEventListener("mousedown", function(e) {
 });
 
 document.addEventListener("mousemove", function(e) {
-  if (!_uniSalvageMinigame || !_uniSalvageMinigame.mouseDown) return;
+  if (!_uniSalvageMinigame) return;
   const ds = typeof displayScale !== "undefined" ? displayScale : 1;
-  _uniSalvageDrag(e.clientX / ds, e.clientY / ds);
+  const mx = e.clientX / ds, my = e.clientY / ds;
+  _uniSalvageMinigame.mx = mx;
+  _uniSalvageMinigame.my = my;
+  if (_uniSalvageMinigame.mouseDown) _uniSalvageDrag(mx, my);
 });
 
 document.addEventListener("mouseup", function() {
@@ -3461,46 +3535,37 @@ document.addEventListener("keydown", function(e) {
 
 function _uniSalvageDrag(mx, my) {
   const mg = _uniSalvageMinigame;
-  if (!mg || !mg.mouseDown) return;
-  const line = mg.lines[mg.activeLineIdx];
-  if (!line || line.completed || line.failed) {
-    // Advance to next line
-    mg.activeLineIdx++;
-    if (mg.activeLineIdx >= mg.lines.length) {
-      _uniCloseSalvageMinigame(true);
-    }
-    return;
-  }
+  if (!mg) return;
+  mg.mx = mx; mg.my = my;
+  if (!mg.mouseDown) return;
 
-  const linesAreaX = mg.panelX + 15;
-  const linesAreaY = mg.panelY + 42;
+  const areaX = mg.panelX + 10;
+  const areaY = mg.panelY + 32;
+  const d = mg.debris;
+  const er = mg.eraserRadius;
 
-  // Check progress along line segments
-  const pts = line.points;
-  const nextPtIdx = Math.min(Math.ceil(line.progress), pts.length - 1);
-  const nextPt = pts[nextPtIdx];
-  const targetX = linesAreaX + nextPt.x;
-  const targetY = linesAreaY + nextPt.y;
-  const dist = Math.hypot(mx - targetX, my - targetY);
+  // Convert screen coords to grid space
+  const localX = mx - areaX;
+  const localY = my - areaY;
 
-  if (dist < line.tolerance) {
-    line.progress = Math.min(line.progress + 0.5, pts.length - 1);
-    if (line.progress >= pts.length - 1) {
-      line.completed = true;
-      mg.activeLineIdx++;
-      if (mg.activeLineIdx >= mg.lines.length) {
-        _uniCloseSalvageMinigame(true);
+  // Clear all mask cells within eraser radius
+  const minGx = Math.max(0, Math.floor((localX - er) / d.CELL));
+  const maxGx = Math.min(d.GRID_W - 1, Math.ceil((localX + er) / d.CELL));
+  const minGy = Math.max(0, Math.floor((localY - er) / d.CELL));
+  const maxGy = Math.min(d.GRID_H - 1, Math.ceil((localY + er) / d.CELL));
+
+  for (let gy = minGy; gy <= maxGy; gy++) {
+    for (let gx = minGx; gx <= maxGx; gx++) {
+      const cellCx = gx * d.CELL + d.CELL / 2;
+      const cellCy = gy * d.CELL + d.CELL / 2;
+      if (Math.hypot(cellCx - localX, cellCy - localY) <= er) {
+        if (d.mask[gy * d.GRID_W + gx] === 1) {
+          d.mask[gy * d.GRID_W + gx] = 0;
+          d.erased++;
+        }
       }
     }
-  } else if (dist > line.tolerance * 3) {
-    // Too far off — line failed
-    line.failed = true;
-    mg.activeLineIdx++;
-    if (mg.activeLineIdx >= mg.lines.length) {
-      _uniCloseSalvageMinigame(mg.lines.some(l => l.completed));
-    }
   }
-  mg.lastMx = mx; mg.lastMy = my;
 }
 
 function _uniMapBack() {
