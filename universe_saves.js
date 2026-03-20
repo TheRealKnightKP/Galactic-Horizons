@@ -430,7 +430,7 @@ function generateQuadrantContents(quadrant, systemDanger, systemFaction) {
   if (quadrant.type === "mining" || quadrant.type === "debris") {
     const orePool = quadrant.type === "mining"
       ? ["iron", "iron", "iron", "copper", "copper", "titanium", "gold", "quantanium"]
-      : ["scrap", "scrap", "iron", "electronics", "polymers", "armor_plating"];
+      : ["scrap", "scrap", "iron", "copper", "electronics", "polymers"];
     const count = 8 + Math.floor(rng() * 12);
     for (let i = 0; i < count; i++) {
       const ore = orePool[Math.floor(rng() * orePool.length)];
@@ -497,22 +497,26 @@ function generateQuadrantContents(quadrant, systemDanger, systemFaction) {
   // ── WRECKS ───────────────────────────────────────────────────
   if (quadrant.type === "debris") {
     const wreckCount = 4 + Math.floor(rng() * 6);
-    // Loot pool scales with danger — higher danger = better salvage
-    const lootPool = danger >= 4
-      ? ["quantum_cores", "armor_plating", "electronics", "armor_plating"]
-      : danger >= 3
-        ? ["armor_plating", "electronics", "polymers", "armor_plating"]
-        : ["scrap", "electronics", "polymers", "iron", "copper"];
+    // Loot pool scales with danger — higher danger = better AND more variety
+    const lootPool = danger >= 5
+      ? ["quantum_cores", "quantum_cores", "armor_plating", "void_capacitor", "quantum_cores", "armor_plating", "crystallized_fuel"]
+      : danger >= 4
+        ? ["quantum_cores", "armor_plating", "armor_plating", "electronics", "armor_plating", "crystallized_fuel"]
+        : danger >= 3
+          ? ["armor_plating", "armor_plating", "electronics", "polymers", "armor_plating", "electronics"]
+          : danger >= 2
+            ? ["electronics", "polymers", "iron", "armor_plating", "electronics", "copper"]
+            : ["scrap", "scrap", "electronics", "polymers", "iron", "copper"];
     for (let i = 0; i < wreckCount; i++) {
       const wrkHp = 30 + Math.floor(rng() * 60);
       const loot = lootPool[Math.floor(rng() * lootPool.length)];
-      const isMilitary = loot === "armor_plating" || loot === "quantum_cores";
+      const isMilitary = loot === "armor_plating" || loot === "quantum_cores" || loot === "void_capacitor" || loot === "crystallized_fuel";
       contents.wrecks.push({
         id: "wrk_" + i,
         x: 100 + rng() * 1080,
         y: 80 + rng() * 560,
         loot,
-        lootQty: loot === "quantum_cores" ? 1 : 1 + Math.floor(rng() * 3),
+        lootQty: (loot === "quantum_cores" || loot === "void_capacitor") ? 1 : loot === "crystallized_fuel" ? 1 + Math.floor(rng() * 2) : 1 + Math.floor(rng() * 3),
         health: wrkHp,
         maxHealth: wrkHp,
         salvaged: false,
