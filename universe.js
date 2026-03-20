@@ -1779,6 +1779,8 @@ function uniStartQuantum(systemId, areaId, quad) {
   _uniQuantumTimer = UNI_QT_LAUNCH;
   _uniQuantumPhase = "launch";
   uniState = "quantum";
+  // Stop the map loop — game.js takes over rendering during launch phase
+  _stopUniMapLoop();
   // Stay in playing state — game.js renders the current quadrant, we overlay effects
   if (typeof state !== "undefined") state = "playing";
   return true;
