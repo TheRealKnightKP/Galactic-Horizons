@@ -1798,7 +1798,7 @@ function recallToCapital() {
   if (!isDeployed || !capitalShipObj) return;
   capitalShipObj.missileRack = [...(player.missileRack||[])]; capitalShipObj.missiles = capitalShipObj.missileRack.length;
   player = capitalShipObj; capitalShipObj._isCapitalAutopilot = false; capitalShipObj = null;
-  isDeployed = false; currentShipName = playerLoadout.ship;
+  isDeployed = false; deployedShipAvail = true; currentShipName = playerLoadout.ship;
   updateHUD(); showNotification("RETURNED TO CAPITAL", "#0af");
 }
 
@@ -1837,10 +1837,6 @@ function updateCapitalAutopilot() {
     }
   }
   regenShieldFaces(cap, 0.008);
-  const ddx=player.x+player.w/2-(cap.x+cap.w/2), ddy=player.y+player.h/2-(cap.y+cap.h/2);
-  const distFromCapital = Math.hypot(ddx,ddy);
-  if (!cap._deployGraceCleared && distFromCapital > 100) cap._deployGraceCleared = true;
-  if (cap._deployGraceCleared && distFromCapital < 80) recallToCapital();
   if (cap.hp <= 0) {
     capitalDestroyed = true; capitalNoRespawn = 2; capitalShipObj = null; isDeployed = false;
     spawnDeathEffect(cap); playExplosion(8); showSpecialToast("CAPITAL DESTROYED — Ejected! Allies won't respawn for 2 waves.");
@@ -2421,8 +2417,10 @@ function render() {
   // In universe mode, skip rendering if not playing — EXCEPT during quantum phases which need overlay
   if (window.gameMode === "universe" && state !== "playing") {
     const inQuantum = typeof uniState !== "undefined" && uniState === "quantum";
+    const inTravel = typeof _uniQuantumPhase !== "undefined" && _uniQuantumPhase === "travel";
     if (!inQuantum) return;
-    // During quantum, draw the star background and quantum overlay only
+    if (inTravel) return; // map loop handles travel cutscene entirely — don't interfere
+    // Launch/arrive phases: draw star background + quantum overlay only
     if (!_starCanvas) _buildStarBg(); ctx.drawImage(_starCanvas, 0, 0);
     if (typeof _uniRenderQuantumOverlay === "function") {
       _uniRenderQuantumOverlay(ctx, GAME_W, typeof GAME_H !== "undefined" ? GAME_H : 720);
