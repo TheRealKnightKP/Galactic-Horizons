@@ -2418,8 +2418,17 @@ function drawBoostHUD() {
 }
 
 function render() {
-  // In universe mode, if not actively flying, universe.js handles all rendering
-  if (window.gameMode === "universe" && state !== "playing") return;
+  // In universe mode, skip rendering if not playing — EXCEPT during quantum phases which need overlay
+  if (window.gameMode === "universe" && state !== "playing") {
+    const inQuantum = typeof uniState !== "undefined" && uniState === "quantum";
+    if (!inQuantum) return;
+    // During quantum, draw the star background and quantum overlay only
+    if (!_starCanvas) _buildStarBg(); ctx.drawImage(_starCanvas, 0, 0);
+    if (typeof _uniRenderQuantumOverlay === "function") {
+      _uniRenderQuantumOverlay(ctx, GAME_W, typeof GAME_H !== "undefined" ? GAME_H : 720);
+    }
+    return;
+  }
 
   if (!_starCanvas) _buildStarBg(); ctx.drawImage(_starCanvas, 0, 0);
   if(state==="shadowCometCutscene"){ drawShadowCometCutscene(); return; }
@@ -2450,6 +2459,10 @@ function render() {
   if (_isUni) {
     // Universe overlay: asteroids, station, POIs, mining beam, universe HUD
     if (typeof uniRenderOverlay === "function") uniRenderOverlay();
+    // Quantum overlay renders even when state is not playing (launch/arrive phases)
+    if (typeof _uniRenderQuantumOverlay === "function" && typeof uniState !== "undefined" && uniState === "quantum") {
+      _uniRenderQuantumOverlay(ctx, GAME_W, typeof GAME_H !== "undefined" ? GAME_H : 720);
+    }
     // Boost bar works in universe too
     drawBoostHUD();
   } else {
