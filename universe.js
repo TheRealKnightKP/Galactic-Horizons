@@ -492,6 +492,7 @@ function uniUpdate() {
           e.vy = (e.vy || 0) * 0.92 + (dy / dist) * spd;
           e.x += e.vx; e.y += e.vy;
           e.rotation = Math.atan2(e.vy, e.vx);
+          e._patrolFacing = e.rotation;
         }
       } else {
         // Fallback circular patrol
@@ -503,6 +504,7 @@ function uniUpdate() {
         e.vy = (e.vy || 0) * 0.95 + (dy / d) * 0.15;
         e.x += e.vx; e.y += e.vy;
         e.rotation = Math.atan2(e.vy, e.vx);
+        e._patrolFacing = e.rotation;
       }
     });
 
@@ -600,6 +602,8 @@ function uniUpdate() {
   // Mining
   _uniUpdateMining();
   _uniUpdateSalvaging();
+  _uniUpdateHacking();
+  _uniCheckGuardDetection();
 
   // Station proximity
   _uniCheckStation();
@@ -610,15 +614,30 @@ function uniUpdate() {
 
   // Player death
   if (player.hp <= 0) {
-    player.hp = Math.floor(player.maxHp * 0.5);
-    player.shields = 0;
-    player.fuel = Math.max(10, player.fuel);
     const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
     if (world) {
-      const penalty = Math.floor(world.player.credits * 0.1);
+      // Credit penalty — lose 15% of credits
+      const penalty = Math.floor(world.player.credits * 0.15);
       world.player.credits = Math.max(0, world.player.credits - penalty);
       if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
+      // Mark ship as lost — needs recovery at a station
+      const ship = world.player.ownedShips[world.player.activeShipIdx || 0];
+      if (ship) {
+        ship.hp = null; // will be restored to full on recovery
+        ship.shields = null;
+        ship._lostAt = Date.now();
+        ship._recoveryCost = Math.round((typeof SHIPS !== "undefined" && SHIPS[ship.key]?.price || 10000) * 0.15);
+      }
     }
+    player.hp = Math.floor(player.maxHp * 0.3);
+    player.shields = 0;
+    player.fuel = Math.max(10, player.fuel);
+    // Drop cargo — lose half
+    if (player.cargo && player.cargo.length > 0) {
+      player.cargo = player.cargo.map(c => ({ ...c, quantity: Math.floor(c.quantity / 2) })).filter(c => c.quantity > 0);
+    }
+    _uniInCombat = false;
+    if (typeof showSpecialToast === "function") showSpecialToast("SHIP LOST — Escape pod activated. Recover at a station.");
     uniState = "map";
     if (typeof state !== "undefined") state = "menu";
     _uniMapLevel = "system";
@@ -954,6 +973,10 @@ function uniRenderOverlay() {
 
   // Salvage minigame overlay
   if (_uniSalvageMinigame) _uniRenderSalvageMinigame(c, gw, gh);
+
+  // Hacking minigame overlay + detection cones
+  _uniRenderDetectionCones(c);
+  if (_uniHackingMinigame) _uniRenderHackingMinigame(c, gw, gh);
 
   // Quantum travel overlay effects (launch/arrive phases render ON TOP of quadrant)
   if (uniState === "quantum") _uniRenderQuantumOverlay(c, gw, gh);
@@ -1394,7 +1417,236 @@ function _uniCompleteMining(ast) {
   if (typeof showSpecialToast === "function") showSpecialToast("Ore extracted: " + ast.oreType);
 }
 
-// ── WRECK SALVAGING MINIGAME ──────────────────────────────────
+// ── PRIVATE MINE HACKING ──────────────────────────────────────
+// Detection cone: guards scan in front of them. If player enters cone → alarm.
+// Hacking: press H near locked asteroid → minigame. Timed button sequence.
+
+let _uniHackingMinigame = null;
+let _uniAlarmActive = false;
+let _uniAlarmTimer = 0;
+const UNI_ALARM_DURATION = 600; // 10 seconds of alarm before lockout ends
+const UNI_HACK_SEQUENCE_LEN = 5; // buttons to press
+
+function _uniCheckGuardDetection() {
+  if (typeof player === "undefined" || !player) return;
+  if (_uniCurrentQuadrant?.type !== "private_mine") return;
+  if (_uniAlarmActive) {
+    _uniAlarmTimer--;
+    if (_uniAlarmTimer <= 0) {
+      _uniAlarmActive = false;
+      if (typeof showSpecialToast === "function") showSpecialToast("Alarm expired — area calming down.");
+    }
+    return;
+  }
+
+  const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
+  if (typeof enemies === "undefined") return;
+
+  for (const e of enemies) {
+    if (!e._uniPatrol || !e.isGuard || e.dead) continue;
+    const ecx = e.x + (e.w || 30) / 2, ecy = e.y + (e.h || 30) / 2;
+    const dx = pcx - ecx, dy = pcy - ecy;
+    const dist = Math.hypot(dx, dy);
+    const coneRange = 280;
+    const coneAngle = Math.PI / 3; // 60 degree cone
+    if (dist > coneRange) continue;
+    // Guard facing direction — use patrol path or default forward
+    const guardAngle = e._patrolFacing || 0;
+    const angleToPlayer = Math.atan2(dy, dx);
+    let angleDiff = angleToPlayer - guardAngle;
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    if (Math.abs(angleDiff) < coneAngle / 2) {
+      // Detected!
+      _uniAlarmActive = true;
+      _uniAlarmTimer = UNI_ALARM_DURATION;
+      if (typeof showSpecialToast === "function") showSpecialToast("⚠ DETECTED — Guards alarmed!");
+      // Alert all guards
+      enemies.forEach(ge => { if (ge.isGuard) ge.aggroed = true; });
+      break;
+    }
+  }
+}
+
+function _uniUpdateHacking() {
+  if (!_uniHackingMinigame) {
+    // Check if player pressed H near a locked asteroid
+    if (_uniCurrentQuadrant?.type !== "private_mine") return;
+    if (_uniAlarmActive) return;
+    if (_uniMiningMinigame) return;
+    const k = typeof keys !== "undefined" ? keys : {};
+    if (!k["KeyH"]) return;
+    k["KeyH"] = false;
+    if (typeof player === "undefined" || !player) return;
+    const pcx = player.x + player.w / 2, pcy = player.y + player.h / 2;
+    let nearest = null, nearestDist = 200;
+    uniAsteroids.forEach(ast => {
+      if (!ast.locked || ast.hacked || ast.depleted) return;
+      const d = Math.hypot(ast.x - pcx, ast.y - pcy);
+      if (d < nearestDist) { nearestDist = d; nearest = ast; }
+    });
+    if (!nearest) return;
+    _uniStartHackingMinigame(nearest);
+    return;
+  }
+
+  // Tick hacking minigame timer
+  const mg = _uniHackingMinigame;
+  mg.timeLeft--;
+  if (mg.timeLeft <= 0) {
+    _uniCloseHackingMinigame(false);
+    if (typeof showSpecialToast === "function") showSpecialToast("Hack failed — timed out!");
+  }
+}
+
+function _uniStartHackingMinigame(ast) {
+  const KEYS = ["Q", "W", "E", "A", "S"];
+  const sequence = [];
+  for (let i = 0; i < UNI_HACK_SEQUENCE_LEN; i++) {
+    sequence.push(KEYS[Math.floor(Math.random() * KEYS.length)]);
+  }
+  _uniHackingMinigame = {
+    ast,
+    sequence,
+    currentIdx: 0,
+    timeLeft: 300, // 5 seconds
+    maxTime: 300,
+    failed: false,
+    panelW: 320, panelH: 200,
+    panelX: 0, panelY: 0,
+  };
+}
+
+function _uniCloseHackingMinigame(success) {
+  if (!_uniHackingMinigame) return;
+  const mg = _uniHackingMinigame;
+  if (success) {
+    mg.ast.locked = false;
+    mg.ast.hacked = true;
+    if (typeof showSpecialToast === "function") showSpecialToast("Device hacked — asteroid unlocked!");
+  } else {
+    // Failed hack triggers alarm
+    _uniAlarmActive = true;
+    _uniAlarmTimer = UNI_ALARM_DURATION;
+    if (typeof enemies !== "undefined") enemies.forEach(e => { if (e.isGuard) e.aggroed = true; });
+    if (typeof showSpecialToast === "function") showSpecialToast("⚠ HACK FAILED — Guards alarmed!");
+  }
+  _uniHackingMinigame = null;
+}
+
+function _uniRenderHackingMinigame(c, gw, gh) {
+  const mg = _uniHackingMinigame;
+  if (!mg) return;
+
+  const pw = mg.panelW, ph = mg.panelH;
+  const px = (gw - pw) / 2, py = (gh - ph) / 2;
+  mg.panelX = px; mg.panelY = py;
+
+  // Panel
+  c.save();
+  c.fillStyle = "rgba(0,8,0,0.94)";
+  c.strokeStyle = "#00ff88"; c.lineWidth = 2;
+  c.fillRect(px, py, pw, ph);
+  c.strokeRect(px, py, pw, ph);
+
+  // Title
+  c.fillStyle = "#00ff88"; c.font = "bold 11px monospace"; c.textAlign = "center";
+  c.fillText("HACK DEVICE", px + pw / 2, py + 16);
+
+  // Timer bar
+  const tFrac = mg.timeLeft / mg.maxTime;
+  const tbX = px + 10, tbY = py + 22, tbW = pw - 20, tbH = 6;
+  c.fillStyle = "#111"; c.fillRect(tbX, tbY, tbW, tbH);
+  c.fillStyle = tFrac > 0.5 ? "#00ff88" : tFrac > 0.25 ? "#ffaa00" : "#ff4444";
+  c.fillRect(tbX, tbY, tbW * tFrac, tbH);
+
+  // Instruction
+  c.fillStyle = "#888"; c.font = "9px monospace";
+  c.fillText("Press keys in sequence:", px + pw / 2, py + 44);
+
+  // Sequence display
+  const keyW = 36, keyH = 36, gap = 8;
+  const totalW = mg.sequence.length * (keyW + gap) - gap;
+  const startX = px + (pw - totalW) / 2;
+  const keyY = py + 52;
+
+  mg.sequence.forEach((key, i) => {
+    const kx = startX + i * (keyW + gap);
+    const isDone = i < mg.currentIdx;
+    const isCurrent = i === mg.currentIdx;
+    c.fillStyle = isDone ? "rgba(0,255,100,0.2)" : isCurrent ? "rgba(0,200,255,0.2)" : "rgba(40,40,40,0.8)";
+    c.fillRect(kx, keyY, keyW, keyH);
+    c.strokeStyle = isDone ? "#00ff88" : isCurrent ? "#00ccff" : "#333";
+    c.lineWidth = isCurrent ? 2 : 1;
+    c.strokeRect(kx, keyY, keyW, keyH);
+    c.fillStyle = isDone ? "#00ff88" : isCurrent ? "#00ccff" : "#555";
+    c.font = "bold 16px monospace";
+    c.fillText(isDone ? "✓" : key, kx + keyW / 2, keyY + 24);
+  });
+
+  // ESC hint
+  c.fillStyle = "#444"; c.font = "8px monospace";
+  c.fillText("ESC to abort (triggers alarm)", px + pw / 2, py + ph - 8);
+
+  c.restore();
+}
+
+// Detection cone rendering (called from uniRenderOverlay)
+function _uniRenderDetectionCones(c) {
+  if (_uniCurrentQuadrant?.type !== "private_mine") return;
+  if (typeof enemies === "undefined") return;
+  const cx = window.camX || 0, cy = window.camY || 0;
+
+  enemies.forEach(e => {
+    if (!e._uniPatrol || !e.isGuard || e.dead) return;
+    const ecx = e.x + (e.w || 30) / 2 - cx;
+    const ecy = e.y + (e.h || 30) / 2 - cy;
+    const guardAngle = e._patrolFacing || 0;
+    const coneAngle = Math.PI / 3;
+    const coneRange = 280;
+    c.save();
+    c.globalAlpha = _uniAlarmActive ? 0.35 : 0.15;
+    c.fillStyle = _uniAlarmActive ? "#ff2222" : "#ffcc00";
+    c.beginPath();
+    c.moveTo(ecx, ecy);
+    c.arc(ecx, ecy, coneRange, guardAngle - coneAngle / 2, guardAngle + coneAngle / 2);
+    c.closePath();
+    c.fill();
+    c.restore();
+  });
+
+  // Alarm indicator
+  if (_uniAlarmActive) {
+    const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.01);
+    c.save();
+    c.fillStyle = "rgba(255,0,0," + (pulse * 0.12) + ")";
+    c.fillRect(0, 0, typeof GAME_W !== "undefined" ? GAME_W : 1280, typeof GAME_H !== "undefined" ? GAME_H : 720);
+    c.fillStyle = "rgba(255,80,80," + (0.6 + pulse * 0.4) + ")";
+    c.font = "bold 14px monospace"; c.textAlign = "center";
+    c.fillText("⚠ ALARM ACTIVE — " + Math.ceil(_uniAlarmTimer / 60) + "s", (typeof GAME_W !== "undefined" ? GAME_W : 1280) / 2, 40);
+    c.textAlign = "left";
+    c.restore();
+  }
+}
+
+// Handle hacking keypress
+function _uniHandleHackKey(key) {
+  if (!_uniHackingMinigame) return false;
+  const mg = _uniHackingMinigame;
+  const expected = mg.sequence[mg.currentIdx];
+  if (key === expected) {
+    mg.currentIdx++;
+    if (mg.currentIdx >= mg.sequence.length) {
+      _uniCloseHackingMinigame(true);
+    }
+  } else {
+    // Wrong key — fail immediately
+    _uniCloseHackingMinigame(false);
+  }
+  return true;
+}
+
+
 // Center panel, game keeps running, player locked.
 // Shows a debris shape made of filled polygons.
 // Player holds mouse/finger and drags — a circle eraser strips the shape.
@@ -2358,7 +2610,7 @@ function _uniRenderRepair(c, x, y, w, h) {
   const barW = w * 0.6, barH = 18;
   const barX = x + (w - barW) / 2;
 
-  // HP
+  // HP bar
   const hpY = y + 46;
   c.fillStyle = "#222"; c.fillRect(barX, hpY, barW, barH);
   c.fillStyle = player.hp / player.maxHp > 0.5 ? "#0f0" : "#ff4444";
@@ -2366,7 +2618,7 @@ function _uniRenderRepair(c, x, y, w, h) {
   c.fillStyle = "#fff"; c.font = "11px monospace";
   c.fillText("HP " + Math.floor(player.hp) + "/" + player.maxHp, x + w / 2, hpY + 14);
 
-  // Armor
+  // Armor bar
   const arY = hpY + 28;
   c.fillStyle = "#222"; c.fillRect(barX, arY, barW, barH);
   c.fillStyle = "#ccc";
@@ -2387,6 +2639,28 @@ function _uniRenderRepair(c, x, y, w, h) {
   c.font = "bold 13px monospace";
   c.fillText(hpNeeded < 0.5 && armorNeeded < 0.5 ? "HULL OK" : "REPAIR", x + w / 2, btnY + 22);
   window._uniRepairRect = canRepair ? { x: btnX, y: btnY, w: btnW, h: btnH, cost: repairCost } : null;
+
+  // ── SHIP RECOVERY SECTION ─────────────────────────────────────
+  const ship = world?.player?.ownedShips?.[world?.player?.activeShipIdx || 0];
+  if (ship && ship._lostAt) {
+    const recoverY = btnY + 54;
+    c.fillStyle = "rgba(255,80,80,0.12)"; c.fillRect(x, recoverY - 8, w, 80);
+    c.strokeStyle = "#ff4444"; c.lineWidth = 1; c.strokeRect(x, recoverY - 8, w, 80);
+    c.fillStyle = "#ff8888"; c.font = "bold 12px monospace";
+    c.fillText("⚠ SHIP LOST — ESCAPE POD ACTIVE", x + w / 2, recoverY + 10);
+    const canRecover = credits >= ship._recoveryCost;
+    c.fillStyle = canRecover ? "#aaa" : "#ff4444"; c.font = "11px monospace";
+    c.fillText("Recovery cost: " + (ship._recoveryCost || 0).toLocaleString() + " SC", x + w / 2, recoverY + 28);
+    const recW = 180, recH = 28, recX = x + (w - recW) / 2, recY2 = recoverY + 36;
+    c.fillStyle = canRecover ? "rgba(0,255,100,0.15)" : "rgba(80,0,0,0.3)";
+    c.fillRect(recX, recY2, recW, recH);
+    c.strokeStyle = canRecover ? "#0f0" : "#555"; c.strokeRect(recX, recY2, recW, recH);
+    c.fillStyle = canRecover ? "#0f0" : "#555"; c.font = "bold 11px monospace";
+    c.fillText(canRecover ? "RECOVER SHIP" : "NOT ENOUGH CREDITS", x + w / 2, recY2 + 19);
+    window._uniRecoverRect = canRecover ? { x: recX, y: recY2, w: recW, h: recH, cost: ship._recoveryCost } : null;
+  } else {
+    window._uniRecoverRect = null;
+  }
 
   c.textAlign = "left";
 }
@@ -3642,6 +3916,22 @@ function _uniHandleClick(mx, my) {
         window._uniRepairRect = null; return;
       }
     }
+    if (_uniStationTab === "repair" && window._uniRecoverRect) {
+      const r = window._uniRecoverRect;
+      if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) {
+        const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
+        if (world) {
+          world.player.credits -= r.cost;
+          if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
+          const ship = world.player.ownedShips?.[world.player.activeShipIdx || 0];
+          if (ship) { delete ship._lostAt; delete ship._recoveryCost; }
+          if (typeof player !== "undefined" && player) { player.hp = player.maxHp; player.armor = player.maxArmor; player.shields = player.maxShields || 0; }
+          if (typeof showSpecialToast === "function") showSpecialToast("Ship recovered and repaired.");
+          if (typeof autoSaveUniverse === "function") autoSaveUniverse();
+        }
+        window._uniRecoverRect = null; return;
+      }
+    }
     if (_uniStationTab === "missions") {
       if (window._uniMissionTurnInRects) { for (const r of window._uniMissionTurnInRects) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { _uniTurnInMission(r.activeIdx); return; } } }
       if (window._uniMissionAbandonRects) { for (const r of window._uniMissionAbandonRects) { if (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h) { const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null; if (world && world.player.activeMissions) { const m = world.player.activeMissions[r.activeIdx]; if (m && m.type === "delivery" && m.deliveryCommodity && typeof player !== "undefined" && player && player.cargo) { const ci = player.cargo.find(c => c.commodity === m.deliveryCommodity); if (ci) { ci.quantity -= 1; player.cargo = player.cargo.filter(c => c.quantity > 0); } } world.player.activeMissions.splice(r.activeIdx, 1); } return; } } }
@@ -3705,6 +3995,11 @@ document.addEventListener("touchend", function() {
 
 document.addEventListener("keydown", function(e) {
   if (uniState === "inactive") return;
+  if (_uniHackingMinigame) {
+    if (e.code === "Escape") { _uniCloseHackingMinigame(false); return; }
+    const keyMap = { KeyQ:"Q", KeyW:"W", KeyE:"E", KeyA:"A", KeyS:"S" };
+    if (keyMap[e.code]) { e.preventDefault(); _uniHandleHackKey(keyMap[e.code]); return; }
+  }
   if (_uniMiningMinigame) {
     if (e.code === "Escape") { _uniMiningMinigame = null; return; }
     if (e.code === "Space" || e.code === "KeyH") { e.preventDefault(); window._uniMinePressed = true; return; }
