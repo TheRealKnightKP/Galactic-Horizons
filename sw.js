@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.9.1";
+const CACHE = "galactic-horizons-v1.9.2";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -205,4 +205,5 @@ Versions:
 -V1.8.33 - Updated sw.js to correctly include the station images
 -V1.9.0 - Into the War update: Overhauled prices, added trading spread, mining and salvage minigames, passive NPC ships that flee and drop loot, faction reputation that actually affects patrols and prices, and a living NPC war system that shifts faction control between systems every few jumps. (19/3/2026)
 -V1.9.1 - Salvage fixes and New systems
+-V1.9.2 - Fixed economy stuff
 */
