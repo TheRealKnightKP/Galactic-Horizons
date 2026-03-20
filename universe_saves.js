@@ -90,12 +90,18 @@ async function createNewWorld(worldName) {
     // Active NPC events — starts empty
     activeEvents: [],
 
-    // Faction influence overrides — only stores systems that changed from default
-    // Default values come from SYSTEM_DEFS[sysId].defaultFaction
-    factionInfluence: {},
+    // Faction influence per system — starts from SYSTEM_START_INFLUENCE defaults
+    factionInfluence: typeof SYSTEM_START_INFLUENCE !== "undefined"
+      ? JSON.parse(JSON.stringify(SYSTEM_START_INFLUENCE))
+      : {},
 
     // Sun health overrides — only stores systems that changed from default
     sunHealth: {},
+
+    // NPC war system state
+    activeWars: [],      // [{ systemId, attackerFaction, defenderFaction, jumpsRemaining, cooldown }]
+    totalJumps: 0,       // player jump counter (used for war timing)
+    systemWarCooldowns: {}, // { systemId: jumpsUntilWarAllowed }
   };
 
   // Write to IndexedDB
@@ -413,17 +419,19 @@ function regenerateUniverse(world) {
 // Generates the actual contents of a quadrant when the player enters it.
 // Only called for the quadrant being loaded — not all at once.
 
-function generateQuadrantContents(quadrant, systemDanger) {
+function generateQuadrantContents(quadrant, systemDanger, systemFaction) {
   if (!quadrant || !quadrant.seed) return {};
   const rng = seededRNG(quadrant.seed);
+  const danger = systemDanger || 1;
+  const faction = systemFaction || "civilian";
   const contents = { asteroids: [], pois: [], patrolSpawns: [], wrecks: [] };
 
-  // Asteroids (for mining and debris quadrants)
+  // ── ASTEROIDS ────────────────────────────────────────────────
   if (quadrant.type === "mining" || quadrant.type === "debris") {
     const orePool = quadrant.type === "mining"
-      ? ["iron", "iron", "copper", "titanium", "gold", "quantanium"]
-      : ["scrap", "scrap", "iron", "electronics", "polymers"];
-    const count = 8 + Math.floor(rng() * 12); // 8-19 asteroids
+      ? ["iron", "iron", "iron", "copper", "copper", "titanium", "gold", "quantanium"]
+      : ["scrap", "scrap", "iron", "electronics", "polymers", "armor_plating"];
+    const count = 8 + Math.floor(rng() * 12);
     for (let i = 0; i < count; i++) {
       const ore = orePool[Math.floor(rng() * orePool.length)];
       const astHp = 50 + Math.floor(rng() * 100);
@@ -435,31 +443,89 @@ function generateQuadrantContents(quadrant, systemDanger) {
         health: astHp,
         maxHealth: astHp,
         depleted: false,
+        strikes: 0,         // mining minigame: how many strikes so far
+        maxStrikes: ore === "quantanium" ? 5 : ore === "gold" ? 4 : ore === "platinum_hq" || ore === "rhodium" ? 5 : 3,
       });
     }
   }
 
-  // Wrecks (debris quadrants — interactable salvage objects)
+  // ── PRIVATE MINE ASTEROIDS (Harvester exclusive) ─────────────
+  if (quadrant.type === "private_mine") {
+    const privateOrePool = ["platinum_hq", "platinum_hq", "uranium", "uranium", "rhodium"];
+    const count = 6 + Math.floor(rng() * 6); // 6-11 asteroids
+    for (let i = 0; i < count; i++) {
+      const ore = privateOrePool[Math.floor(rng() * privateOrePool.length)];
+      const astHp = 80 + Math.floor(rng() * 80);
+      contents.asteroids.push({
+        id: "past_" + i,
+        x: 150 + rng() * 980,
+        y: 100 + rng() * 520,
+        oreType: ore,
+        health: astHp,
+        maxHealth: astHp,
+        depleted: false,
+        locked: true,         // requires hacking device to mine
+        hacked: false,
+        deviceAlarm: false,   // true if alarm triggered
+        strikes: 0,
+        maxStrikes: 5,
+      });
+    }
+    // Private mine guards — always spawn
+    const guardKeys = ["priv_mine_light", "priv_mine_heavy"].filter(k => {
+      const pt = typeof PATROL_TEMPLATES !== "undefined" ? PATROL_TEMPLATES[k] : null;
+      return pt && pt.dangerMin <= danger;
+    });
+    const guardKey = guardKeys.length > 1 && danger >= 3 ? "priv_mine_heavy" : "priv_mine_light";
+    const guardCount = 2 + Math.floor(rng() * 2); // 2-3 guard groups
+    for (let g = 0; g < guardCount; g++) {
+      contents.patrolSpawns.push({
+        templateKey: guardKey,
+        x: 200 + rng() * 800,
+        y: 100 + rng() * 520,
+        aggroRange: 200,  // guards have shorter aggro — they don't notice player from far
+        isGuard: true,
+        patrolPath: [
+          { x: 200 + rng() * 400, y: 100 + rng() * 300 },
+          { x: 600 + rng() * 400, y: 200 + rng() * 300 },
+          { x: 300 + rng() * 500, y: 350 + rng() * 200 },
+        ],
+      });
+    }
+  }
+
+  // ── WRECKS ───────────────────────────────────────────────────
   if (quadrant.type === "debris") {
-    const wreckCount = 4 + Math.floor(rng() * 6); // 4-9 wrecks
-    const lootPool = ["scrap", "electronics", "polymers", "iron", "copper"];
+    const wreckCount = 4 + Math.floor(rng() * 6);
+    // Loot pool scales with danger — higher danger = better salvage
+    const lootPool = danger >= 4
+      ? ["quantum_cores", "armor_plating", "electronics", "armor_plating"]
+      : danger >= 3
+        ? ["armor_plating", "electronics", "polymers", "armor_plating"]
+        : ["scrap", "electronics", "polymers", "iron", "copper"];
     for (let i = 0; i < wreckCount; i++) {
       const wrkHp = 30 + Math.floor(rng() * 60);
+      const loot = lootPool[Math.floor(rng() * lootPool.length)];
+      const isMilitary = loot === "armor_plating" || loot === "quantum_cores";
       contents.wrecks.push({
         id: "wrk_" + i,
         x: 100 + rng() * 1080,
         y: 80 + rng() * 560,
-        loot: lootPool[Math.floor(rng() * lootPool.length)],
-        lootQty: 1 + Math.floor(rng() * 3),
+        loot,
+        lootQty: loot === "quantum_cores" ? 1 : 1 + Math.floor(rng() * 3),
         health: wrkHp,
         maxHealth: wrkHp,
         salvaged: false,
+        isMilitary,  // military wrecks have harder extraction lines
+        // Salvage minigame lines — generated at runtime in universe.js
+        lines: null,
       });
     }
   }
 
-  // POIs (for non-station, non-wormhole quadrants)
-  if (quadrant.type !== "station" && quadrant.type !== "wormhole_tunnel" && quadrant.type !== "sun_zone") {
+  // ── POIs ─────────────────────────────────────────────────────
+  if (quadrant.type !== "station" && quadrant.type !== "wormhole_tunnel"
+      && quadrant.type !== "sun_zone" && quadrant.type !== "private_mine") {
     const poiChance = quadrant.type === "debris" ? 0.6 : 0.3;
     if (rng() < poiChance) {
       const poiTypes = ["crashed_ship", "abandoned_cargo", "data_cache", "distress_signal"];
@@ -474,15 +540,22 @@ function generateQuadrantContents(quadrant, systemDanger) {
     }
   }
 
-  // Patrol spawns (for patrol and mission quadrants — NOT stations)
+  // ── PATROL SPAWNS ─────────────────────────────────────────────
   if (quadrant.type === "patrol" || quadrant.type === "mission") {
-    const patrolKeys = Object.keys(typeof PATROL_TEMPLATES !== "undefined" ? PATROL_TEMPLATES : {});
-    const validPatrols = patrolKeys.filter(k => {
-      const p = PATROL_TEMPLATES[k];
-      return p.dangerMin <= (systemDanger || 1);
+    const templates = typeof PATROL_TEMPLATES !== "undefined" ? PATROL_TEMPLATES : {};
+    // Filter valid patrols for this system's faction and danger
+    const validPatrols = Object.keys(templates).filter(k => {
+      const p = templates[k];
+      if (p.isGuard) return false; // guards only in private mines
+      if (p.dangerMin > danger) return false;
+      // In civilian/warden space: warden + civilian patrols
+      // In harvester space: harvester + some civilian
+      // In eldritch space: eldritch only
+      if (faction === "eldritch") return p.faction === "eldritch";
+      if (faction === "harvester") return p.faction === "harvester" || p.faction === "civilian";
+      return p.faction === "warden" || p.faction === "civilian"; // civilian/warden space
     });
     if (validPatrols.length > 0) {
-      // Spawn 1-3 patrol groups in patrol sectors
       const patrolCount = 1 + Math.floor(rng() * 2);
       for (let p = 0; p < patrolCount; p++) {
         const patrolKey = validPatrols[Math.floor(rng() * validPatrols.length)];
@@ -490,9 +563,58 @@ function generateQuadrantContents(quadrant, systemDanger) {
           templateKey: patrolKey,
           x: 200 + rng() * 800,
           y: 100 + rng() * 520,
-          aggroRange: 250 + Math.floor(rng() * 150),
+          aggroRange: 150 + Math.floor(rng() * 100), // shorter aggro — don't notice from far
+          patrolPath: [
+            { x: 200 + rng() * 400, y: 100 + rng() * 300 },
+            { x: 500 + rng() * 400, y: 200 + rng() * 300 },
+            { x: 300 + rng() * 400, y: 350 + rng() * 200 },
+          ],
         });
       }
+    }
+  }
+
+  // ── MINING QUADRANT PATROLS (scale by danger) ─────────────────
+  // Higher danger systems have patrol chance in mining zones too
+  if (quadrant.type === "mining") {
+    const patrolChance = Math.min(0.8, (danger - 1) * 0.2); // danger 1=0%, 2=20%, 3=40%, 4=60%, 5=80%
+    if (rng() < patrolChance) {
+      const templates = typeof PATROL_TEMPLATES !== "undefined" ? PATROL_TEMPLATES : {};
+      const validKeys = Object.keys(templates).filter(k => {
+        const p = templates[k];
+        return !p.isGuard && !p.flees && p.dangerMin <= danger &&
+          (faction === "harvester" ? p.faction === "harvester" : p.faction === "warden");
+      });
+      if (validKeys.length > 0) {
+        const key = validKeys[Math.floor(rng() * validKeys.length)];
+        contents.patrolSpawns.push({
+          templateKey: key,
+          x: 400 + rng() * 400,
+          y: 150 + rng() * 300,
+          aggroRange: 150 + Math.floor(rng() * 80),
+          patrolPath: [
+            { x: 300 + rng() * 300, y: 150 + rng() * 200 },
+            { x: 700 + rng() * 300, y: 250 + rng() * 200 },
+          ],
+        });
+      }
+    }
+  }
+
+  // ── CIVILIAN HAULERS in patrol quadrants (civilian/warden space) ──
+  if ((quadrant.type === "patrol" || quadrant.type === "open") && faction !== "eldritch") {
+    if (rng() < 0.4) { // 40% chance
+      const convoyKey = rng() < 0.2 ? "civilian_convoy" : "civilian_hauler";
+      contents.patrolSpawns.push({
+        templateKey: convoyKey,
+        x: 300 + rng() * 600,
+        y: 150 + rng() * 300,
+        aggroRange: 0, // passive — they don't aggro, they flee
+        patrolPath: [
+          { x: 100 + rng() * 200, y: 100 + rng() * 200 },
+          { x: 900 + rng() * 200, y: 400 + rng() * 200 },
+        ],
+      });
     }
   }
 
