@@ -2185,10 +2185,13 @@ function _uniRenderTrading(c, x, y, w, h, station) {
 function _uniTradeBuy(commodityKey, price, stationId) {
   const world = typeof getCurrentWorld === "function" ? getCurrentWorld() : null;
   if (!world || typeof player === "undefined" || !player) return;
-  if (world.player.credits < price || _uniCargoCount() >= player.cargoCapacity) return;
+  // Recalculate price with correct seed to match what was displayed
+  const stationSeed = typeof deriveEntitySeed === "function" ? deriveEntitySeed(world.masterSeed || 0, stationId) : 0;
+  const actualPrice = typeof calculatePrice === "function" ? calculatePrice(commodityKey, stationSeed, 1, 1) : price;
+  if (world.player.credits < actualPrice || _uniCargoCount() >= player.cargoCapacity) return;
   const stock = typeof getStationStock === "function" ? getStationStock(world, stationId, commodityKey) : 0;
   if (stock <= 0) return;
-  world.player.credits -= price;
+  world.player.credits -= actualPrice;
   if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
   if (typeof modifyStationStock === "function") modifyStationStock(world, stationId, commodityKey, -1);
   _uniAddCargo(commodityKey, 1);
@@ -2199,13 +2202,12 @@ function _uniTradeSell(commodityKey, price, stationId) {
   if (!world || typeof player === "undefined" || !player) return;
   const existing = player.cargo.find(ci => ci.commodity === commodityKey);
   if (!existing || existing.quantity <= 0) return;
-  // Use getSellPrice if available, otherwise fall back to 55% of buy price
-  const stationFaction = _uniDockedStation?.faction || "civilian";
-  const repMult = typeof getRepPriceMult === "function" ? getRepPriceMult(world, stationFaction) : 1.0;
-  const sellPrice = typeof getSellPrice === "function"
-    ? Math.round(getSellPrice(commodityKey, stationId?.charCodeAt?.(0) || 12345) / repMult)
+  // Use same seed as render so displayed sell price matches actual payout
+  const stationSeed = typeof deriveEntitySeed === "function" ? deriveEntitySeed(world.masterSeed || 0, stationId) : 0;
+  const actualSellPrice = typeof getSellPrice === "function"
+    ? getSellPrice(commodityKey, stationSeed, 1, 1)
     : Math.floor(price * 0.55);
-  world.player.credits += sellPrice;
+  world.player.credits += actualSellPrice;
   if (window._activeUniverse) window._activeUniverse.player.credits = world.player.credits;
   if (typeof modifyStationStock === "function") modifyStationStock(world, stationId, commodityKey, 1);
   existing.quantity -= 1;
