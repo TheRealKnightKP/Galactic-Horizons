@@ -271,29 +271,14 @@ function closeAccountPanel() {
   document.getElementById("topMenu").style.display = "block";
 }
 
-// ── SHOP / LOADOUT OVERRIDES ──────────────────────────────────
-// Shop and Loadout need to return to Arena menu instead of mainMenu
-
-function openShopFromMenu() {
-  if (typeof openShop === "function") {
-    shopOpenedFromMenu = true;
-    openShop();
-  }
-  document.getElementById("arenaMenu").style.display = "none";
-}
-
-function openLoadout() {
-  if (typeof buildLoadoutUI === "function") {
-    buildLoadoutUI();
-  }
-  document.getElementById("arenaMenu").style.display = "none";
-  document.getElementById("loadoutMenu").style.display = "block";
-}
-
-function closeLoadout() {
-  document.getElementById("loadoutMenu").style.display = "none";
-  document.getElementById("arenaMenu").style.display = "block";
-}
+// ── SHOP / LOADOUT ────────────────────────────────────────────
+// NOTE: openShopFromMenu(), openLoadout() and closeLoadout() USED to be
+// redefined here. Because universe_menu.js loads AFTER shop.js, those
+// declarations silently replaced the real implementations in shop.js.
+// They called openShop() / buildLoadoutUI(), which do not exist anywhere,
+// so the Arena "Ship Shop" button hid arenaMenu and showed nothing —
+// a blank screen over the starfield. Do not re-add them here.
+// The canonical versions live in shop.js and already return to arenaMenu.
 
 // ── UTILITY ───────────────────────────────────────────────────
 function escapeHTML(str) {
