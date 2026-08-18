@@ -36,6 +36,25 @@ canvas { display: block; }
 }
 .menu h1, .menu h2 { color: #0af; margin-top: 0; }
 
+/* Phones: the inline min-width on #shopMenu (700px), #loadoutMenu (540px) and
+   #universeMenu (500px) is wider than the viewport. min-width beats max-width in
+   the CSS cascade, so it has to be overridden directly or body{overflow:hidden}
+   clips the panel and it reads as a blank screen. */
+@media (max-width: 760px) {
+  .menu {
+    min-width: 0 !important;
+    width: calc(100vw - 12px) !important;
+    max-width: calc(100vw - 12px) !important;
+    padding: 18px 12px;
+    max-height: 88dvh;
+    -webkit-overflow-scrolling: touch;
+  }
+  .menu h1 { font-size: 22px; }
+  .menu h2 { font-size: 18px; }
+  .ship-card { width: 100%; }
+  .ally-slot { width: 100%; }
+}
+
 button {
   display: block; width: 100%; margin: 6px 0; padding: 10px 16px;
   background: #003355; color: white; border: 1px solid #0af;
