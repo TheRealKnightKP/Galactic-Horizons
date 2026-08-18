@@ -261,4 +261,5 @@ Versions:
 -V1.9.9 - Private mines with guard detection cones, a hacking minigame to crack locked asteroids, alarms, ship loss and recovery, faction hold bars on the starmap, NPC wars with real battles, a redesigned system map, fixed quantum jump effects, and a mountain of bug fixes.
 -V1.9.10 - Private mines fixes
 -V1.9.11 - Fixed Arena Ship Shop / Loadout opening to a blank screen (universe_menu.js was redefining openShopFromMenu/openLoadout over shop.js). Menus now fit phone screens. Service worker is network-first for code so updates land.
+-V1.9.12 - Fixed the arena ship shop again
 */
