@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.9.10";
+const CACHE = "galactic-horizons-v1.9.11";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -52,6 +52,13 @@ const ASSETS = [
   "./assets/HarvesterStation.png",
   "./assets/CivilianStation.png",
   "./assets/WardenStation.png",
+  "./assets/sounds/explode.wav",
+  "./assets/sounds/shoot_balistic.wav",
+  "./assets/sounds/shoot_laser.wav",
+  "./assets/sounds/shoot_railgun.wav",
+  "./assets/sounds/hit_balistic.wav",
+  "./assets/sounds/hit_laser.wav",
+  "./assets/sounds/hit_distortion.wav",
 ];
 
 self.addEventListener("install", e => {
@@ -74,11 +81,50 @@ self.addEventListener("activate", e => {
   clients.claim();
 });
  
+// Code (html/js/css/json) is network-first so a deploy reaches phones on the next
+// load even if the CACHE constant above was not bumped. Binary assets stay
+// cache-first because they are large and effectively immutable.
+const CODE_RE = /\.(html|js|css|json)$/i;
+
 self.addEventListener("fetch", e => {
   // Skip cross-origin requests (API calls to Cloudflare worker) — let browser handle CORS normally
   if (!e.request.url.startsWith(self.location.origin)) return;
+  if (e.request.method !== "GET") return;
+
+  const url = new URL(e.request.url);
+  const isCode = e.request.mode === "navigate" || CODE_RE.test(url.pathname);
+
+  if (isCode) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() =>
+          caches.match(e.request)
+            .then(r => r || caches.match("./index.html"))
+            .then(r => r || new Response("Offline", { status: 503 }))
+        )
+    );
+    return;
+  }
+
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request).catch(() => new Response("Offline", { status: 503 })))
+    caches.match(e.request).then(r =>
+      r || fetch(e.request)
+        .then(res => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => new Response("Offline", { status: 503 }))
+    )
   );
 });
 
@@ -214,4 +260,5 @@ Versions:
 -V1.9.8 - Fixed qt cutscene and other stuff (20/3/2026)
 -V1.9.9 - Private mines with guard detection cones, a hacking minigame to crack locked asteroids, alarms, ship loss and recovery, faction hold bars on the starmap, NPC wars with real battles, a redesigned system map, fixed quantum jump effects, and a mountain of bug fixes.
 -V1.9.10 - Private mines fixes
+-V1.9.11 - Fixed Arena Ship Shop / Loadout opening to a blank screen (universe_menu.js was redefining openShopFromMenu/openLoadout over shop.js). Menus now fit phone screens. Service worker is network-first for code so updates land.
 */
