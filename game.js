@@ -867,6 +867,10 @@ function setPlayerShip(name) {
     bespoke:d.bespoke, doubleShot:d.doubleShot||false, pdcCount:d.pdc, missileType:d.missileType||2,
     missileRack:[...(playerLoadout.missileRack||[])], missileActiveKind:(playerLoadout.missileRack||[])[0]?.kind||null,
     img:getImage(d.image), color:d.color, rotation:0, spriteAngleOffset:spriteOffset,
+    // Arena V2 §10 — hull turn rate + weapon gimbal
+    turnSpeed:(typeof getFlightProfile==="function"?getFlightProfile(name).turnSpeed:Math.PI/27),
+    gimbalCone:(typeof getFlightProfile==="function"?getFlightProfile(name).gimbalCone:0.785),
+    targetRotation:0, gimbalAngle:0, gimbalLocked:false,
     vx:0, vy:0, shootTimer:0,
     boosting:false, boostTimer:0, boostCooldown:0,
     boostDuration, boostCooldownMax, dodgeBase:_mastDodge, dodgeBoosted:_mastDodgeB,
@@ -1579,22 +1583,57 @@ function fireDoubleShot(origin,wStats,angle,isPlayer) {
 // ============================================================
 function drawAimArrow() {
   if(state!=="playing")return;
-  const cx=player.x+player.w/2, cy=player.y+player.h/2, angle=player.rotation;
+  const cx=player.x+player.w/2, cy=player.y+player.h/2;
+  const hull=player.rotation, aim=(player.targetRotation!==undefined?player.targetRotation:hull);
+  const cone=player.gimbalCone||0;
+  const off=(typeof angleDelta==="function")?angleDelta(hull,aim):0;
+  const locked=!!player.gimbalLocked;
   const isRailgun=player.weaponStats&&player.weaponStats.hitscan;
-  const arrowStart=Math.max(player.w,player.h)*0.75, arrowLen=44;
-  const ax=cx+Math.cos(angle)*(arrowStart+arrowLen), ay=cy+Math.sin(angle)*(arrowStart+arrowLen);
-  const tailX=cx+Math.cos(angle)*arrowStart, tailY=cy+Math.sin(angle)*arrowStart;
-  let arrowColor="#ffffff", arrowAlpha=0.5;
+
+  const base=Math.max(player.w,player.h)*0.75;
+  const SHORT=30, LONG=52;          // aim arrow sits just beyond the hull arrow
+
+  // hull arrow keeps the existing railgun-charge tint
+  let hullColor="#ffffff", hullAlpha=0.55;
   if(isRailgun){
-    if(player.railgunCharging){ const ct=player.railgunCharge/RAILGUN_CHARGE_FRAMES; arrowColor="rgb("+Math.floor(100+155*ct)+","+Math.floor(200-150*ct)+",255)"; arrowAlpha=0.4+0.5*ct; }
-    else arrowColor="#44aaff";
+    if(player.railgunCharging){ const ct=player.railgunCharge/RAILGUN_CHARGE_FRAMES;
+      hullColor="rgb("+Math.floor(100+155*ct)+","+Math.floor(200-150*ct)+",255)"; hullAlpha=0.45+0.5*ct; }
+    else hullColor="#44aaff";
   }
-  ctx.save(); ctx.globalAlpha=arrowAlpha; ctx.strokeStyle=arrowColor; ctx.fillStyle=arrowColor;
-  ctx.lineWidth=2; ctx.shadowColor=arrowColor; ctx.shadowBlur=6;
-  ctx.beginPath(); ctx.moveTo(tailX,tailY); ctx.lineTo(ax,ay); ctx.stroke();
-  ctx.save(); ctx.translate(ax,ay); ctx.rotate(angle);
-  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-14,-6); ctx.lineTo(-14,6); ctx.closePath(); ctx.fill();
-  ctx.restore(); ctx.restore();
+  const aimColor = locked ? "#ff4444" : "#ffcc44";
+
+  function arrow(angle,len,head,color,alpha,width){
+    const tx=cx+Math.cos(angle)*base,        ty=cy+Math.sin(angle)*base;
+    const hx=cx+Math.cos(angle)*(base+len),  hy=cy+Math.sin(angle)*(base+len);
+    ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle=color; ctx.fillStyle=color;
+    ctx.lineWidth=width; ctx.shadowColor=color; ctx.shadowBlur=6;
+    ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(hx,hy); ctx.stroke();
+    ctx.translate(hx,hy); ctx.rotate(angle);
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-head,-head*0.42); ctx.lineTo(-head,head*0.42);
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+
+  // gimbal arc: only while the guns are actually working off-axis
+  if(cone>0.001 && Math.abs(off)>0.02){
+    ctx.save(); ctx.globalAlpha=0.13; ctx.fillStyle=locked?"#ff4444":aimColor;
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,base+LONG,hull-cone,hull+cone); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  // long arrow = where you are AIMING (guns follow this inside the cone)
+  // short arrow = where the HULL is actually pointing (this is your shield facing)
+  if(Math.abs(off)>0.04) arrow(aim,LONG,11,aimColor,locked?0.85:0.6,2);
+  arrow(hull,SHORT,14,hullColor,hullAlpha,2.5);
+
+  // specials have no gimbal: mark the gun as welded to the hull
+  if(cone<=0.001){
+    ctx.save(); ctx.globalAlpha=0.30; ctx.strokeStyle=hullColor; ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(hull)*(base+SHORT), cy+Math.sin(hull)*(base+SHORT));
+    ctx.lineTo(cx+Math.cos(hull)*(base+LONG),  cy+Math.sin(hull)*(base+LONG));
+    ctx.stroke(); ctx.restore();
+  }
 }
 
 function drawRailgunCharge() {
@@ -1904,31 +1943,42 @@ function updatePlayer() {
   const _boundH = window.gameMode === "universe" ? window.quadH : GAME_H;
   player.x=Math.max(0,Math.min(_boundW-player.w,player.x+player.vx)); player.y=Math.max(0,Math.min(_boundH-player.h,player.y+player.vy));
   if (window.gameMode === "universe") {
-    player.rotation=Math.atan2((mouse.y+window.camY)-player.y-player.h/2,(mouse.x+window.camX)-player.x-player.w/2);
+    player.targetRotation=Math.atan2((mouse.y+window.camY)-player.y-player.h/2,(mouse.x+window.camX)-player.x-player.w/2);
   } else {
-    player.rotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
+    player.targetRotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
+  }
+  // ── Arena V2 §10: hull turns at a rate; weapons gimbal within a cone ──
+  {
+    const ts = player.boosting ? player.turnSpeed*1.4 : player.turnSpeed;
+    const diff = angleDelta(player.rotation, player.targetRotation);
+    player.rotation += Math.sign(diff)*Math.min(Math.abs(diff), ts);
+    const off = angleDelta(player.rotation, player.targetRotation);
+    const cone = player.gimbalCone || 0;
+    player.gimbalLocked = Math.abs(off) > cone;          // true => weapons hold fire
+    player.gimbalAngle  = player.rotation + Math.max(-cone, Math.min(cone, off));
   }
   const shieldRegen=SHIELD_TIERS[playerLoadout.shieldTier||1].regenRate; regenShieldFaces(player, shieldRegen);
   let isShooting=IS_MOBILE?mobileAim.shooting:(keys["Space"]||mouse.down);
+  if(player.gimbalLocked) isShooting=false;   // Arena V2 §10: out of arc, hold fire
   // In universe mode, only shoot when in combat (not while exploring)
   if (window.gameMode === "universe" && typeof _uniInCombat !== "undefined" && !_uniInCombat) isShooting = false;
   const isRailgun=player.weaponStats&&player.weaponStats.hitscan;
   if(isRailgun){
-    if(player.dominionOvercharged&&isShooting&&player.shootTimer<=0){ const oc={...player.weaponStats,damage:player.weaponStats.damage*3}; fireRailgun(player,oc,player.rotation,true); player.dominionOvercharged=false; player.railgunCharge=0;player.railgunCharging=false; player.shootTimer=player.weaponStats.fireInterval; }
-    else if(isShooting&&player.shootTimer<=0){ player.railgunCharging=true; player.railgunCharge=Math.min(RAILGUN_CHARGE_FRAMES,player.railgunCharge+1); if(player.railgunCharge>=RAILGUN_CHARGE_FRAMES){ fireRailgun(player,player.weaponStats,player.rotation,true); player.railgunCharge=0; player.railgunCharging=false; player.shootTimer=player.weaponStats.fireInterval; } }
+    if(player.dominionOvercharged&&isShooting&&player.shootTimer<=0){ const oc={...player.weaponStats,damage:player.weaponStats.damage*3}; fireRailgun(player,oc,player.gimbalAngle,true); player.dominionOvercharged=false; player.railgunCharge=0;player.railgunCharging=false; player.shootTimer=player.weaponStats.fireInterval; }
+    else if(isShooting&&player.shootTimer<=0){ player.railgunCharging=true; player.railgunCharge=Math.min(RAILGUN_CHARGE_FRAMES,player.railgunCharge+1); if(player.railgunCharge>=RAILGUN_CHARGE_FRAMES){ fireRailgun(player,player.weaponStats,player.gimbalAngle,true); player.railgunCharge=0; player.railgunCharging=false; player.shootTimer=player.weaponStats.fireInterval; } }
     else { if(player.railgunCharging){player.railgunCharge=0;player.railgunCharging=false;} player.shootTimer--; }
   } else {
     player.shootTimer--;
     if(isShooting&&player.shootTimer<=0&&player.weaponType!=="none"&&player.weaponStats){
-      if(player.specialActive&&currentShipName==="Comet"){ let cne=null,cnd=1e9; enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-player.x-player.w/2,e.y+e.h/2-player.y-player.h/2);if(d<cnd){cnd=d;cne=e;}}); if(cne)player.rotation=Math.atan2(cne.y+cne.h/2-player.y-player.h/2,cne.x+cne.w/2-player.x-player.w/2); }
+      if(player.specialActive&&currentShipName==="Comet"){ let cne=null,cnd=1e9; enemies.forEach(e=>{const d=Math.hypot(e.x+e.w/2-player.x-player.w/2,e.y+e.h/2-player.y-player.h/2);if(d<cnd){cnd=d;cne=e;}}); if(cne){const _ca=Math.atan2(cne.y+cne.h/2-player.y-player.h/2,cne.x+cne.w/2-player.x-player.w/2);const _co=player.gimbalCone||0,_cd=angleDelta(player.rotation,_ca);player.gimbalAngle=player.rotation+Math.max(-_co,Math.min(_co,_cd));if(_co===0)player.gimbalAngle=_ca;} }
       let finalBullets;
       if(SHIPS[currentShipName]?.burstFire) {
         const isSiegeBreaker = player.weaponType === "siege_breaker";
-        finalBullets = fireBullets(player,player.weaponStats,player.rotation,true);
+        finalBullets = fireBullets(player,player.weaponStats,player.gimbalAngle,true);
         finalBullets.forEach(b => { b._burstShot = 1; });
         player._burstPending = [ { delay: 8, mult: 1.5, shot: 2 }, { delay: 16, mult: isSiegeBreaker ? 2.5 : 2.0, shot: 3, stagger: isSiegeBreaker } ];
-      } else if(player.doubleShot) finalBullets=fireDoubleShot(player,player.weaponStats,player.rotation,true);
-      else finalBullets=fireBullets(player,player.weaponStats,player.rotation,true);
+      } else if(player.doubleShot) finalBullets=fireDoubleShot(player,player.weaponStats,player.gimbalAngle,true);
+      else finalBullets=fireBullets(player,player.weaponStats,player.gimbalAngle,true);
       if(currentShipName==="Vengeance") finalBullets.forEach(b=>{ b.vengeanceShot=true; });
       playerBullets.push(...finalBullets.map(b=>({...b,_isPlayerBullet:true})));
       const rougeM=(player.specialActive&&currentShipName==="Rouge")?1/3:1.0;
