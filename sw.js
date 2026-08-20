@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.9.11";
+const CACHE = "galactic-horizons-v1.9.13";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -262,4 +262,5 @@ Versions:
 -V1.9.10 - Private mines fixes
 -V1.9.11 - Fixed Arena Ship Shop / Loadout opening to a blank screen (universe_menu.js was redefining openShopFromMenu/openLoadout over shop.js). Menus now fit phone screens. Service worker is network-first for code so updates land. (18/8/2026)
 -V1.9.12 - Fixed the arena ship shop again
+-V1.10.0 - Arena V2 Update 1
 */
