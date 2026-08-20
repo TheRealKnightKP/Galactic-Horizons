@@ -92,6 +92,20 @@ function setAimMode(m){
 try { const _am = localStorage.getItem("gh_aimMode"); if(_am) aimMode = _am; } catch(e) {}
 
 // PDC tuning. 10 PDC => 10*0.45 = 4.5 attempts/sec * 0.55 hit = ~2.5 kills/sec.
+// ── Arena V2 §1: telegraphs ───────────────────────────────────
+// Window = 18f reaction (300ms) + 25f worst-case evasion + 2f margin = 45f.
+// Bullet flight supplies part of it, so the flash absorbs the shortfall.
+const TELEGRAPH_FRAMES = 33;          // 550ms default
+const TELEGRAPH_RAMP   = 6;           // ramp up
+const TELEGRAPH_CUT    = 6;           // sharp cut - this is what the eye locks onto
+const BURST_FIRERATE_THRESHOLD = 40;  // fireRate below this => telegraph the BURST
+const BURST_COOLDOWN_MIN = 90, BURST_COOLDOWN_MAX = 150;
+function telegraphFramesFor(wStats){
+  if(!wStats) return TELEGRAPH_FRAMES;
+  if(wStats.hitscan) return 36;                       // zero flight: flash is the ONLY warning
+  const flight = 120 / (wStats.speed || 10);
+  return Math.max(12, Math.min(36, Math.round(45 - flight)));
+}
 const CROSSHAIR_SPEED = 9;   // px per frame at full stick deflection
 const PDC_RANGE = 200;
 const PDC_HIT_CHANCE = 0.55;
@@ -829,6 +843,9 @@ function getDirectionalArmorMult(bullet, target) {
 function applyShieldFaceHit(target, bullet, shieldDmg) {
   if(!target.shieldFaces) { target.shields = Math.max(0, target.shields - shieldDmg); return; }
   const face = getHitFace(bullet, target);
+  // Arena V2 §4.1: make the face system visible. 8-frame flash on the struck arc.
+  if(!target._faceFlash) target._faceFlash = { front:0, back:0, left:0, right:0 };
+  target._faceFlash[face] = SHIELD_FACE_FLASH_FRAMES;
   const faceHp = target.shieldFaces[face];
   if (faceHp <= 0) return;
   const absorbed = Math.min(faceHp, shieldDmg);
@@ -839,7 +856,18 @@ function applyShieldFaceHit(target, bullet, shieldDmg) {
 function isFaceDown(target, bullet) {
   if (!target.shieldFaces) return target.shields <= 0;
   const face = getHitFace(bullet, target);
+  if(target.shieldFaces[face] <= 0){
+    if(!target._faceFlash) target._faceFlash = { front:0, back:0, left:0, right:0 };
+    target._faceFlash[face] = SHIELD_FACE_FLASH_FRAMES;
+  }
   return target.shieldFaces[face] <= 0;
+}
+
+const SHIELD_FACE_FLASH_FRAMES = 8;
+function tickFaceFlashes(obj){
+  if(!obj || !obj._faceFlash) return;
+  const f=obj._faceFlash;
+  if(f.front>0)f.front--; if(f.back>0)f.back--; if(f.left>0)f.left--; if(f.right>0)f.right--;
 }
 
 function regenShieldFaces(obj, regenRate) {
@@ -859,18 +887,36 @@ function drawShieldFaces(obj) {
   const faceAngles = { front: visualNose, right: visualNose + Math.PI/2, back: visualNose + Math.PI, left: visualNose - Math.PI/2 };
   const arcHalf = Math.PI * 0.3;
   ctx.save(); ctx.lineWidth = 3; ctx.lineCap = "round";
+  const flash = obj._faceFlash;
   for (const [face, centerAngle] of Object.entries(faceAngles)) {
     const hp = obj.shieldFaces[face], maxHp = obj.maxShieldFaces[face];
-    if (maxHp <= 0 || hp <= 0) continue;
+    if (maxHp <= 0) continue;
+    // Arena V2 §4.1: a downed face renders as a persistent dashed red arc,
+    // so the player can see WHICH side is open, not just that shields are low.
+    if (hp <= 0) {
+      const f = flash ? flash[face] : 0;
+      ctx.save();
+      ctx.setLineDash([5,4]); ctx.lineWidth = 2;
+      ctx.strokeStyle = f>0 ? "rgba(255,255,255,0.95)" : "rgba(255,60,60,0.75)";
+      if (_shadowsEnabled) { ctx.shadowColor = "rgba(255,60,60,0.7)"; ctx.shadowBlur = 6; }
+      ctx.beginPath(); ctx.arc(cx, cy, r, centerAngle - arcHalf, centerAngle + arcHalf); ctx.stroke();
+      ctx.restore();
+      continue;
+    }
     const frac = hp / maxHp;
     const arcSpan = arcHalf * 2 * frac;
     if (arcSpan < 0.01) continue;
     const startAngle = centerAngle - arcSpan / 2, endAngle = centerAngle + arcSpan / 2;
-    const alpha = 0.4 + 0.6 * frac;
-    const glowR = Math.round(0 + (1-frac)*80), glowG = Math.round(160 + (1-frac)*95), glowB = 255;
+    const f = flash ? flash[face] : 0;
+    const fb = f>0 ? f/SHIELD_FACE_FLASH_FRAMES : 0;          // 1 -> 0 over the flash
+    const alpha = Math.min(1, 0.4 + 0.6 * frac + fb*0.5);
+    let glowR = Math.round(0 + (1-frac)*80), glowG = Math.round(160 + (1-frac)*95), glowB = 255;
+    if (fb>0) { glowR = Math.round(glowR + (255-glowR)*fb); glowG = Math.round(glowG + (255-glowG)*fb); }
+    ctx.lineWidth = 3 + fb*2.5;
     ctx.strokeStyle = "rgba("+glowR+","+glowG+","+glowB+","+alpha+")";
-    if (_shadowsEnabled) { ctx.shadowColor = "rgba(0,180,255,"+(alpha*0.8)+")"; ctx.shadowBlur = 8 + 6 * frac; }
+    if (_shadowsEnabled) { ctx.shadowColor = "rgba(0,180,255,"+(alpha*0.8)+")"; ctx.shadowBlur = 8 + 6*frac + fb*10; }
     ctx.beginPath(); ctx.arc(cx, cy, r, startAngle, endAngle); ctx.stroke();
+    ctx.lineWidth = 3;
   }
   ctx.restore();
 }
@@ -1012,7 +1058,7 @@ function respawnDeadAllies() {
 
 // ── SHADOW COMET WAVE ─────────────────────────────────────────
 function spawnShadowCometWave() {
-  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
+  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[]; debris=[]; _debrisArea=0;
   allies=[];
   const _scShip = playerLoadout.ship || currentShipName;
   if (_scShip === "Bulwark" || _scShip === "Leviathan") {
@@ -1173,7 +1219,7 @@ function fullUpgradeComet() {
 // SHADOW VENGEANCE WAVE (Wave 22)
 // ============================================================
 function spawnShadowVenganceWave() {
-  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
+  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[]; debris=[]; _debrisArea=0;
   allies=[]; pdcDisabledThisWave = true;
   shadowVenganceActive = true; shadowVenganceNoHitWave = true;
   shadowVenganceCutsceneState = "intercepted"; shadowVenganceCutsceneTimer = 180;
@@ -1405,7 +1451,7 @@ function createEnemyObject(name, spawnX, spawnY) {
 }
 
 function spawnWave() {
-  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
+  enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[]; debris=[]; _debrisArea=0;
   waveReinforceTimer=0; waveReinforceDone=false;
   _enemyCapFormation="default"; _enemyCapTimer=0; _enemyCapRegen=1.0; _playerYHistory=[];
   _waveMissileFired = false; shadowCometActive = false; shadowVenganceActive = false;
@@ -1679,6 +1725,125 @@ function fireDoubleShot(origin,wStats,angle,isPlayer) {
 // Death was duplicated in 5 places; two of them (splash kill, missile kill) never
 // called recordKill, which is why Shadow Comet / Shadow Vengeance achievements
 // never fired -- those bosses are usually finished by splash or a missile.
+// ── Arena V2 §3: debris ───────────────────────────────────────
+// Destructible cover made from what you killed. Capped by AREA (not count) so a
+// few Dominion kills can't bury a 420px-tall phone screen.
+const DEBRIS_AREA_FRAC   = 0.08;   // 8% of the field
+const DEBRIS_MIN_GAP     = 60;     // keep lanes open
+const DEBRIS_PLAYER_CLR  = 80;     // never box the player in
+const DEBRIS_LIFETIME    = 1800;   // 30s, then fades
+let debris = [];
+let _debrisArea = 0;
+
+function debrisDropChance(size){
+  if(size >= 7) return 1.00;
+  if(size >= 4) return 0.45;
+  if(size >= 2) return 0.25;
+  return 0.12;
+}
+
+function spawnDebris(e){
+  const size = (ENEMIES[e.type]?.size) || e.size || 1;
+  if(Math.random() >= debrisDropChance(size)) return;
+  const parentW = (40 + size*16) * (typeof SIZE_SCALE!=="undefined"?SIZE_SCALE:1);
+  const w = Math.round(parentW * (0.35 + Math.random()*0.35));
+  const h = Math.round(w * (0.70 + Math.random()*0.30));
+  if(w < 6 || h < 6) return;
+  const cx = e.x + e.w/2, cy = e.y + e.h/2;
+  const x = Math.max(0, Math.min(GAME_W - w, cx - w/2));
+  const y = Math.max(0, Math.min(GAME_H - h, cy - h/2));
+  // spacing rules
+  const pcx = player.x + player.w/2, pcy = player.y + player.h/2;
+  if(Math.hypot(x + w/2 - pcx, y + h/2 - pcy) < DEBRIS_PLAYER_CLR) return;
+  for(const d of debris){
+    if(d.dead) continue;
+    if(Math.hypot(x + w/2 - (d.x + d.w/2), y + h/2 - (d.y + d.h/2)) < DEBRIS_MIN_GAP) return;
+  }
+  const area = w*h;
+  const cap = DEBRIS_AREA_FRAC * GAME_W * GAME_H;
+  while(_debrisArea + area > cap && debris.length){
+    const old = debris.shift();
+    if(old && !old.dead){ _debrisArea -= old.w*old.h; }
+  }
+  if(_debrisArea + area > cap) return;
+  // HP scales with area so bigger wrecks are genuinely tougher, +/-25% so the bet is real
+  const hp = Math.round(area * 0.9 * (0.75 + Math.random()*0.5));
+  debris.push({ x, y, w, h, hp, maxHp: hp, life: DEBRIS_LIFETIME, dead:false,
+                color: e.color || "#889", rot:(Math.random()-0.5)*0.6 });
+  _debrisArea += area;
+}
+
+function updateDebris(){
+  for(const d of debris){
+    if(d.dead) continue;
+    d.life--;
+    if(d.life <= 0 || d.hp <= 0){ d.dead = true; _debrisArea -= d.w*d.h; }
+  }
+  if(debris.some(d=>d.dead)) debris = debris.filter(d=>!d.dead);
+  if(_debrisArea < 0) _debrisArea = 0;
+}
+
+// Hitscan, beams and nukes punch through: heavies need counterplay to turtling.
+function debrisBlocks(b){
+  if(!b) return false;
+  if(b.hitscan || b.missile || b.aoeRadius) return false;
+  return true;
+}
+
+function debrisCollide(list){
+  for(const b of list){
+    if(b.dead || b.visualOnly || !debrisBlocks(b)) continue;
+    for(const d of debris){
+      if(d.dead) continue;
+      if(b.x < d.x + d.w && b.x + (b.w||2) > d.x && b.y < d.y + d.h && b.y + (b.h||2) > d.y){
+        d.hp -= (b.damage || 10);
+        spawnHitEffect(b.x + (b.w||2)/2, b.y + (b.h||2)/2, b);
+        b.dead = true;
+        if(d.hp <= 0){ d.dead = true; _debrisArea -= d.w*d.h; }
+        break;
+      }
+    }
+  }
+}
+
+// Ships collide with wrecks - this is what makes cover positional.
+function debrisPush(obj){
+  if(!obj || obj.dead) return;
+  for(const d of debris){
+    if(d.dead) continue;
+    if(obj.x < d.x + d.w && obj.x + obj.w > d.x && obj.y < d.y + d.h && obj.y + obj.h > d.y){
+      const ox = (obj.x + obj.w/2) - (d.x + d.w/2);
+      const oy = (obj.y + obj.h/2) - (d.y + d.h/2);
+      const px = (obj.w + d.w)/2 - Math.abs(ox);
+      const py = (obj.h + d.h)/2 - Math.abs(oy);
+      if(px < py){ obj.x += Math.sign(ox)*px; obj.vx = (obj.vx||0)*-0.25; }
+      else       { obj.y += Math.sign(oy)*py; obj.vy = (obj.vy||0)*-0.25; }
+    }
+  }
+}
+
+function drawDebris(){
+  for(const d of debris){
+    if(d.dead) continue;
+    const fade = d.life < 20 ? d.life/20 : 1;
+    const hpF  = Math.max(0, d.hp / d.maxHp);
+    ctx.save();
+    ctx.globalAlpha = 0.85 * fade;
+    ctx.translate(d.x + d.w/2, d.y + d.h/2); ctx.rotate(d.rot);
+    ctx.fillStyle = "rgba(46,50,60," + (0.75 + 0.2*hpF) + ")";
+    ctx.fillRect(-d.w/2, -d.h/2, d.w, d.h);
+    ctx.strokeStyle = d.color; ctx.globalAlpha = (0.25 + 0.5*hpF) * fade; ctx.lineWidth = 2;
+    ctx.strokeRect(-d.w/2, -d.h/2, d.w, d.h);
+    // cracks as it takes damage
+    if(hpF < 0.66){
+      ctx.globalAlpha = 0.35*fade; ctx.lineWidth = 1; ctx.strokeStyle = "#000";
+      ctx.beginPath(); ctx.moveTo(-d.w/2, -d.h/4); ctx.lineTo(d.w/4, d.h/2); ctx.stroke();
+      if(hpF < 0.33){ ctx.beginPath(); ctx.moveTo(d.w/2, -d.h/3); ctx.lineTo(-d.w/4, d.h/2); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
+}
+
 function killEnemy(e, source){
   if(!e || e.dead) return false;
   e.dead = true;
@@ -1687,7 +1852,29 @@ function killEnemy(e, source){
   money += (e.score || 0);
   window.recordCreditsEarned?.(e.score || 0);
   window.recordKill?.(e);
+  try { spawnDebris(e); } catch(err) {}
   return true;
+}
+
+function drawTelegraphs() {
+  for(const e of enemies){
+    if(e.dead || !e._tgActive || e._tgActive<=0) continue;
+    const len=e._tgLenCache||TELEGRAPH_FRAMES;
+    const elapsed=len-e._tgActive;
+    let a;
+    if(elapsed<TELEGRAPH_RAMP)          a=elapsed/TELEGRAPH_RAMP;          // ramp
+    else if(e._tgActive<=TELEGRAPH_CUT) a=e._tgActive/TELEGRAPH_CUT;       // sharp cut
+    else                                a=1;
+    const cx=e.x+e.w/2, cy=e.y+e.h/2, r=Math.max(e.w,e.h)*0.72+6;
+    const col=e.color||"#ff5555";
+    ctx.save();
+    ctx.globalAlpha=0.85*a; ctx.strokeStyle=col; ctx.lineWidth=2.5;
+    if(_shadowsEnabled){ ctx.shadowColor=col; ctx.shadowBlur=10*a; }
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha=0.28*a; ctx.beginPath(); ctx.arc(cx,cy,r*(0.55+0.45*a),0,Math.PI*2);
+    ctx.fillStyle=col; ctx.fill();
+    ctx.restore();
+  }
 }
 
 function drawAimCursor() {
@@ -2443,7 +2630,31 @@ function updateEnemies() {
     while(rotDiff>Math.PI)rotDiff-=Math.PI*2;while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
     e.rotation=(e.rotation||0)+Math.sign(rotDiff)*Math.min(Math.abs(rotDiff),e.turnSpeed||0.04);
     const frMult=e.stunTimer>0?2:1;
+    // ── Arena V2 §1: telegraph / burst gate ──────────────────────
+    // Telegraph lives on the ENEMY, not the turret: a 10-turret Dominion must
+    // flash once, not ten times out of phase.
+    if(e._tgTimer===undefined){ e._tgTimer=0; e._tgActive=0; e._burstLeft=0; }
+    const _fr0 = (e.turrets&&e.turrets[0]&&e.turrets[0].fireRate) || e.fireRate || 60;
+    const _isBurst = _fr0 < BURST_FIRERATE_THRESHOLD;
+    const _tgLen = telegraphFramesFor(e.turrets&&e.turrets[0]&&e.turrets[0].weaponStats);
+    let _mayFire = true;
+    if(e._tgActive>0){ e._tgActive--; _mayFire=false; }        // winding up
+    else if(_isBurst){
+      if(e._burstLeft>0){ _mayFire=true; }                     // mid-burst, keep firing
+      else {
+        e._tgTimer--;
+        if(e._tgTimer<=0){ e._tgActive=_tgLen; e._burstLeft=3+Math.floor(Math.random()*3);
+          e._tgTimer=BURST_COOLDOWN_MIN+Math.floor(Math.random()*(BURST_COOLDOWN_MAX-BURST_COOLDOWN_MIN)); }
+        _mayFire=false;
+      }
+    } else {
+      // slow firers telegraph each shot: arm the flash just before the turret is ready
+      const _t0=e.turrets&&e.turrets[0];
+      if(_t0 && _t0.shootTimer===_tgLen){ e._tgActive=_tgLen; _mayFire=false; }
+    }
+    e._tgLenCache=_tgLen;
     e.turrets&&e.turrets.forEach(t=>{
+      if(!_mayFire){ if(t.shootTimer>0) t.shootTimer--; return; }
       t.shootTimer--;if(t.shootTimer<=0&&t.weaponStats){
         const tx=e.x+t.rx,ty=e.y+t.ry;
         const pred=adaptivePredictAndRecord(e,pcx,pcy,player.vx||0,player.vy||0,tx,ty,t.weaponStats.speed||8);
@@ -2455,6 +2666,10 @@ function updateEnemies() {
         t.shootTimer=Math.round(t.fireRate*frMult*sideMult*(e._ecFireMult||1.0));
       }
     });
+    if(_isBurst && _mayFire && e._burstLeft>0){
+      e._burstAcc=(e._burstAcc||0)+1;
+      if(e._burstAcc>=_fr0){ e._burstAcc=0; e._burstLeft--; }
+    }
     if(e.type==="Dominion"){ e.beamTimer--; if(e.beamTimer<=0){ const ecx=e.x+e.w/2,ecy=e.y+e.h/2; const pred=adaptivePredictAndRecord(e,pcx,pcy,player.vx||0,player.vy||0,ecx,ecy,16); const angle=Math.atan2(pred.y-ecy,pred.x-ecx); enemyBullets.push({x:ecx,y:ecy,vx:Math.cos(angle)*16,vy:Math.sin(angle)*16,w:14,h:14,damage:ENEMIES.Dominion.beamDamage,color:"#00aaff",category:"laser",weaponSize:10,penetration:9999,missile:true}); e.beamTimer=ENEMIES.Dominion.beamCooldownFrames||600; } }
   });
 }
@@ -2463,6 +2678,10 @@ function updateEnemies() {
 // BULLETS + COLLISIONS
 // ============================================================
 function updateBullets() {
+  updateDebris();
+  tickFaceFlashes(player);
+  for(const a of allies) tickFaceFlashes(a);
+  for(const e of enemies) tickFaceFlashes(e);
   [...playerBullets,...enemyBullets].forEach(b=>{ b.x+=b.vx||0;b.y+=b.vy||0; if(b.maxRange!==undefined){ b.distTraveled=(b.distTraveled||0)+Math.hypot(b.vx,b.vy); if(b.distTraveled>=b.maxRange)b.dead=true; } });
   beamFlashes.forEach(f=>f.life--); nukeRings.forEach(r=>{r.life--;r.r=r.maxR*(1-(r.life/r.maxLife));});
   nukeRings=nukeRings.filter(r=>r.life>0); beamFlashes=beamFlashes.filter(f=>f.life>0);
@@ -2476,6 +2695,10 @@ function updateBullets() {
 function overlaps(a,b){ const acx=a.x+a.w/2, acy=a.y+a.h/2, bcx=b.x+b.w/2, bcy=b.y+b.h/2; const r=(Math.min(a.w,a.h)*0.45)+(Math.min(b.w,b.h)*0.45); return Math.hypot(acx-bcx,acy-bcy)<r; }
 
 function checkCollisions() {
+  debrisCollide(playerBullets); debrisCollide(enemyBullets);
+  debrisPush(player);
+  for(const a of allies) if(!a.dead) debrisPush(a);
+  for(const e of enemies) if(!e.dead) debrisPush(e);
   playerBullets.forEach(b=>{
     if(b.visualOnly||b.dead)return;
     enemies.forEach(e=>{
@@ -2657,9 +2880,10 @@ function render() {
 
   if(!_isUni && currentShipName==="Vengeance"&&player.revengeActive){ ctx.save();ctx.globalAlpha=0.07;ctx.fillStyle="#ff0000";ctx.fillRect(0,0,GAME_W,GAME_H);ctx.restore(); }
   if(!_isUni && pdcDisabledThisWave){ ctx.save();ctx.globalAlpha=0.7;ctx.fillStyle="#ff2200";ctx.font="bold 13px monospace"; ctx.fillText("TURRETS DISABLED",10,GAME_H-30);ctx.restore(); }
+  drawDebris();
   drawThrusterParticles(); enemies.forEach(drawEntity); allies.forEach(drawEntity);
   if(isDeployed && capitalShipObj && !capitalDestroyed) drawEntity(capitalShipObj);
-  drawEntity(player); drawRailgunCharge(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings();
+  drawEntity(player); drawRailgunCharge(); drawTelegraphs(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings();
 
   // Restore camera offset before drawing HUD (HUD is screen-space)
   if (_isUni) { ctx.restore(); }
@@ -2792,7 +3016,7 @@ function gameLoop() {
 
 function confirmLeaveGame() {
   if(confirm("Are you sure you want to leave? All progress will be lost.")) {
-    enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[];
+    enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[]; debris=[]; _debrisArea=0;
     shadowCometActive=false; pdcDisabledThisWave=false; state="menu";
     document.getElementById("arenaMenu").style.display="block"; document.getElementById("hud").style.display="none"; document.getElementById("inGameBack").style.display="none";
     if(IS_MOBILE){const ui=document.getElementById("mobileUI");if(ui)ui.style.display="none";}
