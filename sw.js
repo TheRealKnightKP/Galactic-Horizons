@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.9.13";
+const CACHE = "galactic-horizons-v1.10.1";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -262,5 +262,6 @@ Versions:
 -V1.9.10 - Private mines fixes
 -V1.9.11 - Fixed Arena Ship Shop / Loadout opening to a blank screen (universe_menu.js was redefining openShopFromMenu/openLoadout over shop.js). Menus now fit phone screens. Service worker is network-first for code so updates land. (18/8/2026)
 -V1.9.12 - Fixed the arena ship shop again
--V1.10.0 - Arena V2 Update 1
+-V1.10.0 - Arena V2 Update 1: Now ships have a set turn rate, no longer do they instantly follow mouse/phone joystick. This balances the larger ships while offers advantages on smaller ships.
+-V1.10.1 - Arena V2 Update 1: Now phone has more aiming options, as well as oscillation for allies/enemies has been fixed, and finally PDC's no longer destroy every enemy bullet.
 */
