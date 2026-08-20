@@ -199,7 +199,7 @@ const SHIPS = {
   Wasp:       { price: 140000,    hp: 500,   shields: 560,  armor: 100, missiles: 12, speed: 3.2,  weaponType: "laser_repeater",    weaponSize: 4,  bespoke: false, pdc: 1,  pdcSize: 4,                         image: "Galactic_Horizons_Wasp.png",           color: "#0099ff", size: 3,  missileType: 2, armorType: "medium",     allySlots: ["small","medium","medium","medium"] },
   Supernova:  { price: 160000,    hp: 1000,  shields: 900,  armor: 100, missiles: 52, speed: 1.0,  weaponType: "laser_repeater",    weaponSize: 5,  bespoke: false, doubleShot: true, pdc: 3,  pdcSize: 3,     image: "Galactic_Horizons_Supernova.png",    color: "#44ff88", size: 4,  missileType: 1, armorType: "heavy",      allySlots: ["small","medium","medium","medium","heavy"] },
   // --- SUBCAPITAL ---
-  Bulwark:    { price: 30000,     hp: 1750,  shields: 1200, armor: 100, missiles: 16, speed: 0.75, weaponType: "none",              weaponSize: 0,  bespoke: true,  pdc: 10, pdcSize: 4,                         image: "Bulwark.png",       color: "#4488ff", size: 6,  missileType: 3, armorType: "subcapital", allySlots: ["small","small","medium","medium","heavy","heavy","heavy"] },
+  Bulwark:    { price: 350000,     hp: 1750,  shields: 1200, armor: 100, missiles: 16, speed: 0.75, weaponType: "none",              weaponSize: 0,  bespoke: true,  pdc: 10, pdcSize: 4,                         image: "Bulwark.png",       color: "#4488ff", size: 6,  missileType: 3, armorType: "subcapital", allySlots: ["small","small","medium","medium","heavy","heavy","heavy"] },
   Tempest:    { price: 380000,    hp: 2000,  shields: 2200, armor: 100, missiles: 32, speed: 0.70, weaponType: "laser_repeater",    weaponSize: 5,  bespoke: false, doubleShot: true, pdc: 4, pdcSizes: [5,5,4,4], image: "Tempest.png", color: "#00ffcc", size: 7,  missileType: 1, armorType: "subcapital", allySlots: ["small","small","medium","medium","medium","heavy","heavy","heavy"] },
   // --- CAPITAL ---
   Nemesis:    { price: 280000,    hp: 2000,  shields: 2500, armor: 100, missiles: 24, speed: 0.75, weaponType: "ballistic_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: true, pdc: 6, pdcSize: 3,         image: "Nemesis.png",          color: "#ffff44", size: 6,  missileType: 3, armorType: "capital",    allySlots: ["small","medium","medium","heavy","heavy","heavy","heavy"],
@@ -213,7 +213,7 @@ const SHIPS = {
   // --- SECRET ---
   Comet:      { price: null,      hp: 100,   shields: 90,   armor: 100, missiles: 30,  speed: 4.0,  weaponType: "ballistic_cannon",  weaponSize: 5,  bespoke: true,  doubleShot: false, pdc: 0,  pdcSize: 0,     image: "Comet.png",           color: "#ff2200", size: 1,  missileType: 2, armorType: "light",      secret: true, allySlots: ["small","small","medium","medium"],
     bespokeAlt: "nova_burst", bespokeAltName: "Nova Burst" },
-  Vengeance:  { price: null,      hp: 200,   shields: 400,  armor: 100, missiles: 20,  speed: 3.8,  weaponType: "vengeance_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: false, pdc: 1, pdcSize: 4,     image: "Galactic_Horizons_Vengeance.png",           color: "#ff0044", size: 2,  missileType: 2, armorType: "medium",     secret: true, allySlots: ["small","medium","medium","heavy","heavy"],
+  Vengeance:  { price: null,      hp: 200,   shields: 400,  armor: 100, missiles: 20,  speed: 3.8,  weaponType: "vengeance_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: false, burstFire: true, burstCount: 2, pdc: 1, pdcSize: 4,     image: "Galactic_Horizons_Vengeance.png",           color: "#ff0044", size: 2,  missileType: 2, armorType: "medium",     secret: true, allySlots: ["small","medium","medium","heavy","heavy"],
     bespokeAlt: "shadow_round",  bespokeAltName: "Shadow Round" },
   // ── SECRET: Retribution — 3-shot burst (base: 2→3 escalating) ──
   Retribution:{ price: null,      hp: 600,   shields: 500,  armor: 100, missiles: 20,  speed: 3.0,  weaponType: "ballistic_cannon",  weaponSize: 10, bespoke: true,  doubleShot: false, burstFire: true, burstCount: 3, pdc: 3, pdcSize: 5, image: "Comet.png", color: "#ff4400", size: 3,  missileType: 3, armorType: "heavy",      secret: true, allySlots: ["small","medium","heavy","heavy","heavy","capital"],
@@ -863,31 +863,31 @@ const DAILY_CHALLENGE_POOL = [
 // ============================================================
 const TURN_180_SECONDS = {
   light:        0.15,
-  medium:       0.45,
-  heavy:        1.00,
-  subcapital:   1.00,
-  capital:      2.00,
-  supercapital: 3.00,
+  medium:       0.50,
+  heavy:        1.20,
+  subcapital:   1.55,
+  capital:      2.40,
+  supercapital: 3.60,
 };
 
 const _T = s => Math.PI / (s * 60);
 
 const FLIGHT_PROFILES = {
   // class defaults
-  light:        { turnSpeed: _T(0.15), gimbalCone: 20 * Math.PI / 180 },
-  medium:       { turnSpeed: _T(0.45), gimbalCone: 45 * Math.PI / 180 },
-  heavy:        { turnSpeed: _T(1.00), gimbalCone: 25 * Math.PI / 180 },
-  subcapital:   { turnSpeed: _T(1.00), gimbalCone: 30 * Math.PI / 180 },
-  capital:      { turnSpeed: _T(2.00), gimbalCone: 35 * Math.PI / 180 },
-  supercapital: { turnSpeed: _T(3.00), gimbalCone: 35 * Math.PI / 180 },
+  light:        { turnSpeed: _T(TURN_180_SECONDS.light),        gimbalCone: 20 * Math.PI / 180 },
+  medium:       { turnSpeed: _T(TURN_180_SECONDS.medium),       gimbalCone: 45 * Math.PI / 180 },
+  heavy:        { turnSpeed: _T(TURN_180_SECONDS.heavy),        gimbalCone: 25 * Math.PI / 180 },
+  subcapital:   { turnSpeed: _T(TURN_180_SECONDS.subcapital),   gimbalCone: 30 * Math.PI / 180 },
+  capital:      { turnSpeed: _T(TURN_180_SECONDS.capital),      gimbalCone: 35 * Math.PI / 180 },
+  supercapital: { turnSpeed: _T(TURN_180_SECONDS.supercapital), gimbalCone: 35 * Math.PI / 180 },
 };
 
 // Per-ship overrides. Specials trade ALL gimbal for hull agility:
 // their gun line IS their shield facing, permanently.
 const FLIGHT_OVERRIDES = {
   Nemesis:     { gimbalCone: 60 * Math.PI / 180 },
-  Leviathan:   { gimbalCone: 60 * Math.PI / 180, turnSpeed: _T(3.00) },
-  Dominion:    {                                  turnSpeed: _T(3.00) },
+  Leviathan:   { gimbalCone: 60 * Math.PI / 180, turnSpeed: _T(TURN_180_SECONDS.supercapital) },
+  Dominion:    {                                  turnSpeed: _T(TURN_180_SECONDS.supercapital) },
   Comet:       { turnSpeed: _T(0.10), gimbalCone: 0 },
   Vengeance:   { turnSpeed: _T(0.22), gimbalCone: 0 },
   Retribution: { turnSpeed: _T(0.50), gimbalCone: 0 },
