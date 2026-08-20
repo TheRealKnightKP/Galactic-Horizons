@@ -853,3 +853,60 @@ const DAILY_CHALLENGE_POOL = [
   { id:"d_50acc",         title:"Precision Strike",  desc:"Finish a wave with 80%+ shot accuracy",        condition:{ type:"waveStat", stat:"waveAccuracy80", value:1 }, reward:{ type:"credits", value:8000 } },
   { id:"d_no_ally_death", title:"Shield Wall",       desc:"Clear 3 waves with no ally deaths today",       condition:{ type:"sessionStat", stat:"wavesNoAllyDeath", value:3 }, reward:{ type:"credits", value:10000 } },
 ];
+
+// ============================================================
+// FLIGHT PROFILES — hull turn rate + weapon gimbal (Arena V2 §10)
+// turnSpeed is rad/frame. Derived from a target 180-degree reversal time:
+//     turnSpeed = PI / (seconds * 60)
+// gimbalCone is the max radians a weapon may deviate from hull facing.
+// Outside the cone the weapon HOLDS FIRE — it does not clamp and shoot wide.
+// ============================================================
+const TURN_180_SECONDS = {
+  light:        0.15,
+  medium:       0.45,
+  heavy:        1.00,
+  subcapital:   1.00,
+  capital:      2.00,
+  supercapital: 3.00,
+};
+
+const _T = s => Math.PI / (s * 60);
+
+const FLIGHT_PROFILES = {
+  // class defaults
+  light:        { turnSpeed: _T(0.15), gimbalCone: 20 * Math.PI / 180 },
+  medium:       { turnSpeed: _T(0.45), gimbalCone: 45 * Math.PI / 180 },
+  heavy:        { turnSpeed: _T(1.00), gimbalCone: 25 * Math.PI / 180 },
+  subcapital:   { turnSpeed: _T(1.00), gimbalCone: 30 * Math.PI / 180 },
+  capital:      { turnSpeed: _T(2.00), gimbalCone: 35 * Math.PI / 180 },
+  supercapital: { turnSpeed: _T(3.00), gimbalCone: 35 * Math.PI / 180 },
+};
+
+// Per-ship overrides. Specials trade ALL gimbal for hull agility:
+// their gun line IS their shield facing, permanently.
+const FLIGHT_OVERRIDES = {
+  Nemesis:     { gimbalCone: 60 * Math.PI / 180 },
+  Leviathan:   { gimbalCone: 60 * Math.PI / 180, turnSpeed: _T(3.00) },
+  Dominion:    {                                  turnSpeed: _T(3.00) },
+  Comet:       { turnSpeed: _T(0.10), gimbalCone: 0 },
+  Vengeance:   { turnSpeed: _T(0.22), gimbalCone: 0 },
+  Retribution: { turnSpeed: _T(0.50), gimbalCone: 0 },
+};
+
+// SHIPS has no "supercapital" armorType, so size >= 8 promotes capital -> supercapital.
+function getFlightProfile(shipName) {
+  const d = (typeof SHIPS !== "undefined" && SHIPS[shipName]) || null;
+  if (!d) return { ...FLIGHT_PROFILES.medium };
+  let cls = d.armorType || "medium";
+  if (cls === "capital" && (d.size || 0) >= 8) cls = "supercapital";
+  const base = FLIGHT_PROFILES[cls] || FLIGHT_PROFILES.medium;
+  return { ...base, ...(FLIGHT_OVERRIDES[shipName] || {}) };
+}
+
+// Shortest signed angle from a to b, in (-PI, PI].
+function angleDelta(a, b) {
+  let d = b - a;
+  while (d >  Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
