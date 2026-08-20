@@ -1455,6 +1455,27 @@ function renderShopRecords(container) {
 }
 
 function renderShopAccount(container) {
+
+  // ── Aim Mode (mobile) ──────────────────────────────────────────
+  if (typeof IS_MOBILE !== "undefined" && IS_MOBILE) {
+    const modes = [
+      ["stick",     "Stick Aim",     "Right stick points the ship. Fires while held."],
+      ["touch",     "Touch Aim",     "Tap anywhere on screen. Ship aims at that exact point and fires. Closest to mouse aiming."],
+      ["crosshair", "Crosshair Aim", "Right stick moves a floating crosshair. Ship aims at it and fires while held."]
+    ];
+    let ah = '<h3 style="color:#0af;margin:14px 0 8px">Aim Mode</h3><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">';
+    for (const [key, label, desc] of modes) {
+      const on = (typeof aimMode !== "undefined" && aimMode === key);
+      ah += `<div onclick="if(typeof setAimMode==='function'){setAimMode('${key}');}"
+        style="cursor:pointer;padding:10px 12px;border-radius:8px;border:2px solid ${on ? '#0af' : '#333'};
+               background:${on ? 'rgba(0,170,255,0.12)' : 'rgba(255,255,255,0.03)'}">
+        <div style="font-weight:bold;color:${on ? '#0af' : '#ccc'}">${on ? '&#10003; ' : ''}${label}</div>
+        <div style="font-size:12px;color:#888;margin-top:3px">${desc}</div>
+      </div>`;
+    }
+    ah += '</div>';
+    container.innerHTML += ah;
+  }
   const acct   = typeof currentAccount !== "undefined" ? currentAccount : null;
   const isGuest = !acct || acct.username === "guest";
 
@@ -1487,12 +1508,12 @@ function renderShopAccount(container) {
           const r=typeof logoutAccount==='function'?logoutAccount():{ok:false,error:'Not available'};
           if(!r.ok){const el=document.getElementById('logoutErrMsg');if(el)el.textContent=r.error;return;}
           if(!confirm('Warning: You will need an internet connection to log back in. Log out now?'))return;
-          if(typeof buildLoginUI==='function')buildLoginUI();typeof openAccountPanel==="function"?openAccountPanel():null;})()"
+          if(typeof buildLoginUI==='function')buildLoginUI();typeof openAccountPanel==='function'?openAccountPanel():null;})()"
           style="padding:6px 14px;background:#333;color:#ccc;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Logout</button>
         <button onclick="if(typeof saveGame==='function'){saveGame();showNotification?.('Game saved!','#0af');}" 
           style="padding:6px 14px;background:#0a4;color:#fff;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Save Now</button>
         ${acct.isAdmin?'':
-        `<button onclick="window._showDeleteConfirm=true;typeof openAccountPanel==="function"?openAccountPanel():null"
+        `<button onclick="window._showDeleteConfirm=true;typeof openAccountPanel==='function'?openAccountPanel():null"
           style="padding:6px 14px;background:#1a0000;color:#f44;font:11px monospace;border:1px solid #f444;cursor:pointer;border-radius:4px">Delete Account</button>`}
       </div>
       ${window._showDeleteConfirm ? `
@@ -1510,7 +1531,7 @@ function renderShopAccount(container) {
               if(r.ok){window._showDeleteConfirm=false;if(typeof buildLoginUI==='function')buildLoginUI();}
               else{const el=document.getElementById('deleteErr');if(el)el.textContent=r.error;btn.disabled=false;btn.textContent='Confirm Delete';}})()"
               style="padding:6px 14px;background:#f44;color:#000;font:bold 11px monospace;border:none;cursor:pointer;border-radius:4px">Confirm Delete</button>
-            <button onclick="window._showDeleteConfirm=false;typeof openAccountPanel==="function"?openAccountPanel():null"
+            <button onclick="window._showDeleteConfirm=false;typeof openAccountPanel==='function'?openAccountPanel():null"
               style="padding:6px 14px;background:#333;color:#ccc;font:11px monospace;border:none;cursor:pointer;border-radius:4px">Cancel</button>
           </div>
         </div>` : ''}
@@ -1524,7 +1545,7 @@ function renderShopAccount(container) {
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">`;
     titles.forEach(t => {
       const isEq = t === equipped;
-      html += `<button onclick="if(typeof equippedTitle!='undefined'){window.equippedTitle='${t}';typeof openAccountPanel==="function"?openAccountPanel():null;}" 
+      html += `<button onclick="if(typeof equippedTitle!='undefined'){window.equippedTitle='${t}';typeof openAccountPanel==='function'?openAccountPanel():null;}" 
         style="padding:5px 12px;background:${isEq?'#cc88ff':'#1a0a2a'};color:${isEq?'#000':'#cc88ff'};font:11px monospace;border:1px solid #cc88ff44;cursor:pointer;border-radius:4px">
         ${isEq?'✓ ':''} ${t}</button>`;
     });
@@ -1537,7 +1558,7 @@ function renderShopAccount(container) {
   shapes.forEach(sh => {
     const def = allShapes[sh] || { name: sh };
     const isActive = sh === curShape;
-    html += `<button onclick="if(typeof setThrusterShape==='function'){setThrusterShape('${ship}','${sh}');typeof openAccountPanel==="function"?openAccountPanel():null;}"
+    html += `<button onclick="if(typeof setThrusterShape==='function'){setThrusterShape('${ship}','${sh}');typeof openAccountPanel==='function'?openAccountPanel():null;}"
       style="padding:5px 12px;background:${isActive?'#8084ff':'#0a0e1a'};color:${isActive?'#000':'#8084ff'};font:11px monospace;border:1px solid #8084ff44;cursor:pointer;border-radius:4px">
       ${isActive?'✓ ':''} ${def.name||sh}</button>`;
   });
@@ -1548,7 +1569,7 @@ function renderShopAccount(container) {
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">`;
   colors.forEach(c => {
     const isActive = c === curColor;
-    html += `<div onclick="if(typeof setThrusterColor==='function'){setThrusterColor('${ship}','${c}');typeof openAccountPanel==="function"?openAccountPanel():null;}"
+    html += `<div onclick="if(typeof setThrusterColor==='function'){setThrusterColor('${ship}','${c}');typeof openAccountPanel==='function'?openAccountPanel():null;}"
       style="width:32px;height:32px;border-radius:50%;background:${c};cursor:pointer;border:3px solid ${isActive?'#fff':'#333'};box-shadow:${isActive?'0 0 8px '+c:'none'}"></div>`;
   });
   html += `</div>`;
