@@ -362,6 +362,8 @@ function renderShopShips(container) {
   }
   html += `</div>`;
   container.innerHTML = html;
+
+
 }
 
 function toggleShipInfo(name) {
@@ -1456,26 +1458,6 @@ function renderShopRecords(container) {
 
 function renderShopAccount(container) {
 
-  // ── Aim Mode (mobile) ──────────────────────────────────────────
-  if (typeof IS_MOBILE !== "undefined" && IS_MOBILE) {
-    const modes = [
-      ["stick",     "Stick Aim",     "Right stick points the ship. Fires while held."],
-      ["touch",     "Touch Aim",     "Tap anywhere on screen. Ship aims at that exact point and fires. Closest to mouse aiming."],
-      ["crosshair", "Crosshair Aim", "Right stick moves a floating crosshair. Ship aims at it and fires while held."]
-    ];
-    let ah = '<h3 style="color:#0af;margin:14px 0 8px">Aim Mode</h3><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">';
-    for (const [key, label, desc] of modes) {
-      const on = (typeof aimMode !== "undefined" && aimMode === key);
-      ah += `<div onclick="if(typeof setAimMode==='function'){setAimMode('${key}');}"
-        style="cursor:pointer;padding:10px 12px;border-radius:8px;border:2px solid ${on ? '#0af' : '#333'};
-               background:${on ? 'rgba(0,170,255,0.12)' : 'rgba(255,255,255,0.03)'}">
-        <div style="font-weight:bold;color:${on ? '#0af' : '#ccc'}">${on ? '&#10003; ' : ''}${label}</div>
-        <div style="font-size:12px;color:#888;margin-top:3px">${desc}</div>
-      </div>`;
-    }
-    ah += '</div>';
-    container.innerHTML += ah;
-  }
   const acct   = typeof currentAccount !== "undefined" ? currentAccount : null;
   const isGuest = !acct || acct.username === "guest";
 
@@ -1589,6 +1571,34 @@ function renderShopAccount(container) {
 
   // Auto-load first leaderboard category
   if (cats.length > 0) setTimeout(() => loadLBCat(cats[0].id), 50);
+
+  // ── Aim Mode ───────────────────────────────────────────────────
+  // Must come AFTER the assignment above, which replaces all content.
+  // Not gated on IS_MOBILE: hiding it on desktop makes it undiscoverable
+  // for anyone who tests there first.
+  {
+    const _touch = (typeof IS_MOBILE !== "undefined" && IS_MOBILE);
+    const _modes = [
+      ["stick",     "Stick Aim",     "Right stick points the ship. Fires while held."],
+      ["touch",     "Touch Aim",     "Tap anywhere on screen. The ship aims at that exact point and fires. Closest to mouse aiming."],
+      ["crosshair", "Crosshair Aim", "Right stick moves a floating crosshair. The ship aims at it and fires while held."]
+    ];
+    const _cur = (typeof aimMode !== "undefined") ? aimMode : "stick";
+    let _ah = '<h3 style="color:#0af;margin:18px 0 8px;font:bold 15px monospace">Aim Mode</h3>'
+            + (_touch ? '' : '<div style="font:11px monospace;color:#777;margin-bottom:8px">Applies to touch controls. On desktop the mouse always aims directly.</div>')
+            + '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">';
+    for (const [key, label, desc] of _modes) {
+      const on = _cur === key;
+      _ah += '<div onclick="if(typeof setAimMode===\'function\'){setAimMode(\'' + key + '\');}" '
+           + 'style="cursor:pointer;padding:10px 12px;border-radius:8px;border:2px solid '
+           + (on ? '#0af' : '#333') + ';background:' + (on ? 'rgba(0,170,255,0.12)' : 'rgba(255,255,255,0.03)') + '">'
+           + '<div style="font:bold 13px monospace;color:' + (on ? '#0af' : '#ccc') + '">'
+           + (on ? '&#10003; ' : '') + label + '</div>'
+           + '<div style="font:11px monospace;color:#888;margin-top:3px">' + desc + '</div></div>';
+    }
+    _ah += '</div>';
+    container.insertAdjacentHTML("beforeend", _ah);
+  }
 }
 
 async function loadLBCat(catId) {
