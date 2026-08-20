@@ -75,6 +75,33 @@ resizeCanvas();
 
 const mouse = { x: GAME_W / 2, y: GAME_H / 2, down: false };
 const keys  = {};
+// ── Aim modes (Settings) ──────────────────────────────────────
+// "stick"     : right stick sets a DIRECTION (original behaviour)
+// "touch"     : tap/drag anywhere on the field; ship aims at that point and fires
+// "crosshair" : right stick moves a free cursor; ship aims at it, fires while held
+let aimMode = "stick";
+let aimCursor = { x: 0, y: 0, active: false, initialised: false };
+function setAimMode(m){
+  if(!["stick","touch","crosshair"].includes(m)) return;
+  aimMode = m;
+  aimCursor.active = false; aimCursor.initialised = false;
+  try { localStorage.setItem("gh_aimMode", m); } catch(e) {}
+  if (typeof openAccountPanel === "function") openAccountPanel();
+  if (typeof _applyAimModeUI === "function") _applyAimModeUI();
+}
+try { const _am = localStorage.getItem("gh_aimMode"); if(_am) aimMode = _am; } catch(e) {}
+
+// PDC tuning. 10 PDC => 10*0.45 = 4.5 attempts/sec * 0.55 hit = ~2.5 kills/sec.
+const CROSSHAIR_SPEED = 9;   // px per frame at full stick deflection
+const PDC_RANGE = 200;
+const PDC_HIT_CHANCE = 0.55;
+const PDC_SHOTS_PER_SEC = 0.45;
+function spawnPdcSpark(x,y){
+  if(typeof _thrusterParticles==="undefined") return;
+  for(let i=0;i<3;i++) _thrusterParticles.push({
+    x, y, vx:(Math.random()-0.5)*2.5, vy:(Math.random()-0.5)*2.5,
+    life:10, maxLife:10, color:"#ffdd88", shape:"classic", size:2 });
+}
 let mobileJoy = { active: false, touchId: null, startX: 0, startY: 0, dx: 0, dy: 0 };
 let mobileAim = { active: false, touchId: null, startX: 0, startY: 0, dx: 0, dy: 0, shooting: false };
 
@@ -196,6 +223,55 @@ function buildMobileControls() {
   rightKnob.style.cssText = "position:absolute;width:60px;height:60px;background:rgba(255,80,80,0.28);border:2px solid rgba(255,120,80,0.7);border-radius:50%;left:50px;top:50px";
   rightBase.appendChild(rightKnob);
 
+  // ── Touch Aim: an invisible full-field surface. Tap/drag anywhere and the ship
+  // aims at that exact point and fires, reproducing mouse-cursor accuracy.
+  const touchAimPad = document.createElement("div");
+  touchAimPad.id = "touchAimPad";
+  touchAimPad.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:1;touch-action:none";
+  ui.appendChild(touchAimPad);
+  function _fieldToWorld(clientX, clientY){
+    const c = document.getElementById("gameCanvas");
+    const r = c.getBoundingClientRect();
+    const sx = GAME_W / r.width, sy = GAME_H / r.height;
+    return { x:(clientX - r.left)*sx, y:(clientY - r.top)*sy };
+  }
+  function _touchAimSet(t){
+    const p=_fieldToWorld(t.clientX,t.clientY);
+    mouse.x=p.x; mouse.y=p.y;
+    aimCursor.x=p.x; aimCursor.y=p.y; aimCursor.active=true;
+  }
+  touchAimPad.addEventListener("touchstart", e => {
+    if(aimMode!=="touch") return;
+    e.preventDefault(); lastTouchTime=Date.now();
+    const t=e.changedTouches[0];
+    mobileAim.touchId=t.identifier; mobileAim.active=true; mobileAim.shooting=true;
+    mouse.down=true; _touchAimSet(t); initAudio();
+  }, { passive:false });
+  touchAimPad.addEventListener("touchmove", e => {
+    if(aimMode!=="touch"||!mobileAim.active) return;
+    e.preventDefault();
+    for(let i=0;i<e.touches.length;i++)
+      if(e.touches[i].identifier===mobileAim.touchId){ _touchAimSet(e.touches[i]); break; }
+  }, { passive:false });
+  const _touchAimEnd = e => {
+    if(aimMode!=="touch") return;
+    for(let i=0;i<e.changedTouches.length;i++)
+      if(e.changedTouches[i].identifier===mobileAim.touchId){
+        mobileAim.active=false; mobileAim.shooting=false; mobileAim.touchId=null;
+        mouse.down=false; aimCursor.active=false;
+      }
+  };
+  touchAimPad.addEventListener("touchend", _touchAimEnd);
+  touchAimPad.addEventListener("touchcancel", _touchAimEnd);
+
+  // Show the right stick only in the modes that use it; enable the field pad in touch mode.
+  window._applyAimModeUI = function(){
+    if(!rightBase || !touchAimPad) return;
+    rightBase.style.display    = (aimMode==="touch") ? "none" : "block";
+    touchAimPad.style.pointerEvents = (aimMode==="touch") ? "auto" : "none";
+  };
+  _applyAimModeUI();
+
   rightBase.addEventListener("touchstart", e => {
     e.preventDefault();
     const t = e.changedTouches[0];
@@ -225,7 +301,23 @@ function buildMobileControls() {
     mobileAim.dx = dx / maxR; mobileAim.dy = dy / maxR;
     rightKnob.style.left = (50 + dx) + "px";
     rightKnob.style.top  = (50 + dy) + "px";
-    if (dist > 6) {
+    if (aimMode === "crosshair") {
+      // Stick moves a free cursor; the ship aims at wherever the cursor is.
+      // Deadzone stops slow drift; the cursor persists between touches.
+      if(!aimCursor.initialised){
+        aimCursor.x = player.x + player.w/2 + 140;
+        aimCursor.y = player.y + player.h/2;
+        aimCursor.initialised = true;
+      }
+      if (dist > 8) {
+        aimCursor.x += (dx / maxR) * CROSSHAIR_SPEED;
+        aimCursor.y += (dy / maxR) * CROSSHAIR_SPEED;
+      }
+      aimCursor.x = Math.max(0, Math.min(GAME_W, aimCursor.x));
+      aimCursor.y = Math.max(0, Math.min(GAME_H, aimCursor.y));
+      aimCursor.active = true;
+      mouse.x = aimCursor.x; mouse.y = aimCursor.y;
+    } else if (dist > 6) {
       const camOfsX = window.gameMode === "universe" ? (window.camX || 0) : 0;
       const camOfsY = window.gameMode === "universe" ? (window.camY || 0) : 0;
       mouse.x = (player.x + player.w / 2) - camOfsX + (dx / maxR) * 800;
@@ -240,6 +332,8 @@ function buildMobileControls() {
         mobileAim.touchId  = null;
         mobileAim.dx = 0; mobileAim.dy = 0;
         mouse.down = false;
+        // crosshair mode: cursor persists, so keep aiming at it after release
+        if(aimMode==="crosshair" && aimCursor.initialised){ mouse.x=aimCursor.x; mouse.y=aimCursor.y; }
         rightKnob.style.left = "50px"; rightKnob.style.top = "50px";
       }
     }
@@ -1511,7 +1605,7 @@ function fireRailgun(origin,wStats,angle,isPlayer) {
       applyDamage(e,{...base,damage:wStats.damage});
       playHitSound("ballistic");
       if(e.hp<=0){
-        spawnDeathEffect(e); playExplosion(ENEMIES[e.type]?.size||2); e.dead=true; money+=e.score;
+        killEnemy(e,"missile");
         if(e.isShadowComet) checkShadowCometDefeat();
         if(e.isShadowVengance) checkShadowVenganceDefeat();
       }
@@ -1581,6 +1675,41 @@ function fireDoubleShot(origin,wStats,angle,isPlayer) {
 // ============================================================
 // AIM ARROW + RAILGUN CHARGE VISUALS
 // ============================================================
+// ── Single source of truth for enemy death (Arena V2 prerequisite) ──
+// Death was duplicated in 5 places; two of them (splash kill, missile kill) never
+// called recordKill, which is why Shadow Comet / Shadow Vengeance achievements
+// never fired -- those bosses are usually finished by splash or a missile.
+function killEnemy(e, source){
+  if(!e || e.dead) return false;
+  e.dead = true;
+  spawnDeathEffect(e);
+  playExplosion(ENEMIES[e.type]?.size || 2);
+  money += (e.score || 0);
+  window.recordCreditsEarned?.(e.score || 0);
+  window.recordKill?.(e);
+  return true;
+}
+
+function drawAimCursor() {
+  if(state!=="playing") return;
+  if(aimMode==="stick") return;
+  if(!aimCursor.initialised && !aimCursor.active) return;
+  const x=aimCursor.x, y=aimCursor.y;
+  const live = aimCursor.active;
+  ctx.save();
+  ctx.globalAlpha = live?0.9:0.4;
+  ctx.strokeStyle = player.gimbalLocked ? "#ff4444" : "#ffcc44";
+  ctx.lineWidth=2; ctx.shadowColor=ctx.strokeStyle; ctx.shadowBlur=6;
+  ctx.beginPath(); ctx.arc(x,y,11,0,Math.PI*2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x-18,y); ctx.lineTo(x-6,y); ctx.moveTo(x+6,y); ctx.lineTo(x+18,y);
+  ctx.moveTo(x,y-18); ctx.lineTo(x,y-6); ctx.moveTo(x,y+6); ctx.lineTo(x,y+18);
+  ctx.stroke();
+  ctx.globalAlpha=live?0.5:0.2; ctx.beginPath(); ctx.arc(x,y,2.5,0,Math.PI*2);
+  ctx.fillStyle=ctx.strokeStyle; ctx.fill();
+  ctx.restore();
+}
+
 function drawAimArrow() {
   if(state!=="playing")return;
   const cx=player.x+player.w/2, cy=player.y+player.h/2;
@@ -2062,7 +2191,10 @@ function updateAllies() {
       a.vx+=(dx2/dist2)*2;a.vy+=(dy2/dist2)*2;
       const as=Math.hypot(a.vx,a.vy);if(as>spd2){a.vx*=spd2/as;a.vy*=spd2/as;}
       a.vx*=0.84;a.vy*=0.84;a.x+=a.vx;a.y+=a.vy; a.rotation=player.rotation; regenShieldFaces(a, 0.04);
-      const healAmt=0.12; player.hp=Math.min(player.maxHp, player.hp+healAmt); regenShieldFaces(player, 0.08);
+      // Revenge mode pushes the hull past its limits: no external repair while active.
+      const _inRevenge = player.specialActive && currentShipName==="Vengeance";
+      const healAmt=0.12;
+      if(!_inRevenge){ player.hp=Math.min(player.maxHp, player.hp+healAmt); regenShieldFaces(player, 0.08); }
       allies.forEach(other=>{ if(other===a)return; other.hp=Math.min(other.maxHp, other.hp+healAmt); regenShieldFaces(other, 0.06); });
       a.shootTimer=999; return;
     }
@@ -2077,8 +2209,15 @@ function updateAllies() {
     else if(allyFormation==="surround"){ const n=Math.max(1,allies.length); const angle=(Math.PI*2*i/n)+player.rotation; const r=52+n*12; fx=pcx+Math.cos(angle)*r-a.w/2; fy=pcy+Math.sin(angle)*r-a.h/2; }
     else { const dist=80+i*50,perp=(i-(allies.length-1)/2)*65; fx=pcx-cos*dist-sin*perp-a.w/2; fy=pcy-sin*dist+cos*perp-a.h/2; }
     const dx=fx-a.x,dy=fy-a.y,dist=Math.hypot(dx,dy)||1;
-    const baseMaxSpd=22*(a.speedMult||1); const speedFrac=Math.max(0.05,Math.min(1.0,dist/160));
-    a.vx+=(dx/dist)*2.0; a.vy+=(dy/dist)*2.0;
+    const baseMaxSpd=22*(a.speedMult||1); const speedFrac=Math.max(0.0,Math.min(1.0,dist/160));
+    // Arrival steering. The old code applied a CONSTANT accel of 2.0 no matter how
+    // close it was, and speedFrac floored at 0.05 (=1.1px/f), so a parked ally
+    // overshot by ~1px every frame and reversed forever. That was the vibration.
+    // Desired speed now scales with distance and reaches 0 on arrival.
+    const desiredSpd=Math.min(baseMaxSpd*speedFrac, dist*0.30);
+    const desVx=(dx/dist)*desiredSpd, desVy=(dy/dist)*desiredSpd;
+    a.vx+=(desVx-a.vx)*0.20; a.vy+=(desVy-a.vy)*0.20;
+    if(dist<2.5){ a.vx*=0.5; a.vy*=0.5; }
     const spd=Math.hypot(a.vx,a.vy); const targetSpd=baseMaxSpd*speedFrac;
     if(spd>targetSpd){a.vx*=targetSpd/spd;a.vy*=targetSpd/spd;}
     a.vx*=0.84; a.vy*=0.84; a.x+=a.vx;a.y+=a.vy;
@@ -2269,7 +2408,7 @@ function updateEnemies() {
           if(e.archetypeTimer<=0){e.flankerPhase=e.flankerPhase==="flank"?"normal":"flank";e.archetypeTimer=90+Math.floor(Math.random()*120);}
           if(e.flankerPhase==="flank"){ const sideAngle=Math.atan2(ty-ecy,tx-ecx)+(Math.random()>0.5?Math.PI/2:-Math.PI/2); const sideX=ecx+Math.cos(sideAngle)*180-e.w/2; const sideY=ecy+Math.sin(sideAngle)*180-e.h/2; const sd=Math.hypot(sideX-e.x,sideY-e.y)||1; e.vx+=(sideX-e.x)/sd*accel*3;e.vy+=(sideY-e.y)/sd*accel*3; }
         }
-        { const orbitAngle=e.surroundAngle+(Math.PI*2*myIdx/Math.max(totalSmall,1)); const targetX=tx+Math.cos(orbitAngle)*orbitR-e.w/2; const targetY=ty+Math.sin(orbitAngle)*orbitR-e.h/2; const tdx=targetX-e.x,tdy=targetY-e.y,tDist=Math.hypot(tdx,tdy)||1; e.vx+=(tdx/tDist)*accel*2.2;e.vy+=(tdy/tDist)*accel*2.2; }
+        { const orbitAngle=e.surroundAngle+(Math.PI*2*myIdx/Math.max(totalSmall,1)); const targetX=tx+Math.cos(orbitAngle)*orbitR-e.w/2; const targetY=ty+Math.sin(orbitAngle)*orbitR-e.h/2; const tdx=targetX-e.x,tdy=targetY-e.y,tDist=Math.hypot(tdx,tdy)||1; const _ease=Math.min(1,tDist/45); e.vx+=(tdx/tDist)*accel*2.2*_ease;e.vy+=(tdy/tDist)*accel*2.2*_ease; }
         if(dist<80){e.vx-=ndx*accel*5;e.vy-=ndy*accel*5;}
         smallList.forEach(other=>{ if(other===e)return; const odx=e.x-other.x,ody=e.y-other.y,od=Math.hypot(odx,ody)||1; if(od<85){e.vx+=(odx/od)*accel*1.5;e.vy+=(ody/od)*accel*1.5;} });
       } else {
@@ -2346,7 +2485,7 @@ function checkCollisions() {
         enemies.forEach(target=>{ if(target.dead)return; const dist=Math.hypot(target.x+target.w/2-bx,target.y+target.h/2-by); if(dist>b.aoeRadius)return; const falloff=1-(dist/b.aoeRadius)*0.5;
           if(b.missileKind==="emp"){ if(target.shieldFaces) for(const f of Object.keys(target.shieldFaces)) target.shieldFaces[f]=0; target.shields=0; target.stunTimer=Math.max(target.stunTimer||0,180); }
           else { applyDamage(target,{...b,damage:(b.damage||0)*falloff,aoeRadius:0}); if(b.corrosion) target.corrosionTimer=600; }
-          if(target.hp<=0){spawnDeathEffect(target);playExplosion(ENEMIES[target.type]?.size||2);target.dead=true;money+=target.score;}
+          if(target.hp<=0){killEnemy(target,"splash");}
         });
         if(b.friendlyFire){ const playerDist=Math.hypot(player.x+player.w/2-bx,player.y+player.h/2-by); if(playerDist<b.aoeRadius) applyDamage(player,{...b,damage:(b.damage||0)*(1-playerDist/b.aoeRadius)*0.5,aoeRadius:0}); allies.forEach(a=>{ const d=Math.hypot(a.x+a.w/2-bx,a.y+a.h/2-by); if(d<b.aoeRadius) applyDamage(a,{...b,damage:(b.damage||0)*(1-d/b.aoeRadius)*0.5,aoeRadius:0}); }); }
         if(b.missileKind==="nuke"){ nukeRings.push({x:bx,y:by,r:0,maxR:b.aoeRadius,life:40,maxLife:40,color:"#ff4400"}); nukeRings.push({x:bx,y:by,r:0,maxR:b.aoeRadius*0.7,life:30,maxLife:30,color:"#ff8800"}); nukeRings.push({x:bx,y:by,r:0,maxR:b.aoeRadius*0.4,life:20,maxLife:20,color:"#ffff00"}); spawnDeathEffect({x:bx-60,y:by-60,w:120,h:120,type:"Bulwark"}); }
@@ -2362,7 +2501,7 @@ function checkCollisions() {
         while (hopsLeft-- > 0) { let nearest = null, nearestDist = b.chainRange || 160; enemies.forEach(t => { if (t.dead || alreadyHit.has(t)) return; const d = Math.hypot(t.x+t.w/2 - (lastHit.x+lastHit.w/2), t.y+t.h/2 - (lastHit.y+lastHit.h/2)); if (d < nearestDist) { nearestDist = d; nearest = t; } }); if (!nearest) break; alreadyHit.add(nearest);
           hitEffects.push({ x: lastHit.x+lastHit.w/2, y: lastHit.y+lastHit.h/2, tx: nearest.x+nearest.w/2, ty: nearest.y+nearest.h/2, life: 8, maxLife: 8, arc: true, color: b.color || "#44ffff" });
           applyDamage(nearest, { ...b, damage: dmg, chainHops: 0 }); dmg *= (b.chainDmgMult || 0.55); lastHit = nearest;
-          if (nearest.hp <= 0) { spawnDeathEffect(nearest); playExplosion(ENEMIES[nearest.type]?.size||2); nearest.dead=true; money+=nearest.score; window.recordCreditsEarned?.(nearest.score||0); window.recordKill?.(nearest); }
+          if (nearest.hp <= 0) { killEnemy(nearest,"chain"); }
         }
       }
       if (!b.missile && b.aoeRadius > 0) {
@@ -2370,12 +2509,12 @@ function checkCollisions() {
         enemies.forEach(t => { if (t.dead || t === e) return; const d = Math.hypot(t.x+t.w/2-bx, t.y+t.h/2-by); if (d > b.aoeRadius) return; const falloff = 1 - (d / b.aoeRadius) * 0.5;
           if (b.vortexPull) { t.gravityPullTimer = b.vortexPullDur || 60; t.gravityPullX = bx; t.gravityPullY = by; }
           applyDamage(t, { ...b, damage: (b.damage||0) * falloff, aoeRadius: 0 });
-          if (t.hp <= 0) { spawnDeathEffect(t); playExplosion(ENEMIES[t.type]?.size||2); t.dead=true; money+=t.score; window.recordCreditsEarned?.(t.score||0); window.recordKill?.(t); }
+          if (t.hp <= 0) { killEnemy(t,"turret"); }
         });
         if (b.voidSelfDmg) { const pd = Math.hypot(player.x+player.w/2-bx, player.y+player.h/2-by); if (pd < b.aoeRadius) applyDamage(player, { ...b, damage: (b.damage||0)*(1-pd/b.aoeRadius)*0.5, aoeRadius: 0 }); }
         nukeRings.push({ x:bx, y:by, r:0, maxR:b.aoeRadius, life:30, maxLife:30, color: b.color||"#8800ff" });
       }
-      if(e.hp<=0){ spawnDeathEffect(e); playExplosion(ENEMIES[e.type]?.size||2); e.dead=true; money+=e.score; window.recordCreditsEarned?.(e.score||0); window.recordKill?.(e);
+      if(e.hp<=0){ killEnemy(e,"bullet");
         if(e.isShadowComet) checkShadowCometDefeat(); if(e.isShadowVengance) checkShadowVenganceDefeat();
       }
     });
@@ -2386,7 +2525,28 @@ function checkCollisions() {
     } });
   }
   enemyBullets.forEach(b=>{ if(b.dead)return; if(overlaps(b,player)){b.dead=true;applyDamage(player,b);} allies.forEach(a=>{ if(!a.dead&&overlaps(b,a)){applyDamage(a,b);if(a.hp<=0){spawnDeathEffect(a);a.dead=true;window.recordAllyDeath?.(a.shipName||a.type);}} }); });
-  if(player.pdcCount>0&&!pdcDisabledThisWave) enemyBullets.forEach(b=>{ if(!b.dead&&Math.abs(b.x-player.x)<180&&Math.random()<player.pdcCount*0.03)b.dead=true; });
+  // ── PDC interception (rewritten) ──────────────────────────────
+  // OLD: rolled pdcCount*0.03 EVERY FRAME, PER BULLET, and only compared X.
+  // A 10-PDC hull gave 0.7^30 = 0.002% survival -> effectively total immunity.
+  // NOW: a real rate of fire. One attempt per cooldown, true 2D range, hit chance.
+  if(player.pdcCount>0 && !pdcDisabledThisWave){
+    if(player._pdcTimer===undefined) player._pdcTimer=0;
+    player._pdcTimer--;
+    if(player._pdcTimer<=0){
+      const pcx=player.x+player.w/2, pcy=player.y+player.h/2;
+      let best=null,bestD=PDC_RANGE*PDC_RANGE;
+      for(const b of enemyBullets){
+        if(b.dead) continue;
+        const dx=(b.x+(b.w||0)/2)-pcx, dy=(b.y+(b.h||0)/2)-pcy, d2=dx*dx+dy*dy;
+        if(d2<bestD){ bestD=d2; best=b; }
+      }
+      if(best){
+        if(Math.random()<PDC_HIT_CHANCE){ best.dead=true; spawnPdcSpark(best.x,best.y); }
+        // cooldown regardless of hit: the mount has fired
+        player._pdcTimer=Math.max(3,Math.round(60/(player.pdcCount*PDC_SHOTS_PER_SEC)));
+      }
+    }
+  }
   playerBullets=playerBullets.filter(b=>!b.dead); enemyBullets=enemyBullets.filter(b=>!b.dead); enemies=enemies.filter(e=>!e.dead);
   if(pingTarget&&pingTarget.dead) pingTarget=null; allies=allies.filter(a=>!a.dead);
 }
@@ -2499,7 +2659,7 @@ function render() {
   if(!_isUni && pdcDisabledThisWave){ ctx.save();ctx.globalAlpha=0.7;ctx.fillStyle="#ff2200";ctx.font="bold 13px monospace"; ctx.fillText("TURRETS DISABLED",10,GAME_H-30);ctx.restore(); }
   drawThrusterParticles(); enemies.forEach(drawEntity); allies.forEach(drawEntity);
   if(isDeployed && capitalShipObj && !capitalDestroyed) drawEntity(capitalShipObj);
-  drawEntity(player); drawRailgunCharge(); drawAimArrow(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings();
+  drawEntity(player); drawRailgunCharge(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings();
 
   // Restore camera offset before drawing HUD (HUD is screen-space)
   if (_isUni) { ctx.restore(); }
