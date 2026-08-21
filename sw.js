@@ -5,6 +5,7 @@ const ASSETS = [
   "./data.js",
   "./shop.js",
   "./game.js",
+  "./cards.js",
   "./manifest.json",
   "./saves.js",
   "./challenges.js",
@@ -267,4 +268,5 @@ Versions:
 -V1.10.2 - Arena V2 Update 3: Enemy ships telegraph and shoot in randomized bursts. Shield faces tech deepened. Random chance of destroyed ship dropping Debris, which serves as temporary cover. 
 -V1.10.3 - Arena V2 Update 4: Fixes to Vengeance, new fire modes and fixed them.
 -V1.10.4 - Arena V2 Update 5: Weapon heat, pilot scope, affixes, asymmetric shields, active reload.
+-V1.10.5 - Arena V2 Update 6: Retribution changes, Dodges, Cards, and partial builldings and card's full function.
 */
