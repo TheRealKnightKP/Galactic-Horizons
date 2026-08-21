@@ -216,7 +216,7 @@ const SHIPS = {
   Vengeance:  { price: null,      hp: 200,   shields: 400,  armor: 100, missiles: 20,  speed: 3.8,  weaponType: "vengeance_cannon",  weaponSize: 8,  bespoke: true,  doubleShot: false, burstFire: true, burstCount: 2, pdc: 1, pdcSize: 4,     image: "Galactic_Horizons_Vengeance.png",           color: "#ff0044", size: 2,  missileType: 2, armorType: "medium",     secret: true, allySlots: ["small","medium","medium","heavy","heavy"],
     bespokeAlt: "shadow_round",  bespokeAltName: "Shadow Round" },
   // ── SECRET: Retribution — 3-shot burst (base: 2→3 escalating) ──
-  Retribution:{ price: null,      hp: 600,   shields: 500,  armor: 100, missiles: 20,  speed: 3.0,  weaponType: "ballistic_cannon",  weaponSize: 10, bespoke: true,  doubleShot: false, burstFire: true, burstCount: 3, pdc: 3, pdcSize: 5, image: "Comet.png", color: "#ff4400", size: 3,  missileType: 3, armorType: "heavy",      secret: true, allySlots: ["small","medium","heavy","heavy","heavy","capital"],
+  Retribution:{ price: null,      hp: 600,   shields: 500,  armor: 100, missiles: 20,  speed: 3.0,  weaponType: "ballistic_cannon",  weaponSize: 10, bespoke: true,  doubleShot: false, burstFire: true, burstCount: 2, pdc: 3, pdcSize: 5, image: "Comet.png", color: "#ff4400", size: 3,  missileType: 3, armorType: "heavy",      secret: true, allySlots: ["small","medium","heavy","heavy","heavy","capital"],
     bespokeAlt: "siege_breaker", bespokeAltName: "Siege Breaker" },
 };
 
@@ -956,12 +956,12 @@ const AFFIX_STRIP_FRAMES = 180;   // distortion strips an affix for 3s
 // heatPerShot derived from fireInterval so every gun redlines at the SAME TIME
 // (240 frames of held trigger), not the same shot count.
 // ============================================================
-const HEAT_REDLINE_FRAMES = 240;  // 4.0s of continuous fire to reach 100
+const HEAT_REDLINE_FRAMES = 480;  // 8.0s of continuous fire to reach 100
 const HEAT_REDLINE_START  = 70;   // bonus band begins
-const HEAT_COOL_PER_FRAME = 100/180;
-const HEAT_COOL_DELAY     = 30;
-const HEAT_LOCKOUT_FRAMES = 120;
-const HEAT_REPAIR_FRAMES  = 300;
+const HEAT_COOL_PER_FRAME = 100/120;   // full cool in 2.0s (was 3.0s)
+const HEAT_COOL_DELAY     = 18;        // 0.3s after last shot (was 0.5s)
+const HEAT_LOCKOUT_FRAMES = 75;        // 1.25s (was 2.0s)
+const HEAT_REPAIR_FRAMES  = 240;       // 4.0s (was 5.0s)
 const HEAT_BROKEN_DMG     = 0.40; // never zero: a dead gun removes agency
 // Pilot on ballistic only. Add categories here once the feel is right.
 const HEAT_CATEGORIES = ["ballistic","lc_ballistic"];
@@ -983,6 +983,7 @@ function weaponUsesHeat(wStats){
 }
 
 // ARENA V2 §5 — active reload (ballistic only)
+const RELOAD_GRACE_FRAMES   = 60;   // 1.0s to SEE the prompt before taps register
 const RELOAD_BAR_FRAMES     = 60;
 const RELOAD_PERFECT_START  = 33;
 const RELOAD_PERFECT_END    = 41;
@@ -994,5 +995,87 @@ const RELOAD_PERFECT_BUFF   = 1.20;
 const RELOAD_BUFF_FRAMES    = 180;
 function magSizeFor(wStats){
   if(!wStats || !wStats.fireInterval) return 0;
-  return Math.max(2, Math.round(240 / wStats.fireInterval));
+  return Math.max(2, Math.round(HEAT_REDLINE_FRAMES / wStats.fireInterval));
 }
+
+// ── Retribution: Vendetta rounds ──────────────────────────────
+// "Born from one pilot's refusal to die." Its rounds hit harder the closer the
+// pilot is to death - a double-edged identity to match Vengeance's lifesteal.
+const VENDETTA_MAX_BONUS = 0.60;   // +60% at 0 hp
+const VENDETTA_FLOOR     = 0.90;   // hp fraction where the bonus starts
+// ── Dodge blink ───────────────────────────────────────────────
+const DODGE_IFRAMES      = 60;     // 1.0s invulnerable after a successful dodge
+const DODGE_BLINK_MIN    = 55;     // px
+const DODGE_BLINK_MAX    = 95;
+const DODGE_BLINK_TRIES  = 24;
+
+// ============================================================
+// ARENA V2 §7 — cards, conditions
+// ============================================================
+const CARD_START_WAVE   = 5;    // nothing before this: learn the ship first
+const CARD_EVERY        = 3;    // standard card cadence
+const CARD_SPECIAL_EVERY= 10;   // condition-gated card
+const CARD_OPTIONS      = 3;    // +1 per Supply Dock level
+const CARD_SKIP_BONUS   = 0.15; // "keep what I have" pays 15% extra credits
+const WAVE_TRANSITION_FAST = 90;   // was 300 - five seconds of dead air
+
+// Conditions alternate risk direction so no single strategy always wins.
+const CARD_CONDITIONS = [
+  { id:"fast",      label:"Clear the wave in under 25 seconds",        pool:"ship_light"  },
+  { id:"reinforce", label:"Let reinforcements arrive, then clear them", pool:"ship_heavy" },
+  { id:"flawless",  label:"Finish with no shield face at zero",         pool:"defense"    },
+  { id:"affix",     label:"Destroy 3 affixed enemies",                  pool:"weapon"     },
+  { id:"redline",   label:"End the wave at 70+ heat",                   pool:"mod"        },
+  { id:"nocover",   label:"Take no damage while behind debris",         pool:"damage"     },
+];
+
+// Cards never grant flat stats: an option picked too rarely is not a card.
+const CARD_POOLS = {
+  ship_light: [
+    { id:"ship_Falcon",    name:"Falcon",     desc:"Swap hull. Fastest turn, thinnest armour.", kind:"ship", value:"Falcon" },
+    { id:"ship_Rouge",     name:"Rouge",      desc:"Swap hull. Balanced brawler.",              kind:"ship", value:"Rouge" },
+    { id:"ship_Wasp",      name:"Wasp",       desc:"Swap hull. Evasive shield profile.",        kind:"ship", value:"Wasp" },
+  ],
+  ship_heavy: [
+    { id:"ship_Bulwark",   name:"Bulwark",    desc:"Swap hull. Fortress shields, 10 PDC.",      kind:"ship", value:"Bulwark" },
+    { id:"ship_Supernova", name:"Supernova",  desc:"Swap hull. Prow shields, heavy guns.",      kind:"ship", value:"Supernova" },
+    { id:"ship_Nemesis",   name:"Nemesis",    desc:"Swap hull. Capital with wide gimbals.",     kind:"ship", value:"Nemesis" },
+  ],
+  weapon: [
+    { id:"w_gatling",  name:"Ballistic Gatling", desc:"High RPM. Redlines fast, +25% at redline.", kind:"weapon", value:"ballistic_gatling" },
+    { id:"w_railgun",  name:"Ballistic Railgun", desc:"Hitscan. Charge and release.",              kind:"weapon", value:"ballistic_railgun" },
+    { id:"w_chain",    name:"Chain Arc",         desc:"Arcs between targets.",                     kind:"weapon", value:"chain_arc" },
+    { id:"w_distort",  name:"Distortion",        desc:"Disables. Strips enemy affixes.",           kind:"weapon", value:"distortion" },
+    { id:"w_void",     name:"Void Cannon",       desc:"Slow, enormous damage.",                    kind:"weapon", value:"void_cannon" },
+  ],
+  defense: [
+    { id:"d_shield",  name:"Shield Recalibration", desc:"All shield faces refill and regen locks clear.", kind:"heal", value:"shields" },
+    { id:"d_repair",  name:"Hull Repair",          desc:"Restore 40% hull.",                              kind:"heal", value:"hull" },
+    { id:"d_coolant", name:"Coolant Flush",        desc:"Heat builds 30% slower for the rest of the run.",kind:"mod",  value:"coolant" },
+  ],
+  damage: [
+    { id:"m_overcharge", name:"Overcharge",   desc:"Redline band starts at 55 instead of 70.",  kind:"mod", value:"redline_low" },
+    { id:"m_ap",         name:"AP Rounds",    desc:"+1 penetration on every shot.",             kind:"mod", value:"pen" },
+    { id:"m_extmag",     name:"Extended Mags",desc:"+50% magazine size.",                        kind:"mod", value:"mag" },
+  ],
+  mod: [
+    { id:"m_pdc",     name:"PDC Uplink",   desc:"+2 point-defence mounts.",                   kind:"mod", value:"pdc" },
+    { id:"m_salvage", name:"Salvage Rig",  desc:"Wrecks drop twice as often.",                kind:"mod", value:"salvage" },
+    { id:"m_vamp",    name:"Siphon Rounds",desc:"2% lifesteal on hull damage.",               kind:"mod", value:"siphon" },
+  ],
+};
+const CARD_STANDARD_POOLS = ["weapon","defense","damage","mod"];
+
+// ============================================================
+// ARENA V2 §8 — base. Information and options, never power.
+// ============================================================
+const BASE_BUILDINGS = {
+  radar:   { name:"Radar Array",    max:3, cost:[15000,45000,120000],  desc:"Reveals the composition of upcoming waves." },
+  comms:   { name:"Comms Relay",    max:3, cost:[20000,60000,150000],  desc:"Shows affixes and their drops; adds a card reroll." },
+  supply:  { name:"Supply Dock",    max:5, cost:[25000,60000,140000,300000,600000], desc:"+1 option on every card screen." },
+  hangar:  { name:"Hangar",         max:4, cost:[30000,80000,180000,400000],        desc:"+1 starting loadout choice per run." },
+  quarters:{ name:"Pilot Quarters", max:3, cost:[18000,50000,130000],  desc:"Allies revive faster and keep kill credit." },
+};
+const CARRYOVER_FRAC = 0.05;
+const CARRYOVER_CAP  = 175000;   // ~half a Bulwark (350k) after a strong run
+const CARRYOVER_MIN_WAVE = 5;
