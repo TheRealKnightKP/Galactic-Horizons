@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.10.3";
+const CACHE = "galactic-horizons-v1.10.4";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -266,4 +266,5 @@ Versions:
 -V1.10.1 - Arena V2 Update 2: Now phone has more aiming options, as well as oscillation for allies/enemies has been fixed, and finally PDC's no longer destroy every enemy bullet.
 -V1.10.2 - Arena V2 Update 3: Enemy ships telegraph and shoot in randomized bursts. Shield faces tech deepened. Random chance of destroyed ship dropping Debris, which serves as temporary cover. 
 -V1.10.3 - Arena V2 Update 4: Fixes to Vengeance, new fire modes and fixed them.
+-V1.10.4 - Arena V2 Update 5: Weapon heat, pilot scope, affixes, asymmetric shields, active reload.
 */
