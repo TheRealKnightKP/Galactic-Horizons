@@ -910,3 +910,89 @@ function angleDelta(a, b) {
   while (d < -Math.PI) d += Math.PI * 2;
   return d;
 }
+
+// ============================================================
+// ARENA V2 §4.2 — asymmetric shield face profiles
+// Same total shields, different distribution. Fortress goes on hulls that
+// CANNOT dodge (see §1.1): they eat hits fore and aft while rotating.
+// ============================================================
+const SHIELD_PROFILES = {
+  balanced: { front: 0.25,  back: 0.25,  left: 0.25,  right: 0.25  },
+  prow:     { front: 0.40,  back: 0.15,  left: 0.225, right: 0.225 },
+  evasive:  { front: 0.20,  back: 0.20,  left: 0.30,  right: 0.30  },
+  fortress: { front: 0.30,  back: 0.30,  left: 0.20,  right: 0.20  },
+};
+const SHIP_SHIELD_PROFILE = {
+  Marauder: "balanced", Wasp: "evasive",
+  Supernova: "prow", Tempest: "prow", Nemesis: "prow", Prometheus: "prow",
+  Bulwark: "fortress", Leviathan: "fortress", Dominion: "fortress",
+};
+function getShieldProfile(name){
+  return SHIELD_PROFILES[SHIP_SHIELD_PROFILE[name] || "balanced"] || SHIELD_PROFILES.balanced;
+}
+
+// ============================================================
+// ARENA V2 §6 — enemy affixes
+// Aura is a STEADY outline (telegraph is a pulse) - never confuse the two.
+// ============================================================
+const AFFIXES = {
+  shielded: { name:"Shielded", color:"#00aaff", desc:"Double shields, half regen" },
+  volatile: { name:"Volatile", color:"#ff4400", desc:"Detonates on death" },
+  swift:    { name:"Swift",    color:"#ffcc44", desc:"Faster, frailer" },
+  warded:   { name:"Warded",   color:"#cc88ff", desc:"Frontal damage resistance" },
+  linked:   { name:"Linked",   color:"#44ffcc", desc:"Shares damage with other Linked" },
+};
+const AFFIX_ORDER = ["shielded","volatile","swift","warded","linked"];
+const AFFIX_BASE_CHANCE = 0.15;   // from wave 5
+const AFFIX_PER_WAVE    = 0.01;
+const AFFIX_MAX_CHANCE  = 0.30;
+const AFFIX_START_WAVE  = 5;
+const VOLATILE_RADIUS   = 120;
+const VOLATILE_HP_FRAC  = 0.40;
+const AFFIX_STRIP_FRAMES = 180;   // distortion strips an affix for 3s
+
+// ============================================================
+// ARENA V2 §2 — heat
+// heatPerShot derived from fireInterval so every gun redlines at the SAME TIME
+// (240 frames of held trigger), not the same shot count.
+// ============================================================
+const HEAT_REDLINE_FRAMES = 240;  // 4.0s of continuous fire to reach 100
+const HEAT_REDLINE_START  = 70;   // bonus band begins
+const HEAT_COOL_PER_FRAME = 100/180;
+const HEAT_COOL_DELAY     = 30;
+const HEAT_LOCKOUT_FRAMES = 120;
+const HEAT_REPAIR_FRAMES  = 300;
+const HEAT_BROKEN_DMG     = 0.40; // never zero: a dead gun removes agency
+// Pilot on ballistic only. Add categories here once the feel is right.
+const HEAT_CATEGORIES = ["ballistic","lc_ballistic"];
+const HEAT_REDLINE_BONUS = {
+  ballistic:    { dmg: 1.25 },
+  lc_ballistic: { dmg: 1.25 },
+  laser:        { pen: 1 },
+  distortion:   { disable: 1.5 },
+  corrosion:    { dot: 1.4 },
+  phase:        { rof: 1.2 },
+  void:         { dmg: 1.15, heat: 1.15 },
+};
+function heatPerShot(wStats){
+  if(!wStats || !wStats.fireInterval) return 0;
+  return 100 / (HEAT_REDLINE_FRAMES / wStats.fireInterval);
+}
+function weaponUsesHeat(wStats){
+  return !!(wStats && HEAT_CATEGORIES.includes(wStats.category));
+}
+
+// ARENA V2 §5 — active reload (ballistic only)
+const RELOAD_BAR_FRAMES     = 60;
+const RELOAD_PERFECT_START  = 33;
+const RELOAD_PERFECT_END    = 41;
+const RELOAD_GOOD_START     = 24;
+const RELOAD_GOOD_END       = 50;
+const RELOAD_FULL_FRAMES    = 90;
+const RELOAD_GOOD_FRAMES    = 20;
+const RELOAD_PERFECT_BUFF   = 1.20;
+const RELOAD_BUFF_FRAMES    = 180;
+function magSizeFor(wStats){
+  if(!wStats || !wStats.fireInterval) return 0;
+  return Math.max(2, Math.round(240 / wStats.fireInterval));
+}
