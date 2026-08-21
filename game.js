@@ -136,6 +136,7 @@ if (!IS_MOBILE) {
     if(e.code==="KeyE"&&state==="playing"&&window.gameMode!=="universe") cycleFormation();
     if(e.code==="KeyQ"&&state==="playing"&&window.gameMode!=="universe") activateSpecial();
     if(e.code==="KeyR"&&state==="playing"&&window.gameMode!=="universe") activatePing();
+    if(e.code==="KeyF"&&state==="playing"){ if(player.reloadTimer>0) tapReload(player); else if(usesReload(player)&&player.mag<player.magMax) startReload(player); }
     if(e.code==="KeyT"&&state==="playing"&&window.gameMode!=="universe") cycleMissileKind();
     const tag = document.activeElement?.tagName;
     if (tag !== "INPUT" && tag !== "TEXTAREA") e.preventDefault();
@@ -335,6 +336,7 @@ function buildMobileControls() {
     mobileAim.startX   = r.left + r.width  / 2;
     mobileAim.startY   = r.top  + r.height / 2;
     mobileAim._lastX = t.clientX; mobileAim._lastY = t.clientY;
+    if(typeof player === "object" && player.reloadTimer > 0) tapReload(player);
     mouse.down = true;
     initAudio();
   }, { passive: false });
@@ -861,9 +863,14 @@ function initShieldFaces(obj) {
   const name = obj.type || obj.shipName || (obj === player ? currentShipName : null);
   const useFaces = name ? shipHasShieldFaces(name) : true;
   if (!useFaces) { obj.shieldFaces = null; obj.maxShieldFaces = null; return; }
-  const q = obj.maxShields / 4;
-  obj.shieldFaces = { front: q, back: q, left: q, right: q };
-  obj.maxShieldFaces = { front: q, back: q, left: q, right: q };
+  // Arena V2 §4.2: same total shields, asymmetric distribution per hull.
+  const p = (typeof getShieldProfile === "function") ? getShieldProfile(name)
+          : { front:0.25, back:0.25, left:0.25, right:0.25 };
+  const F = obj.maxShields * p.front, B = obj.maxShields * p.back;
+  const L = obj.maxShields * p.left,  R = obj.maxShields * p.right;
+  obj.shieldFaces    = { front: F, back: B, left: L, right: R };
+  obj.maxShieldFaces = { front: F, back: B, left: L, right: R };
+  obj._faceRegenLock = { front:0, back:0, left:0, right:0 };
 }
 
 function getHitFace(bullet, target) {
@@ -893,6 +900,10 @@ function applyShieldFaceHit(target, bullet, shieldDmg) {
   // Arena V2 §4.1: make the face system visible. 8-frame flash on the struck arc.
   if(!target._faceFlash) target._faceFlash = { front:0, back:0, left:0, right:0 };
   target._faceFlash[face] = SHIELD_FACE_FLASH_FRAMES;
+  // §4.3: that face stops regenerating for 90f, so backing off and rotating
+  // becomes a real tactic instead of a formality.
+  if(!target._faceRegenLock) target._faceRegenLock = { front:0, back:0, left:0, right:0 };
+  target._faceRegenLock[face] = FACE_REGEN_LOCK_FRAMES;
   const faceHp = target.shieldFaces[face];
   if (faceHp <= 0) return;
   const absorbed = Math.min(faceHp, shieldDmg);
@@ -911,6 +922,7 @@ function isFaceDown(target, bullet) {
 }
 
 const SHIELD_FACE_FLASH_FRAMES = 8;
+const FACE_REGEN_LOCK_FRAMES = 90;   // §4.3
 function tickFaceFlashes(obj){
   if(!obj || !obj._faceFlash) return;
   const f=obj._faceFlash;
@@ -920,6 +932,7 @@ function tickFaceFlashes(obj){
 function regenShieldFaces(obj, regenRate) {
   if(!obj.shieldFaces) { if(obj.shields<obj.maxShields) obj.shields = Math.min(obj.maxShields, obj.shields+regenRate); return; }
   for(const f of ["front","back","left","right"]) {
+    if(obj._faceRegenLock && obj._faceRegenLock[f] > 0) { obj._faceRegenLock[f]--; continue; }
     if(obj.shieldFaces[f] < obj.maxShieldFaces[f]) obj.shieldFaces[f] = Math.min(obj.maxShieldFaces[f], obj.shieldFaces[f] + regenRate/4);
   }
   obj.shields = Object.values(obj.shieldFaces).reduce((s,v)=>s+v,0);
@@ -1058,6 +1071,8 @@ function setPlayerShip(name) {
     turnSpeed:(typeof getFlightProfile==="function"?getFlightProfile(name).turnSpeed:Math.PI/27),
     gimbalCone:(typeof getFlightProfile==="function"?getFlightProfile(name).gimbalCone:0.785),
     targetRotation:0, gimbalAngle:0, gimbalLocked:false,
+    heat:0, _heatCoolDelay:0, heatLockout:0, gunBroken:0, _redlineSecs:0, _redlineAcc:0,
+    mag:0, magMax:0, reloadTimer:0, reloadBar:0, reloadBuff:0, _reloadTapped:false,
     vx:0, vy:0, shootTimer:0,
     boosting:false, boostTimer:0, boostCooldown:0,
     boostDuration, boostCooldownMax, dodgeBase:_mastDodge, dodgeBoosted:_mastDodgeB,
@@ -1245,6 +1260,7 @@ function checkShadowCometDefeat() {
     document.body.appendChild(el); setTimeout(() => el.remove(), 4000);
   }
   waveTransitionText = "Wave "+currentWave+" Cleared!  +"+reward+" credits";
+  try { for(const _e of enemies) if(_e && _e.affix === undefined) applyAffix(_e, currentWave); } catch(err) {}
   waveTransitionTimer = 300; state = "waveTransition"; updateHUD();
 }
 
@@ -1411,6 +1427,7 @@ function checkShadowVenganceDefeat() {
     document.body.appendChild(el); setTimeout(() => el.remove(), 4000);
   }
   waveTransitionText = "Wave "+currentWave+" Cleared!  +"+reward+" credits";
+  try { for(const _e of enemies) if(_e && _e.affix === undefined) applyAffix(_e, currentWave); } catch(err) {}
   waveTransitionTimer = 300; state = "waveTransition"; updateHUD();
 }
 
@@ -1522,6 +1539,8 @@ function spawnWave() {
     const spawnY=name==="Dreadnaught"?GAME_H/2:undefined;
     const e=createEnemyObject(name,spawnX,spawnY); if(e) enemies.push(e);
   });
+
+  try { for(const _e of enemies) if(_e && _e.affix === undefined) applyAffix(_e, currentWave); } catch(err) {}
 }
 
 function nextWave() {
@@ -1628,6 +1647,8 @@ function applyDamage(target,bullet) {
   } else if (cat==="void") { shieldDmg = rawDmg * laserShieldMult; hullDmg = rawDmg * dirMult * critBoost; }
   else { shieldDmg = rawDmg * laserShieldMult; hullDmg = rawDmg * dirMult * critBoost; }
   if (target!==player && currentShipName==="Vengeance" && player.revengeActive) { shieldDmg*=2; hullDmg*=2; }
+  const _afx = (typeof affixDamageMult === "function") ? affixDamageMult(target, bullet) : 1;
+  if (_afx !== 1) { shieldDmg *= _afx; hullDmg *= _afx; }
   const faceWasDown = isFaceDown(target, bullet);
   applyShieldFaceHit(target, bullet, shieldDmg);
   const faceIsDownNow = isFaceDown(target, bullet);
@@ -1637,6 +1658,7 @@ function applyDamage(target,bullet) {
     const hullFactor = (cat==="corrosion") ? 1.0 : 1 - (target.armor/(target.maxArmor||100));
     const _hpBefore = target.hp;
     target.hp -= hullDmg * hullFactor;
+    if (typeof affixOnDamage === "function") affixOnDamage(target, bullet, hullDmg * hullFactor);
     // ── Vengeance Cannon lifesteal ──────────────────────────────
     // Only on hull damage, only from the player's own vengeance rounds,
     // never off allies. Capped at the HP the target actually had, so
@@ -1664,6 +1686,16 @@ function applyDamage(target,bullet) {
     const hitFaceDown = isFaceDown(target, bullet);
     if (hitFaceDown && !target.stunTimer) { target.stunTimer = getStunDuration(wSize); target.distortionWeakened = false; }
     else if (!hitFaceDown) target.distortionWeakened = true;
+    // §6: distortion STRIPS an affix. This is the job that makes a weapon which
+    // disables rather than kills worth a slot.
+    if (target.affix && !(target.affixStripped > 0)) {
+      let dur = AFFIX_STRIP_FRAMES;
+      if (typeof weaponUsesHeat === "function" && player.heat >= HEAT_REDLINE_START) {
+        const b = HEAT_REDLINE_BONUS["distortion"]; if (b && b.disable) dur = Math.round(dur * b.disable);
+      }
+      target.affixStripped = dur;
+      if (typeof showSpecialToast === "function") showSpecialToast("AFFIX SUPPRESSED");
+    }
     if (bullet.shieldBypassChance && Math.random() < bullet.shieldBypassChance) {
       target.hp -= rawDmg * 0.5;
       if (typeof personalRecords !== "undefined") {
@@ -1918,8 +1950,243 @@ function killEnemy(e, source){
   money += (e.score || 0);
   window.recordCreditsEarned?.(e.score || 0);
   window.recordKill?.(e);
+  try { affixOnDeath(e); } catch(err) {}
   try { spawnDebris(e); } catch(err) {}
   return true;
+}
+
+// ── Arena V2 §2: heat / overheat ──────────────────────────────
+// Heat is something you STEER TOWARD, not away from. 70-99 grants a category
+// bonus; 100 locks the gun out and risks breaking it.
+function initHeat(obj){
+  obj.heat = 0; obj._heatCoolDelay = 0; obj.heatLockout = 0;
+  obj.gunBroken = 0; obj._redlineSecs = 0; obj._redlineAcc = 0;
+}
+function heatState(obj){
+  if(obj.gunBroken > 0) return "broken";
+  if(obj.heatLockout > 0) return "lockout";
+  if(obj.heat >= HEAT_REDLINE_START) return "redline";
+  return "cold";
+}
+function canFireHeat(obj){
+  return !(obj.heatLockout > 0 || obj.gunBroken > 0);
+}
+function addHeat(obj, wStats){
+  if(!weaponUsesHeat(wStats)) return;
+  const bonus = HEAT_REDLINE_BONUS[wStats.category] || {};
+  const mult = (obj.heat >= HEAT_REDLINE_START && bonus.heat) ? bonus.heat : 1;
+  obj.heat = Math.min(100, obj.heat + heatPerShot(wStats) * mult);
+  obj._heatCoolDelay = HEAT_COOL_DELAY;
+  if(obj.heat >= 100 && obj.heatLockout <= 0){
+    obj.heatLockout = HEAT_LOCKOUT_FRAMES;
+    if(typeof showSpecialToast === "function") showSpecialToast("WEAPON OVERHEATED");
+  }
+}
+function updateHeat(obj){
+  if(obj.heat === undefined) initHeat(obj);
+  if(obj.gunBroken > 0){
+    obj.gunBroken--;
+    if(obj.gunBroken === 0 && typeof showSpecialToast === "function") showSpecialToast("WEAPON REPAIRED");
+  }
+  if(obj.heatLockout > 0){
+    obj.heatLockout--;
+    // Break roll is PER SECOND, not per frame: a per-frame roll would make
+    // break rate depend on the device refresh rate (60/90/120Hz).
+    obj._redlineAcc = (obj._redlineAcc || 0) + 1;
+    if(obj._redlineAcc >= 60){
+      obj._redlineAcc = 0; obj._redlineSecs = (obj._redlineSecs || 0) + 1;
+      const chance = Math.min(0.40, 0.15 + 0.05 * obj._redlineSecs);
+      if(Math.random() < chance && obj.gunBroken <= 0){
+        obj.gunBroken = HEAT_REPAIR_FRAMES;
+        if(typeof showSpecialToast === "function") showSpecialToast("WEAPON DAMAGED - REPAIRING");
+      }
+    }
+    if(obj.heatLockout === 0){ obj.heat = 0; obj._redlineSecs = 0; obj._redlineAcc = 0; }
+    return;
+  }
+  if(obj._heatCoolDelay > 0){ obj._heatCoolDelay--; return; }
+  if(obj.heat > 0) obj.heat = Math.max(0, obj.heat - HEAT_COOL_PER_FRAME);
+}
+// Apply the redline bonus and the broken-gun penalty to an outgoing volley.
+function applyHeatModifiers(obj, bullets, wStats){
+  if(!bullets || !bullets.length) return bullets;
+  if(obj.gunBroken > 0) bullets.forEach(b => { b.damage = (b.damage||0) * HEAT_BROKEN_DMG; });
+  if(!weaponUsesHeat(wStats)) return bullets;
+  if(obj.heat >= HEAT_REDLINE_START){
+    const bonus = HEAT_REDLINE_BONUS[wStats.category] || {};
+    bullets.forEach(b => {
+      if(bonus.dmg) b.damage = (b.damage||0) * bonus.dmg;
+      if(bonus.pen) b.penetration = (b.penetration||0) + bonus.pen;
+      if(bonus.dot) b.corrosionDPS = (b.corrosionDPS||0.18) * bonus.dot;
+      b._redline = true;
+    });
+  }
+  return bullets;
+}
+function drawHeatBar(){
+  if(player.heat === undefined) return;
+  if(!weaponUsesHeat(player.weaponStats) && player.gunBroken <= 0) return;
+  const w = 150, h = 8, x = GAME_W/2 - w/2, y = GAME_H - 26;
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fillRect(x-1, y-1, w+2, h+2);
+  const f = Math.max(0, Math.min(1, player.heat/100));
+  const st = heatState(player);
+  let col = "#3399ff";
+  if(st === "redline") col = "#ffaa22";
+  if(st === "lockout") col = "#ff3322";
+  if(st === "broken")  col = "#883333";
+  ctx.fillStyle = col; ctx.fillRect(x, y, w*f, h);
+  // redline threshold marker
+  ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x + w*HEAT_REDLINE_START/100, y-2);
+  ctx.lineTo(x + w*HEAT_REDLINE_START/100, y+h+2); ctx.stroke();
+  ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+  if(st === "broken"){ ctx.fillStyle = "#ff6666"; ctx.fillText("WEAPON DAMAGED " + Math.ceil(player.gunBroken/60) + "s", GAME_W/2, y-4); }
+  else if(st === "lockout"){ ctx.fillStyle = "#ff5544"; ctx.fillText("OVERHEATED", GAME_W/2, y-4); }
+  else if(st === "redline"){ ctx.fillStyle = "#ffcc55"; ctx.fillText("REDLINE", GAME_W/2, y-4); }
+  ctx.textAlign = "left";
+  ctx.restore();
+}
+
+// ── Arena V2 §6: enemy affixes ────────────────────────────────
+// Aura is a STEADY outline; the telegraph (§1) is a pulse. Never confuse them.
+// Affixes must be visible BEFORE the player commits, so they are applied at
+// spawn and rendered from the first frame - never revealed on approach.
+function affixChanceForWave(wave){
+  if(wave < AFFIX_START_WAVE) return 0;
+  return Math.min(AFFIX_MAX_CHANCE, AFFIX_BASE_CHANCE + AFFIX_PER_WAVE * (wave - AFFIX_START_WAVE));
+}
+function applyAffix(e, wave){
+  if(!e || e.isShadowComet || e.isShadowVengeance || e.isBoss) return;
+  if(Math.random() >= affixChanceForWave(wave)) return;
+  const key = AFFIX_ORDER[Math.floor(Math.random()*AFFIX_ORDER.length)];
+  e.affix = key; e.affixStripped = 0;
+  if(key === "shielded"){
+    e.maxShields *= 2; e.shields = e.maxShields;
+    if(typeof initShieldFaces === "function") initShieldFaces(e);
+    e._shieldRegenMult = 0.5;
+  } else if(key === "swift"){
+    e.speed = (e.speed||1) * 1.5; e.maxSpeed = (e.maxSpeed||e.speed) * 1.5;
+    e.maxHp = Math.max(1, Math.round(e.maxHp * 0.7)); e.hp = e.maxHp;
+  }
+  // volatile / warded / linked act at damage or death time
+}
+function affixActive(e){ return e.affix && !(e.affixStripped > 0); }
+
+function affixDamageMult(target, bullet){
+  if(!affixActive(target)) return 1;
+  if(target.affix === "warded"){
+    // 60% reduction from the FRONT face only, so flanking is the counter.
+    if(typeof getHitFace === "function" && getHitFace(bullet, target) === "front") return 0.4;
+  }
+  return 1;
+}
+function affixOnDamage(target, bullet, dealt){
+  if(!affixActive(target)) return;
+  if(target.affix === "linked" && dealt > 0 && !bullet._linkedSpread){
+    for(const o of enemies){
+      if(o === target || o.dead || o.affix !== "linked" || o.affixStripped > 0) continue;
+      o.hp -= dealt * 0.35;
+      if(o.hp <= 0) killEnemy(o, "linked");
+    }
+  }
+}
+function affixOnDeath(e){
+  if(!e.affix) return;
+  const mult = (e.affix === "volatile") ? 2.0 : (e.affix === "linked" ? 1.5 : 1.0);
+  if(mult > 1){ const extra = Math.round((e.score||0) * (mult-1)); money += extra; window.recordCreditsEarned?.(extra); }
+  if(e.affix === "volatile" && !(e.affixStripped > 0)){
+    const cx = e.x + e.w/2, cy = e.y + e.h/2;
+    const dmg = (e.maxHp || 100) * VOLATILE_HP_FRAC;
+    nukeRings.push({ x:cx, y:cy, r:8, maxR:VOLATILE_RADIUS, life:26, maxLife:26, color:"#ff5522" });
+    const hit = (o)=>{ if(!o||o.dead) return;
+      const d = Math.hypot(o.x+o.w/2-cx, o.y+o.h/2-cy);
+      if(d < VOLATILE_RADIUS) applyDamage(o, { damage: dmg*(1-d/VOLATILE_RADIUS), category:"ballistic",
+        weaponSize:4, penetration:2, x:cx, y:cy, w:2, h:2, _affixBlast:true });
+    };
+    hit(player); allies.forEach(hit);
+  }
+  if(e.affix === "swift" && typeof spawnDebris === "function") { try { spawnDebris(e); } catch(err) {} }
+}
+function drawAffixAuras(){
+  for(const e of enemies){
+    if(e.dead || !e.affix) continue;
+    const def = AFFIXES[e.affix]; if(!def) continue;
+    const stripped = e.affixStripped > 0;
+    const cx = e.x + e.w/2, cy = e.y + e.h/2, r = Math.max(e.w,e.h)*0.62 + 3;
+    ctx.save();
+    ctx.globalAlpha = stripped ? 0.20 : 0.75;
+    ctx.strokeStyle = def.color; ctx.lineWidth = 3;
+    if(stripped) ctx.setLineDash([3,5]);
+    if(_shadowsEnabled){ ctx.shadowColor = def.color; ctx.shadowBlur = stripped ? 2 : 7; }
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+}
+function tickAffixes(){
+  for(const e of enemies){ if(e.affixStripped > 0) e.affixStripped--; }
+}
+
+// ── Arena V2 §5: active reload (ballistic only) ───────────────
+// Timing, never gesture: both thumbs are committed (mobileJoy left, mobileAim
+// right which also fires). One tap, 60f bar, 8f perfect window at 55%.
+function initReload(obj, wStats){
+  obj.magMax = (typeof magSizeFor === "function" && wStats && wStats.category === "ballistic")
+    ? magSizeFor(wStats) : 0;
+  obj.mag = obj.magMax; obj.reloadTimer = 0; obj.reloadBar = 0;
+  obj.reloadBuff = 0; obj._reloadTapped = false;
+}
+function usesReload(obj){ return obj.magMax > 0; }
+function startReload(obj){
+  if(obj.reloadTimer > 0) return;
+  obj.reloadTimer = RELOAD_FULL_FRAMES; obj.reloadBar = 0; obj._reloadTapped = false;
+}
+function tapReload(obj){
+  if(obj.reloadTimer <= 0 || obj._reloadTapped) return;
+  obj._reloadTapped = true;
+  const p = obj.reloadBar;
+  if(p >= RELOAD_PERFECT_START && p <= RELOAD_PERFECT_END){
+    obj.reloadTimer = 0; obj.mag = obj.magMax; obj.reloadBuff = RELOAD_BUFF_FRAMES;
+    if(typeof showSpecialToast === "function") showSpecialToast("PERFECT RELOAD");
+  } else if(p >= RELOAD_GOOD_START && p <= RELOAD_GOOD_END){
+    obj.reloadTimer = RELOAD_GOOD_FRAMES;
+  }
+}
+function updateReload(obj){
+  if(obj.reloadBuff > 0) obj.reloadBuff--;
+  if(obj.reloadTimer <= 0) return;
+  obj.reloadBar++;
+  obj.reloadTimer--;
+  if(obj.reloadTimer <= 0){ obj.mag = obj.magMax; obj.reloadBar = 0; obj._reloadTapped = false; }
+}
+function drawReloadBar(){
+  if(!usesReload(player)) return;
+  const w = 130, h = 9, x = GAME_W/2 - w/2, y = GAME_H - 44;
+  ctx.save();
+  if(player.reloadTimer > 0){
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(x-1, y-1, w+2, h+2);
+    // good + perfect zones
+    ctx.fillStyle = "rgba(90,180,90,0.35)";
+    ctx.fillRect(x + w*RELOAD_GOOD_START/RELOAD_BAR_FRAMES, y,
+                 w*(RELOAD_GOOD_END-RELOAD_GOOD_START)/RELOAD_BAR_FRAMES, h);
+    ctx.fillStyle = "rgba(255,220,60,0.75)";
+    ctx.fillRect(x + w*RELOAD_PERFECT_START/RELOAD_BAR_FRAMES, y,
+                 w*(RELOAD_PERFECT_END-RELOAD_PERFECT_START)/RELOAD_BAR_FRAMES, h);
+    const p = Math.min(1, player.reloadBar/RELOAD_BAR_FRAMES);
+    ctx.fillStyle = "#fff"; ctx.fillRect(x + w*p - 1, y-2, 2.5, h+4);
+    ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+    ctx.fillStyle = player._reloadTapped ? "#888" : "#ffdd55";
+    ctx.fillText(player._reloadTapped ? "RELOADING" : "TAP RELOAD", GAME_W/2, y-5);
+    ctx.textAlign = "left";
+  } else {
+    ctx.globalAlpha = 0.65; ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
+    ctx.fillStyle = player.reloadBuff > 0 ? "#ffdd55" : "#aab";
+    ctx.fillText(player.mag + " / " + player.magMax + (player.reloadBuff > 0 ? "  +20%" : ""), GAME_W/2, y+8);
+    ctx.textAlign = "left";
+  }
+  ctx.restore();
 }
 
 function drawTelegraphs() {
@@ -2339,9 +2606,19 @@ function updatePlayer() {
     player.gimbalLocked = Math.abs(off) > cone;          // true => weapons hold fire
     player.gimbalAngle  = player.rotation + Math.max(-cone, Math.min(cone, off));
   }
+  if(player.magMax === undefined || player._magFor !== player.weaponType){
+    initReload(player, player.weaponStats); player._magFor = player.weaponType;
+  }
+  updateReload(player);
   const shieldRegen=SHIELD_TIERS[playerLoadout.shieldTier||1].regenRate; regenShieldFaces(player, shieldRegen);
   let isShooting=IS_MOBILE?mobileAim.shooting:(keys["Space"]||mouse.down);
   if(player.gimbalLocked) isShooting=false;   // Arena V2 §10: out of arc, hold fire
+  updateHeat(player);
+  if(!canFireHeat(player)) isShooting=false;   // §2: overheated or broken
+  if(usesReload(player) && (player.reloadTimer > 0 || player.mag <= 0)){
+    isShooting = false;
+    if(player.mag <= 0 && player.reloadTimer <= 0) startReload(player);
+  }
   // In universe mode, only shoot when in combat (not while exploring)
   if (window.gameMode === "universe" && typeof _uniInCombat !== "undefined" && !_uniInCombat) isShooting = false;
   const isRailgun=player.weaponStats&&player.weaponStats.hitscan;
@@ -2371,12 +2648,24 @@ function updatePlayer() {
       } else if(player.doubleShot) finalBullets=fireDoubleShot(player,player.weaponStats,player.gimbalAngle,true);
       else finalBullets=fireBullets(player,player.weaponStats,player.gimbalAngle,true);
       if(currentShipName==="Vengeance") finalBullets.forEach(b=>{ b.vengeanceShot=true; });
+      applyHeatModifiers(player, finalBullets, player.weaponStats);
+      addHeat(player, player.weaponStats);
+      if(usesReload(player)){
+        player.mag--;
+        if(player.reloadBuff > 0) finalBullets.forEach(b=>{ b.damage=(b.damage||0)*RELOAD_PERFECT_BUFF; });
+        if(player.mag <= 0) startReload(player);
+      }
       playerBullets.push(...finalBullets.map(b=>({...b,_isPlayerBullet:true})));
       const rougeM=(player.specialActive&&currentShipName==="Rouge")?1/3:1.0;
       const cometM=(player.specialActive&&currentShipName==="Comet")?1/3:1.0;
       // Revenge mode: 1.5x fire rate => 1/1.5 of the interval
       const revM=(player.specialActive&&currentShipName==="Vengeance")?(1/REVENGE_FIRERATE_MULT):1.0;
-      player.shootTimer=Math.max(1,Math.round(player.weaponStats.fireInterval*rougeM*cometM*revM));
+      let _rofM = 1.0;
+      if(weaponUsesHeat(player.weaponStats) && player.heat >= HEAT_REDLINE_START){
+        const _b = HEAT_REDLINE_BONUS[player.weaponStats.category] || {};
+        if(_b.rof) _rofM = 1/_b.rof;
+      }
+      player.shootTimer=Math.max(1,Math.round(player.weaponStats.fireInterval*rougeM*cometM*revM*_rofM));
     }
   }
   missileTimer--;
@@ -2421,6 +2710,8 @@ function updatePlayer() {
           if (currentShipName === "Vengeance") b.vengeanceShot = true;
           if (p.stagger) { b.staggerOnHit = true; b.staggerDur = 45; }
         });
+        applyHeatModifiers(player, bs, player.weaponStats);
+        addHeat(player, player.weaponStats);
         playerBullets.push(...bs); } });
     }
   }
@@ -2623,7 +2914,7 @@ function updateEnemies() {
       const targetRot=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2); let rotDiff=targetRot-(e.rotation||0);
       while(rotDiff>Math.PI)rotDiff-=Math.PI*2;while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
       e.rotation=(e.rotation||0)+Math.sign(rotDiff)*Math.min(Math.abs(rotDiff),e.turnSpeed||0.015);
-      regenShieldFaces(e, 0.015);
+      regenShieldFaces(e, 0.015 * (e._shieldRegenMult || 1));
       if(e.corrosionTimer>0){e.corrosionTimer--;e.hp-=(e.corrosionDPS||e.maxHp*0.0001);}
       e.turrets&&e.turrets.forEach(t=>{
         t.shootTimer--;if(t.shootTimer<=0&&t.weaponStats){
@@ -2710,7 +3001,7 @@ function updateEnemies() {
       if(e.x<m)e.vx+=accel*1.5;if(e.x>_eBndW-e.w-m)e.vx-=accel*1.5;if(e.y<m)e.vy+=accel*1.5;if(e.y>_eBndH-e.h-m)e.vy-=accel*1.5;
       e.x=Math.max(0,Math.min(_eBndW-e.w,e.x));e.y=Math.max(0,Math.min(_eBndH-e.h,e.y));
     }
-    regenShieldFaces(e, 0.015);
+    regenShieldFaces(e, 0.015 * (e._shieldRegenMult || 1));
     if(e.type==="Healer"&&!e.stunTimer){ const ehr=ENEMIES.Healer.healRadius||280; const ehp=ENEMIES.Healer.healPerFrame||8; enemies.forEach(other=>{ if(other===e||other.dead)return; const hd=Math.hypot(other.x+other.w/2-e.x-e.w/2,other.y+other.h/2-e.y-e.h/2); if(hd<ehr){ other.hp=Math.min(other.maxHp,other.hp+ehp*0.016); regenShieldFaces(other,0.04); } }); }
     const targetRot=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2); let rotDiff=targetRot-(e.rotation||0);
     while(rotDiff>Math.PI)rotDiff-=Math.PI*2;while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
@@ -2765,6 +3056,7 @@ function updateEnemies() {
 // ============================================================
 function updateBullets() {
   updateDebris();
+  tickAffixes();
   tickFaceFlashes(player);
   for(const a of allies) tickFaceFlashes(a);
   for(const e of enemies) tickFaceFlashes(e);
@@ -2969,7 +3261,7 @@ function render() {
   drawDebris();
   drawThrusterParticles(); enemies.forEach(drawEntity); allies.forEach(drawEntity);
   if(isDeployed && capitalShipObj && !capitalDestroyed) drawEntity(capitalShipObj);
-  drawEntity(player); drawRailgunCharge(); drawTelegraphs(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings();
+  drawAffixAuras(); drawEntity(player); drawRailgunCharge(); drawTelegraphs(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings(); drawHeatBar(); drawReloadBar();
 
   // Restore camera offset before drawing HUD (HUD is screen-space)
   if (_isUni) { ctx.restore(); }
