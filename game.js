@@ -106,7 +106,12 @@ function telegraphFramesFor(wStats){
   const flight = 120 / (wStats.speed || 10);
   return Math.max(12, Math.min(36, Math.round(45 - flight)));
 }
-const CROSSHAIR_SPEED = 9;   // px per frame at full stick deflection
+const REVENGE_FIRERATE_MULT = 1.5;
+// Vengeance Cannon lifesteal: small, so it sustains rather than trivialises.
+const VENGEANCE_LIFESTEAL = 0.04;   // 4% of damage dealt
+const VENGEANCE_LIFESTEAL_REVENGE = 0.07;  // 7% while Revenge is burning 5hp/s
+const CROSSHAIR_SPEED = 9;   // (legacy, stick mode)
+const CROSSHAIR_SENS  = 2.2; // trackpad: world px per screen px of finger travel   // px per frame at full stick deflection
 const PDC_RANGE = 200;
 const PDC_HIT_CHANCE = 0.55;
 const PDC_SHOTS_PER_SEC = 0.45;
@@ -159,6 +164,8 @@ if (!IS_MOBILE) {
 function buildMobileControls() {
   const ui = document.createElement("div");
   ui.id = "mobileUI";
+  // Tag every control so the touch-aim pad knows to ignore taps landing on them.
+  const _tagCtl = (el) => { if(el && el.setAttribute) el.setAttribute("data-ctl","1"); ui.appendChild(el); return el; };
   ui.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:999;touch-action:none;display:none";
 
   const leftPanel = document.createElement("div");
@@ -176,8 +183,10 @@ function buildMobileControls() {
   cycleMissileBtn.addEventListener("touchstart", e => { e.preventDefault(); if(state==="playing") cycleMissileKind(); initAudio(); }, { passive: false });
 
   const leftBase = document.createElement("div");
+  leftBase.setAttribute("data-ctl","1");
   leftBase.style.cssText = "position:absolute;left:10px;bottom:20px;width:160px;height:160px;background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.2);border-radius:50%;pointer-events:all;touch-action:none";
   const leftKnob = document.createElement("div");
+  leftKnob.setAttribute("data-ctl","1");
   leftKnob.style.cssText = "position:absolute;width:60px;height:60px;background:rgba(255,255,255,0.22);border:2px solid rgba(255,255,255,0.55);border-radius:50%;left:50px;top:50px";
   leftBase.appendChild(leftKnob);
 
@@ -232,8 +241,10 @@ function buildMobileControls() {
   boostBtn.addEventListener("touchend",   e => { e.preventDefault(); keys["ShiftLeft"] = false; }, { passive: false });
 
   const rightBase = document.createElement("div");
+  rightBase.setAttribute("data-ctl","1");
   rightBase.style.cssText = "position:absolute;right:10px;bottom:20px;width:160px;height:160px;background:rgba(255,80,80,0.05);border:2px solid rgba(255,80,80,0.25);border-radius:50%;pointer-events:all;touch-action:none";
   const rightKnob = document.createElement("div");
+  rightKnob.setAttribute("data-ctl","1");
   rightKnob.style.cssText = "position:absolute;width:60px;height:60px;background:rgba(255,80,80,0.28);border:2px solid rgba(255,120,80,0.7);border-radius:50%;left:50px;top:50px";
   rightBase.appendChild(rightKnob);
 
@@ -241,8 +252,11 @@ function buildMobileControls() {
   // aims at that exact point and fires, reproducing mouse-cursor accuracy.
   const touchAimPad = document.createElement("div");
   touchAimPad.id = "touchAimPad";
-  touchAimPad.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:1;touch-action:none";
-  ui.appendChild(touchAimPad);
+  // z-index 0 and inserted FIRST so every control in mobileUI sits above it.
+  // Controls call stopPropagation, and the pad also ignores taps that land on
+  // any element with data-ctl, so the joystick / buttons / Leave all still work.
+  touchAimPad.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:0;touch-action:none";
+  ui.insertBefore(touchAimPad, ui.firstChild);
   function _fieldToWorld(clientX, clientY){
     const c = document.getElementById("gameCanvas");
     const r = c.getBoundingClientRect();
@@ -254,8 +268,16 @@ function buildMobileControls() {
     mouse.x=p.x; mouse.y=p.y;
     aimCursor.x=p.x; aimCursor.y=p.y; aimCursor.active=true;
   }
+  function _overControl(t){
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    if(!el) return false;
+    if(el === touchAimPad) return false;
+    // anything interactive: our controls, the HUD, the Leave button, menus
+    return !!(el.closest("button, .menu, #hud, #inGameBack, [data-ctl]"));
+  }
   touchAimPad.addEventListener("touchstart", e => {
     if(aimMode!=="touch") return;
+    if(_overControl(e.changedTouches[0])) return;   // let the control have it
     e.preventDefault(); lastTouchTime=Date.now();
     const t=e.changedTouches[0];
     mobileAim.touchId=t.identifier; mobileAim.active=true; mobileAim.shooting=true;
@@ -281,8 +303,24 @@ function buildMobileControls() {
   // Show the right stick only in the modes that use it; enable the field pad in touch mode.
   window._applyAimModeUI = function(){
     if(!rightBase || !touchAimPad) return;
-    rightBase.style.display    = (aimMode==="touch") ? "none" : "block";
+    rightBase.style.display = (aimMode==="touch") ? "none" : "block";
     touchAimPad.style.pointerEvents = (aimMode==="touch") ? "auto" : "none";
+    if(aimMode==="crosshair"){
+      // trackpad: a rectangle, visually distinct from the round stick
+      rightBase.style.borderRadius = "14px";
+      rightBase.style.width  = "170px";
+      rightBase.style.height = "120px";
+      rightBase.style.background = "rgba(255,180,80,0.10)";
+      rightBase.style.border = "2px dashed rgba(255,190,90,0.55)";
+      if(rightKnob) rightKnob.style.display = "none";
+    } else {
+      rightBase.style.borderRadius = "50%";
+      rightBase.style.width  = "140px";
+      rightBase.style.height = "140px";
+      rightBase.style.background = "rgba(255,80,80,0.10)";
+      rightBase.style.border = "2px solid rgba(255,120,80,0.45)";
+      if(rightKnob) rightKnob.style.display = "block";
+    }
   };
   _applyAimModeUI();
 
@@ -296,6 +334,7 @@ function buildMobileControls() {
     mobileAim.touchId  = t.identifier;
     mobileAim.startX   = r.left + r.width  / 2;
     mobileAim.startY   = r.top  + r.height / 2;
+    mobileAim._lastX = t.clientX; mobileAim._lastY = t.clientY;
     mouse.down = true;
     initAudio();
   }, { passive: false });
@@ -316,21 +355,26 @@ function buildMobileControls() {
     rightKnob.style.left = (50 + dx) + "px";
     rightKnob.style.top  = (50 + dy) + "px";
     if (aimMode === "crosshair") {
-      // Stick moves a free cursor; the ship aims at wherever the cursor is.
-      // Deadzone stops slow drift; the cursor persists between touches.
+      // TRACKPAD, not a stick. Cursor moves by the FINGER DELTA since the last
+      // frame, like a laptop touchpad. A stick pushing a cursor at a constant
+      // rate was the thing that felt uncontrollable.
       if(!aimCursor.initialised){
         aimCursor.x = player.x + player.w/2 + 140;
         aimCursor.y = player.y + player.h/2;
         aimCursor.initialised = true;
       }
-      if (dist > 8) {
-        aimCursor.x += (dx / maxR) * CROSSHAIR_SPEED;
-        aimCursor.y += (dy / maxR) * CROSSHAIR_SPEED;
+      if(mobileAim._lastX !== undefined){
+        aimCursor.x += (t.clientX - mobileAim._lastX) * CROSSHAIR_SENS;
+        aimCursor.y += (t.clientY - mobileAim._lastY) * CROSSHAIR_SENS;
       }
+      mobileAim._lastX = t.clientX; mobileAim._lastY = t.clientY;
       aimCursor.x = Math.max(0, Math.min(GAME_W, aimCursor.x));
       aimCursor.y = Math.max(0, Math.min(GAME_H, aimCursor.y));
       aimCursor.active = true;
       mouse.x = aimCursor.x; mouse.y = aimCursor.y;
+      // trackpad has no "knob"; keep it centred
+      rightKnob.style.left = "50px"; rightKnob.style.top = "50px";
+      return;
     } else if (dist > 6) {
       const camOfsX = window.gameMode === "universe" ? (window.camX || 0) : 0;
       const camOfsY = window.gameMode === "universe" ? (window.camY || 0) : 0;
@@ -345,6 +389,7 @@ function buildMobileControls() {
         mobileAim.shooting = false;
         mobileAim.touchId  = null;
         mobileAim.dx = 0; mobileAim.dy = 0;
+        mobileAim._lastX = undefined; mobileAim._lastY = undefined;
         mouse.down = false;
         // crosshair mode: cursor persists, so keep aiming at it after release
         if(aimMode==="crosshair" && aimCursor.initialised){ mouse.x=aimCursor.x; mouse.y=aimCursor.y; }
@@ -359,37 +404,39 @@ function buildMobileControls() {
   const formationBtn = document.createElement("div");
   formationBtn.id = "formationBtn";
   formationBtn.textContent = "< BEHIND";
+  formationBtn.setAttribute("data-ctl","1");
   formationBtn.style.cssText = "position:absolute;bottom:28px;left:50%;transform:translateX(-50%);padding:8px 20px;background:rgba(0,170,255,0.18);border:2px solid rgba(0,170,255,0.7);border-radius:16px;color:#0af;font:bold 15px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
   formationBtn.addEventListener("touchstart", e => { e.preventDefault(); cycleFormation(); }, { passive: false });
-  ui.appendChild(formationBtn);
+  _tagCtl(formationBtn);
 
   const deployBtn = document.createElement("div");
   deployBtn.id = "deployBtn";
   deployBtn.textContent = "DEPLOY";
+  deployBtn.setAttribute("data-ctl","1");
   deployBtn.style.cssText = "position:absolute;bottom:70px;left:50%;transform:translateX(-50%);padding:7px 18px;background:rgba(255,170,0,0.18);border:2px solid rgba(255,170,0,0.7);border-radius:14px;color:#ffaa00;font:bold 14px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10;display:none";
   deployBtn.addEventListener("touchstart", e => {
     e.preventDefault();
     if (isDeployed) recallToCapital();
     else if (isCurrentShipCapital && isCurrentShipCapital() && deployedShipAvail) deployFromCapital();
   }, { passive: false });
-  ui.appendChild(deployBtn);
+  _tagCtl(deployBtn);
 
   const specialMobileBtn = document.createElement("div");
   specialMobileBtn.id = "mobileSpecialBtn";
   specialMobileBtn.textContent = "SPECIAL";
   specialMobileBtn.style.cssText = "position:absolute;bottom:68px;left:calc(50% - 110px);padding:8px 16px;background:rgba(255,130,0,0.18);border:2px solid rgba(255,130,0,0.7);border-radius:14px;color:#f80;font:bold 15px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10";
   specialMobileBtn.addEventListener("touchstart", e=>{e.preventDefault();activateSpecial();},{passive:false});
-  ui.appendChild(specialMobileBtn);
+  _tagCtl(specialMobileBtn);
 
   const pingMobileBtn = document.createElement("div");
   pingMobileBtn.id = "mobilePingBtn";
   pingMobileBtn.textContent = "PING";
   pingMobileBtn.style.cssText = "position:absolute;bottom:68px;left:calc(50% + 20px);padding:8px 16px;background:rgba(255,220,0,0.18);border:2px solid rgba(255,220,0,0.7);border-radius:14px;color:#fc0;font:bold 15px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z:10";
   pingMobileBtn.addEventListener("touchstart", e=>{e.preventDefault();activatePing();},{passive:false});
-  ui.appendChild(pingMobileBtn);
+  _tagCtl(pingMobileBtn);
 
-  ui.appendChild(leftPanel);
-  ui.appendChild(rightPanel);
+  _tagCtl(leftPanel);
+  _tagCtl(rightPanel);
   document.body.appendChild(ui);
 }
 
@@ -1588,7 +1635,26 @@ function applyDamage(target,bullet) {
   if (hullExposed) {
     target.armor = Math.max(0, target.armor - pen * armorMult);
     const hullFactor = (cat==="corrosion") ? 1.0 : 1 - (target.armor/(target.maxArmor||100));
+    const _hpBefore = target.hp;
     target.hp -= hullDmg * hullFactor;
+    // ── Vengeance Cannon lifesteal ──────────────────────────────
+    // Only on hull damage, only from the player's own vengeance rounds,
+    // never off allies. Capped at the HP the target actually had, so
+    // overkill on a 1hp enemy doesn't pay full. Higher during Revenge,
+    // which burns 5hp/s, so the mode can sustain itself.
+    if(bullet.vengeanceShot && target !== player && !target.isAlly){
+      const rate = (player.specialActive && currentShipName==="Vengeance")
+        ? VENGEANCE_LIFESTEAL_REVENGE : VENGEANCE_LIFESTEAL;
+      const dealt = Math.min(hullDmg * hullFactor, Math.max(0, _hpBefore));
+      const healed = (isFinite(dealt) ? dealt : 0) * rate;
+      if(healed > 0 && player.hp < player.maxHp){
+        player.hp = Math.min(player.maxHp, player.hp + healed);
+        if(typeof spawnHitEffect==="function" && Math.random()<0.25)
+          _thrusterParticles.push({ x:player.x+player.w/2, y:player.y+player.h/2,
+            vx:(Math.random()-0.5)*1.5, vy:-0.8, life:14, maxLife:14,
+            color:"#ff2244", shape:"classic", size:2 });
+      }
+    }
   }
   if (bullet.staggerOnHit && !target.staggerTimer) {
     target.staggerTimer = bullet.staggerDur || 45;
@@ -2290,16 +2356,27 @@ function updatePlayer() {
       let finalBullets;
       if(SHIPS[currentShipName]?.burstFire) {
         const isSiegeBreaker = player.weaponType === "siege_breaker";
+        // burstCount was ignored: every burst ship fired Retribution's hardcoded
+        // 3-shot escalating pattern. Now the count drives the schedule.
+        const bc = Math.max(2, SHIPS[currentShipName].burstCount || 3);
         finalBullets = fireBullets(player,player.weaponStats,player.gimbalAngle,true);
         finalBullets.forEach(b => { b._burstShot = 1; });
-        player._burstPending = [ { delay: 8, mult: 1.5, shot: 2 }, { delay: 16, mult: isSiegeBreaker ? 2.5 : 2.0, shot: 3, stagger: isSiegeBreaker } ];
+        const sched = [];
+        for(let n = 2; n <= bc; n++){
+          const last = (n === bc);
+          sched.push({ delay: 8*(n-1), mult: 1 + 0.5*(n-1),
+                       shot: n, stagger: isSiegeBreaker && last });
+        }
+        player._burstPending = sched;
       } else if(player.doubleShot) finalBullets=fireDoubleShot(player,player.weaponStats,player.gimbalAngle,true);
       else finalBullets=fireBullets(player,player.weaponStats,player.gimbalAngle,true);
       if(currentShipName==="Vengeance") finalBullets.forEach(b=>{ b.vengeanceShot=true; });
       playerBullets.push(...finalBullets.map(b=>({...b,_isPlayerBullet:true})));
       const rougeM=(player.specialActive&&currentShipName==="Rouge")?1/3:1.0;
       const cometM=(player.specialActive&&currentShipName==="Comet")?1/3:1.0;
-      player.shootTimer=Math.round(player.weaponStats.fireInterval*rougeM*cometM);
+      // Revenge mode: 1.5x fire rate => 1/1.5 of the interval
+      const revM=(player.specialActive&&currentShipName==="Vengeance")?(1/REVENGE_FIRERATE_MULT):1.0;
+      player.shootTimer=Math.max(1,Math.round(player.weaponStats.fireInterval*rougeM*cometM*revM));
     }
   }
   missileTimer--;
@@ -2335,7 +2412,16 @@ function updatePlayer() {
       const ready = player._burstPending.filter(p => p.delay <= 0);
       player._burstPending = player._burstPending.filter(p => p.delay > 0);
       if (player._burstPending.length === 0) player._burstPending = null;
-      ready.forEach(p => { if (player.weaponStats) { const bs = fireBullets(player, player.weaponStats, player.rotation, true); bs.forEach(b => { b.damage = (b.damage||0) * p.mult; b._isPlayerBullet = true; if (p.stagger) { b.staggerOnHit = true; b.staggerDur = 45; } }); playerBullets.push(...bs); } });
+      ready.forEach(p => { if (player.weaponStats) {
+        // was firing along player.rotation (ignoring the gimbal) and never tagged
+        // vengeanceShot, so follow-up shots rendered as plain beams.
+        const bs = fireBullets(player, player.weaponStats, player.gimbalAngle, true);
+        bs.forEach(b => {
+          b.damage = (b.damage||0) * p.mult; b._isPlayerBullet = true; b._burstShot = p.shot;
+          if (currentShipName === "Vengeance") b.vengeanceShot = true;
+          if (p.stagger) { b.staggerOnHit = true; b.staggerDur = 45; }
+        });
+        playerBullets.push(...bs); } });
     }
   }
   if (!pdcDisabledThisWave) {
