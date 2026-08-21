@@ -81,8 +81,10 @@ const keys  = {};
 // "crosshair" : right stick moves a free cursor; ship aims at it, fires while held
 let aimMode = "stick";
 let aimCursor = { x: 0, y: 0, active: false, initialised: false };
+let aimTarget = null;          // locked enemy in "target" mode
+let _aimErr = 0;               // current aim error in radians
 function setAimMode(m){
-  if(!["stick","touch","crosshair"].includes(m)) return;
+  if(!["stick","touch","crosshair","target"].includes(m)) return;
   aimMode = m;
   aimCursor.active = false; aimCursor.initialised = false;
   try { localStorage.setItem("gh_aimMode", m); } catch(e) {}
@@ -264,6 +266,11 @@ function buildMobileControls() {
     const sx = GAME_W / r.width, sy = GAME_H / r.height;
     return { x:(clientX - r.left)*sx, y:(clientY - r.top)*sy };
   }
+  function _pickTargetAt(t){
+    const p=_fieldToWorld(t.clientX,t.clientY);
+    if(_hitReloadBtn(p.x,p.y)) return true;
+    return pickAimTarget(p.x,p.y);
+  }
   function _touchAimSet(t){
     const p=_fieldToWorld(t.clientX,t.clientY);
     mouse.x=p.x; mouse.y=p.y;
@@ -277,8 +284,14 @@ function buildMobileControls() {
     return !!(el.closest("button, .menu, #hud, #inGameBack, [data-ctl]"));
   }
   touchAimPad.addEventListener("touchstart", e => {
+    if(aimMode==="target"){
+      if(_overControl(e.changedTouches[0])) return;
+      e.preventDefault(); _pickTargetAt(e.changedTouches[0]); return;
+    }
     if(aimMode!=="touch") return;
     if(_overControl(e.changedTouches[0])) return;   // let the control have it
+    { const _p=_fieldToWorld(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      if(_hitReloadBtn(_p.x,_p.y)){ e.preventDefault(); return; } }
     e.preventDefault(); lastTouchTime=Date.now();
     const t=e.changedTouches[0];
     mobileAim.touchId=t.identifier; mobileAim.active=true; mobileAim.shooting=true;
@@ -305,7 +318,8 @@ function buildMobileControls() {
   window._applyAimModeUI = function(){
     if(!rightBase || !touchAimPad) return;
     rightBase.style.display = (aimMode==="touch") ? "none" : "block";
-    touchAimPad.style.pointerEvents = (aimMode==="touch") ? "auto" : "none";
+    touchAimPad.style.pointerEvents = (aimMode==="touch"||aimMode==="target") ? "auto" : "none";
+    rightBase.style.display = (aimMode==="touch"||aimMode==="target") ? "none" : "block";
     if(aimMode==="crosshair"){
       // trackpad: a rectangle, visually distinct from the round stick
       rightBase.style.borderRadius = "14px";
@@ -1071,7 +1085,7 @@ function setPlayerShip(name) {
     turnSpeed:(typeof getFlightProfile==="function"?getFlightProfile(name).turnSpeed:Math.PI/27),
     gimbalCone:(typeof getFlightProfile==="function"?getFlightProfile(name).gimbalCone:0.785),
     targetRotation:0, gimbalAngle:0, gimbalLocked:false,
-    heat:0, _heatCoolDelay:0, heatLockout:0, gunBroken:0, _redlineSecs:0, _redlineAcc:0,
+    heat:0, _heatCoolDelay:0, heatLockout:0, gunBroken:0, _redlineSecs:0, _redlineAcc:0, dodgeIFrames:0,
     mag:0, magMax:0, reloadTimer:0, reloadBar:0, reloadBuff:0, _reloadTapped:false,
     vx:0, vy:0, shootTimer:0,
     boosting:false, boostTimer:0, boostCooldown:0,
@@ -1213,12 +1227,14 @@ function updateShadowCometAI(e) {
   e.rotation = (e.rotation||0) + Math.sign(rotDiff) * Math.min(Math.abs(rotDiff), e.turnSpeed||0.12);
   e.repositionTimer = (e.repositionTimer||0) - 1;
   if (e.repositionTimer <= 0) {
-    e.repositionTimer = 40 + Math.floor(Math.random() * 60);
+    // +60f dwell: it should visibly STOP between moves, not slide continuously.
+    e.repositionTimer = 100 + Math.floor(Math.random() * 60);
     e.repositionTarget = { x: GAME_W * (0.55 + Math.random() * 0.35), y: 60 + Math.random() * (GAME_H - 120) };
   }
   if (e.repositionTarget) {
     const tdx = e.repositionTarget.x - e.x, tdy = e.repositionTarget.y - e.y, dist = Math.hypot(tdx, tdy) || 1;
-    e.vx += (tdx/dist) * e.speed * 0.35; e.vy += (tdy/dist) * e.speed * 0.35;
+    const arrivalEase = Math.min(1, dist / 50);   // stop dead on arrival instead of jittering
+    e.vx += (tdx/dist) * e.speed * 0.35 * arrivalEase; e.vy += (tdy/dist) * e.speed * 0.35 * arrivalEase;
   }
   e.dodgeTimer = (e.dodgeTimer||0) - 1;
   if (e.dodgeTimer <= 0) {
@@ -1261,7 +1277,11 @@ function checkShadowCometDefeat() {
   }
   waveTransitionText = "Wave "+currentWave+" Cleared!  +"+reward+" credits";
   try { for(const _e of enemies) if(_e && _e.affix === undefined) applyAffix(_e, currentWave); } catch(err) {}
-  waveTransitionTimer = 300; state = "waveTransition"; updateHUD();
+  window.waveCreditsEarned = 0;
+  try { if(typeof resetConditionProgress==="function") resetConditionProgress(); } catch(e){}
+  waveTransitionTimer = (typeof isCardWave==="function" && isCardWave(currentWave)) ? 300 : (typeof WAVE_TRANSITION_FAST!=="undefined"?WAVE_TRANSITION_FAST:120);
+  try { if(typeof isCardWave==="function" && isCardWave(currentWave)) showCardScreen(currentWave); } catch(e){}
+  state = "waveTransition"; updateHUD();
 }
 
 function isCometFullyUpgraded() {
@@ -1428,7 +1448,11 @@ function checkShadowVenganceDefeat() {
   }
   waveTransitionText = "Wave "+currentWave+" Cleared!  +"+reward+" credits";
   try { for(const _e of enemies) if(_e && _e.affix === undefined) applyAffix(_e, currentWave); } catch(err) {}
-  waveTransitionTimer = 300; state = "waveTransition"; updateHUD();
+  window.waveCreditsEarned = 0;
+  try { if(typeof resetConditionProgress==="function") resetConditionProgress(); } catch(e){}
+  waveTransitionTimer = (typeof isCardWave==="function" && isCardWave(currentWave)) ? 300 : (typeof WAVE_TRANSITION_FAST!=="undefined"?WAVE_TRANSITION_FAST:120);
+  try { if(typeof isCardWave==="function" && isCardWave(currentWave)) showCardScreen(currentWave); } catch(e){}
+  state = "waveTransition"; updateHUD();
 }
 
 function isVenganceFullyUpgraded() {
@@ -1558,6 +1582,8 @@ function nextWave() {
 }
 
 function startGame(infinite) {
+  window.runCreditsEarned = 0; window.waveCreditsEarned = 0;
+  try { if(typeof pickNextCondition==="function") pickNextCondition(); if(typeof resetConditionProgress==="function") resetConditionProgress(); } catch(e){}
   infiniteMode=infinite; currentWave=0;
   document.getElementById("arenaMenu").style.display="none";
   if(!ownedShips||ownedShips.length===0) ownedShips=["Starlight"];
@@ -1587,6 +1613,7 @@ function returnToMenuPreserveMoney() {
 }
 
 function endGame(won) {
+  if(!won){ try { showDeathReport({ killer: window._lastKiller || "unknown" }); } catch(e){} }
   state="gameover"; if (!won) window.recordPlayerDeath?.(); window.recordSessionEnd?.(); window.saveGame?.(); window.submitLeaderboard?.();
   document.getElementById("gameOverText").textContent=won?"Victory!":"Game Over";
   document.getElementById("finalMoney").textContent=money;
@@ -1606,9 +1633,11 @@ function applyDamage(target,bullet) {
     if(player.specialActive&&currentShipName==="Starlight"&&Math.random()<0.5)return;
     if(currentShipName==="Vengeance"&&player.revengeActive&&Math.random()<0.90)return;
     if(currentShipName==="Retribution"&&player.retributionSpeedBuff&&Math.random()<0.95)return;
+    if(player.dodgeIFrames > 0) return;                 // still invulnerable from the last dodge
     const dodge=player.boosting?player.dodgeBoosted:player.dodgeBase;
-    if(dodge>0&&Math.random()<dodge)return;
+    if(dodge>0&&Math.random()<dodge){ doDodgeBlink(); return; }
     playerTookDamageThisWave=true;
+    window._lastKiller = (bullet && (bullet._srcType || bullet.ownerType)) || window._lastKiller || "enemy fire";
     if(player.specialActive&&currentShipName==="Marauder") bullet={...bullet,damage:(bullet.damage||0)*0.5};
     if(player.specialActive&&currentShipName==="Nemesis")  bullet={...bullet,damage:(bullet.damage||0)*0.5};
   }
@@ -1948,9 +1977,12 @@ function killEnemy(e, source){
   spawnDeathEffect(e);
   playExplosion(ENEMIES[e.type]?.size || 2);
   money += (e.score || 0);
+  window.waveCreditsEarned = (window.waveCreditsEarned||0) + (e.score||0);
+  window.runCreditsEarned  = (window.runCreditsEarned ||0) + (e.score||0);
   window.recordCreditsEarned?.(e.score || 0);
   window.recordKill?.(e);
   try { affixOnDeath(e); } catch(err) {}
+  try { if(e.affix && typeof noteAffixKill==="function") noteAffixKill(); } catch(err) {}
   try { spawnDebris(e); } catch(err) {}
   return true;
 }
@@ -2141,9 +2173,23 @@ function usesReload(obj){ return obj.magMax > 0; }
 function startReload(obj){
   if(obj.reloadTimer > 0) return;
   obj.reloadTimer = RELOAD_FULL_FRAMES; obj.reloadBar = 0; obj._reloadTapped = false;
+  obj._reloadGrace = RELOAD_GRACE_FRAMES;   // 1s to see the prompt before taps count
+  obj._reloadDir = 1;
+  if(typeof showSpecialToast === "function") showSpecialToast("AMMO EMPTY - RELOAD!");
+}
+function _hitReloadBtn(worldX, worldY){
+  const r = player && player._reloadBtnRect;
+  if(!r || !reloadTappable(player)) return false;
+  if(worldX >= r.x && worldX <= r.x + r.w && worldY >= r.y && worldY <= r.y + r.h){
+    tapReload(player); return true;
+  }
+  return false;
+}
+function reloadTappable(obj){
+  return obj.reloadTimer > 0 && (obj._reloadGrace || 0) <= 0 && !obj._reloadTapped;
 }
 function tapReload(obj){
-  if(obj.reloadTimer <= 0 || obj._reloadTapped) return;
+  if(!reloadTappable(obj)) return;
   obj._reloadTapped = true;
   const p = obj.reloadBar;
   if(p >= RELOAD_PERFECT_START && p <= RELOAD_PERFECT_END){
@@ -2156,37 +2202,186 @@ function tapReload(obj){
 function updateReload(obj){
   if(obj.reloadBuff > 0) obj.reloadBuff--;
   if(obj.reloadTimer <= 0) return;
-  obj.reloadBar++;
+  if(obj._reloadGrace > 0) obj._reloadGrace--;
+  // Bar BOUNCES back and forth instead of sweeping once, so a mistimed tap
+  // costs you the window rather than being unavoidable.
+  if(obj._reloadDir === undefined) obj._reloadDir = 1;
+  obj.reloadBar += obj._reloadDir;
+  if(obj.reloadBar >= RELOAD_BAR_FRAMES){ obj.reloadBar = RELOAD_BAR_FRAMES; obj._reloadDir = -1; }
+  if(obj.reloadBar <= 0){ obj.reloadBar = 0; obj._reloadDir = 1; }
   obj.reloadTimer--;
-  if(obj.reloadTimer <= 0){ obj.mag = obj.magMax; obj.reloadBar = 0; obj._reloadTapped = false; }
-}
-function drawReloadBar(){
-  if(!usesReload(player)) return;
-  const w = 130, h = 9, x = GAME_W/2 - w/2, y = GAME_H - 44;
-  ctx.save();
-  if(player.reloadTimer > 0){
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(x-1, y-1, w+2, h+2);
-    // good + perfect zones
-    ctx.fillStyle = "rgba(90,180,90,0.35)";
-    ctx.fillRect(x + w*RELOAD_GOOD_START/RELOAD_BAR_FRAMES, y,
-                 w*(RELOAD_GOOD_END-RELOAD_GOOD_START)/RELOAD_BAR_FRAMES, h);
-    ctx.fillStyle = "rgba(255,220,60,0.75)";
-    ctx.fillRect(x + w*RELOAD_PERFECT_START/RELOAD_BAR_FRAMES, y,
-                 w*(RELOAD_PERFECT_END-RELOAD_PERFECT_START)/RELOAD_BAR_FRAMES, h);
-    const p = Math.min(1, player.reloadBar/RELOAD_BAR_FRAMES);
-    ctx.fillStyle = "#fff"; ctx.fillRect(x + w*p - 1, y-2, 2.5, h+4);
-    ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
-    ctx.fillStyle = player._reloadTapped ? "#888" : "#ffdd55";
-    ctx.fillText(player._reloadTapped ? "RELOADING" : "TAP RELOAD", GAME_W/2, y-5);
-    ctx.textAlign = "left";
-  } else {
-    ctx.globalAlpha = 0.65; ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
-    ctx.fillStyle = player.reloadBuff > 0 ? "#ffdd55" : "#aab";
-    ctx.fillText(player.mag + " / " + player.magMax + (player.reloadBuff > 0 ? "  +20%" : ""), GAME_W/2, y+8);
-    ctx.textAlign = "left";
+  if(obj.reloadTimer <= 0){
+    obj.mag = obj.magMax; obj.reloadBar = 0; obj._reloadTapped = false; obj._reloadDir = 1;
   }
+}
+// Drawn above the aim controls so it never overlaps the fire area.
+function drawReloadBar(){
+  if(!usesReload(player) || player.reloadTimer <= 0) return;
+  const w = 190, h = 12;
+  const x = GAME_W/2 - w/2;
+  const y = IS_MOBILE ? (GAME_H - 210) : (GAME_H - 120);
+  const grace = (player._reloadGrace || 0) > 0;
+  ctx.save();
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = "rgba(0,0,0,0.62)";
+  ctx.fillRect(x-6, y-22, w+12, h+52);
+  ctx.strokeStyle = grace ? "rgba(140,140,150,0.7)" : "rgba(255,200,70,0.85)";
+  ctx.lineWidth = 2; ctx.strokeRect(x-6, y-22, w+12, h+52);
+  ctx.font = "bold 11px monospace"; ctx.textAlign = "center";
+  ctx.fillStyle = grace ? "#999" : "#ffdd55";
+  ctx.fillText(grace ? "GET READY..." : "TAP TO RELOAD", GAME_W/2, y-8);
+  // zones
+  ctx.fillStyle = "rgba(20,24,30,0.9)"; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = "rgba(90,190,90,0.40)";
+  ctx.fillRect(x + w*RELOAD_GOOD_START/RELOAD_BAR_FRAMES, y,
+               w*(RELOAD_GOOD_END-RELOAD_GOOD_START)/RELOAD_BAR_FRAMES, h);
+  ctx.fillStyle = "rgba(255,220,60,0.9)";
+  ctx.fillRect(x + w*RELOAD_PERFECT_START/RELOAD_BAR_FRAMES, y,
+               w*(RELOAD_PERFECT_END-RELOAD_PERFECT_START)/RELOAD_BAR_FRAMES, h);
+  // bouncing marker
+  const p = Math.max(0, Math.min(1, player.reloadBar/RELOAD_BAR_FRAMES));
+  ctx.fillStyle = "#fff"; ctx.fillRect(x + w*p - 1.5, y-4, 3, h+8);
+  // the button
+  const bw = 96, bh = 24, bx = GAME_W/2 - bw/2, by = y + h + 6;
+  player._reloadBtnRect = { x: bx, y: by, w: bw, h: bh };
+  ctx.globalAlpha = grace ? 0.35 : 0.95;
+  ctx.fillStyle = grace ? "rgba(70,70,80,0.8)" : "rgba(255,190,60,0.22)";
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.strokeStyle = grace ? "#666" : "#ffbe3c"; ctx.lineWidth = 2;
+  ctx.strokeRect(bx, by, bw, bh);
+  ctx.fillStyle = grace ? "#888" : "#ffdd55"; ctx.font = "bold 12px monospace";
+  ctx.fillText("RELOAD", GAME_W/2, by + 16);
+  ctx.textAlign = "left";
   ctx.restore();
+}
+// Ammo counter lives with the HUD text at the top, not over the play area.
+function drawAmmoCounter(){
+  if(!usesReload(player)) return;
+  ctx.save();
+  ctx.font = "bold 13px monospace"; ctx.textAlign = "left";
+  const low = player.mag <= Math.max(1, Math.round(player.magMax*0.25));
+  ctx.fillStyle = player.reloadBuff > 0 ? "#ffdd55" : (low ? "#ff6655" : "#8fa6c0");
+  ctx.globalAlpha = 0.95;
+  ctx.fillText("AMMO " + player.mag + "/" + player.magMax + (player.reloadBuff > 0 ? "  +20%" : ""), 14, 74);
+  ctx.restore();
+}
+
+// ── Arena V2: Target Aim ──────────────────────────────────────
+// Tap an enemy to lock on; the ship tracks it automatically. Error only appears
+// when the player is moving fast or changing direction sharply, and stays small.
+const TARGET_PICK_RADIUS = 90;
+const TARGET_ERR_MAX     = 0.055;   // ~3.1 deg, ceiling
+const TARGET_ERR_SPEED   = 0.020;   // from raw speed
+const TARGET_ERR_JERK    = 0.075;   // from direction change (oscillating)
+function pickAimTarget(wx, wy){
+  let best = null, bestD = TARGET_PICK_RADIUS * TARGET_PICK_RADIUS;
+  for(const e of enemies){
+    if(e.dead) continue;
+    const dx = (e.x + e.w/2) - wx, dy = (e.y + e.h/2) - wy, d2 = dx*dx + dy*dy;
+    if(d2 < bestD){ bestD = d2; best = e; }
+  }
+  if(best) aimTarget = best;
+  return !!best;
+}
+function updateTargetAim(){
+  if(aimTarget && (aimTarget.dead || enemies.indexOf(aimTarget) === -1)) aimTarget = null;
+  if(!aimTarget){
+    // fall back to nearest so the ship is never aimless
+    let best=null,bestD=Infinity;
+    const pcx=player.x+player.w/2, pcy=player.y+player.h/2;
+    for(const e of enemies){ if(e.dead) continue;
+      const d=Math.hypot(e.x+e.w/2-pcx, e.y+e.h/2-pcy); if(d<bestD){bestD=d;best=e;} }
+    aimTarget = best;
+  }
+  if(!aimTarget) return false;
+  const pcx = player.x + player.w/2, pcy = player.y + player.h/2;
+  const tx = aimTarget.x + aimTarget.w/2, ty = aimTarget.y + aimTarget.h/2;
+  // lead the shot using the weapon's projectile speed
+  const spd = (player.weaponStats && player.weaponStats.speed) || 10;
+  const pred = (typeof predictPos === "function")
+    ? predictPos(tx, ty, aimTarget.vx||0, aimTarget.vy||0, pcx, pcy, spd)
+    : { x: tx, y: ty };
+  // error: speed contributes a little, direction-change a lot, both tiny
+  const sp = Math.hypot(player.vx||0, player.vy||0);
+  const spN = Math.min(1, sp / Math.max(0.001, player.maxSpeed || 3));
+  const jerk = Math.min(1, Math.hypot((player.vx||0)-(player._pvx||0), (player.vy||0)-(player._pvy||0)) / 1.2);
+  player._pvx = player.vx || 0; player._pvy = player.vy || 0;
+  const errTarget = Math.min(TARGET_ERR_MAX, spN*TARGET_ERR_SPEED + jerk*TARGET_ERR_JERK);
+  _aimErr += ((Math.random()-0.5)*2*errTarget - _aimErr) * 0.12;   // smoothed, no jitter
+  const ang = Math.atan2(pred.y - pcy, pred.x - pcx) + _aimErr;
+  mouse.x = pcx + Math.cos(ang) * 600;
+  mouse.y = pcy + Math.sin(ang) * 600;
+  return true;
+}
+function drawTargetLock(){
+  if(aimMode !== "target" || !aimTarget || aimTarget.dead) return;
+  const cx = aimTarget.x + aimTarget.w/2, cy = aimTarget.y + aimTarget.h/2;
+  const r = Math.max(aimTarget.w, aimTarget.h) * 0.75 + 6;
+  ctx.save();
+  ctx.strokeStyle = player.gimbalLocked ? "#ff4444" : "#44ff99";
+  ctx.lineWidth = 2; ctx.globalAlpha = 0.9;
+  if(_shadowsEnabled){ ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 8; }
+  for(let i=0;i<4;i++){
+    const a = i*Math.PI/2 + Math.PI/4;
+    const sx = cx + Math.cos(a)*r, sy = cy + Math.sin(a)*r;
+    ctx.beginPath(); ctx.moveTo(sx, sy);
+    ctx.lineTo(sx - Math.cos(a)*9, sy - Math.sin(a)*9); ctx.stroke();
+  }
+  ctx.globalAlpha = 0.35;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+  ctx.restore();
+}
+
+function vendettaMult(){
+  const f = Math.max(0, Math.min(1, player.hp / (player.maxHp || 1)));
+  if(f >= VENDETTA_FLOOR) return 1;
+  const t = (VENDETTA_FLOOR - f) / VENDETTA_FLOOR;
+  return 1 + VENDETTA_MAX_BONUS * t;
+}
+// ── Dodge blink ───────────────────────────────────────────────
+// A successful dodge should READ as a dodge: brief invulnerability, a short
+// hop out of the line of fire, and a white flash marking where you were.
+function _blinkClear(nx, ny){
+  if(nx < 0 || ny < 0 || nx + player.w > GAME_W || ny + player.h > GAME_H) return false;
+  const hit = (o)=> o && !o.dead && nx < o.x + o.w && nx + player.w > o.x
+                             && ny < o.y + o.h && ny + player.h > o.y;
+  for(const e of enemies) if(hit(e)) return false;
+  for(const a of allies)  if(hit(a)) return false;
+  if(typeof debris !== "undefined") for(const dd of debris) if(hit(dd)) return false;
+  return true;
+}
+function doDodgeBlink(){
+  player.dodgeIFrames = DODGE_IFRAMES;
+  const ox = player.x, oy = player.y;
+  for(let i = 0; i < DODGE_BLINK_TRIES; i++){
+    const a = Math.random() * Math.PI * 2;
+    const r = DODGE_BLINK_MIN + Math.random() * (DODGE_BLINK_MAX - DODGE_BLINK_MIN);
+    const nx = ox + Math.cos(a) * r, ny = oy + Math.sin(a) * r;
+    if(_blinkClear(nx, ny)){ player.x = nx; player.y = ny; break; }
+  }
+  // white trail between the two positions
+  const steps = 7;
+  for(let i = 0; i <= steps; i++){
+    const t = i/steps;
+    _thrusterParticles.push({
+      x: ox + (player.x-ox)*t + player.w/2, y: oy + (player.y-oy)*t + player.h/2,
+      vx: (Math.random()-0.5)*0.8, vy: (Math.random()-0.5)*0.8,
+      life: 16, maxLife: 16, color: "#ffffff", shape: "classic", size: 3 });
+  }
+  hitEffects.push({ x: ox + player.w/2, y: oy + player.h/2, life: 14, maxLife: 14,
+                    color: "#ffffff", r: 6, maxR: 34, ring: true });
+  if(typeof showSpecialToast === "function" && Math.random() < 0.12) showSpecialToast("DODGED");
+}
+function drawDodgeAura(){
+  if(!player.dodgeIFrames || player.dodgeIFrames <= 0) return;
+  const f = player.dodgeIFrames / DODGE_IFRAMES;
+  const cx = player.x + player.w/2, cy = player.y + player.h/2;
+  ctx.save();
+  ctx.globalAlpha = 0.30 + 0.45*f;
+  ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
+  if(_shadowsEnabled){ ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 12*f; }
+  ctx.beginPath(); ctx.arc(cx, cy, Math.max(player.w, player.h)*0.7 + 4, 0, Math.PI*2);
+  ctx.stroke(); ctx.restore();
 }
 
 function drawTelegraphs() {
@@ -2596,6 +2791,8 @@ function updatePlayer() {
   } else {
     player.targetRotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
   }
+  if(aimMode === "target" && state === "playing"){ updateTargetAim();
+    player.targetRotation = Math.atan2(mouse.y - player.y - player.h/2, mouse.x - player.x - player.w/2); }
   // ── Arena V2 §10: hull turns at a rate; weapons gimbal within a cone ──
   {
     const ts = player.boosting ? player.turnSpeed*1.4 : player.turnSpeed;
@@ -2612,7 +2809,9 @@ function updatePlayer() {
   updateReload(player);
   const shieldRegen=SHIELD_TIERS[playerLoadout.shieldTier||1].regenRate; regenShieldFaces(player, shieldRegen);
   let isShooting=IS_MOBILE?mobileAim.shooting:(keys["Space"]||mouse.down);
+  if(aimMode === "target" && aimTarget && !aimTarget.dead) isShooting = true;
   if(player.gimbalLocked) isShooting=false;   // Arena V2 §10: out of arc, hold fire
+  if(player.dodgeIFrames > 0) player.dodgeIFrames--;
   updateHeat(player);
   if(!canFireHeat(player)) isShooting=false;   // §2: overheated or broken
   if(usesReload(player) && (player.reloadTimer > 0 || player.mag <= 0)){
@@ -2648,6 +2847,7 @@ function updatePlayer() {
       } else if(player.doubleShot) finalBullets=fireDoubleShot(player,player.weaponStats,player.gimbalAngle,true);
       else finalBullets=fireBullets(player,player.weaponStats,player.gimbalAngle,true);
       if(currentShipName==="Vengeance") finalBullets.forEach(b=>{ b.vengeanceShot=true; });
+      if(currentShipName==="Retribution"){ const vm=vendettaMult(); finalBullets.forEach(b=>{ b.damage=(b.damage||0)*vm; b.vendettaShot=true; }); }
       applyHeatModifiers(player, finalBullets, player.weaponStats);
       addHeat(player, player.weaponStats);
       if(usesReload(player)){
@@ -2708,6 +2908,7 @@ function updatePlayer() {
         bs.forEach(b => {
           b.damage = (b.damage||0) * p.mult; b._isPlayerBullet = true; b._burstShot = p.shot;
           if (currentShipName === "Vengeance") b.vengeanceShot = true;
+          if (currentShipName === "Retribution"){ b.damage=(b.damage||0)*vendettaMult(); b.vendettaShot = true; }
           if (p.stagger) { b.staggerOnHit = true; b.staggerDur = 45; }
         });
         applyHeatModifiers(player, bs, player.weaponStats);
@@ -3243,6 +3444,7 @@ function render() {
   if(state==="shadowCometCutscene"){ drawShadowCometCutscene(); return; }
   if(state==="shadowVenganceCutscene"){ drawShadowVenganceCutscene(); return; }
   if(state==="waveTransition"){
+    if(typeof cardPending!=="undefined" && cardPending){ render(); updateHUD(); requestAnimationFrame(gameLoop); return; }
     allies.forEach(drawEntity);drawEntity(player);drawDeathEffects();
     const secs=Math.ceil(waveTransitionTimer/60);
     ctx.fillStyle="rgba(0,0,0,0.55)";ctx.fillRect(GAME_W/2-320,GAME_H/2-55,640,110);
@@ -3261,7 +3463,7 @@ function render() {
   drawDebris();
   drawThrusterParticles(); enemies.forEach(drawEntity); allies.forEach(drawEntity);
   if(isDeployed && capitalShipObj && !capitalDestroyed) drawEntity(capitalShipObj);
-  drawAffixAuras(); drawEntity(player); drawRailgunCharge(); drawTelegraphs(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings(); drawHeatBar(); drawReloadBar();
+  drawAffixAuras(); drawEntity(player); drawRailgunCharge(); drawTelegraphs(); drawDodgeAura(); drawTargetLock(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings(); drawHeatBar(); drawReloadBar(); drawAmmoCounter();
 
   // Restore camera offset before drawing HUD (HUD is screen-space)
   if (_isUni) { ctx.restore(); }
@@ -3386,7 +3588,8 @@ function gameLoop() {
       _hudFrame++; if (_hudFrame % 3 === 0) updateHUD();
     }
   }
-  if(state==="waveTransition"){ updatePlayer();updateDeathEffects();waveTransitionTimer--; if(waveTransitionTimer<=0)nextWave(); if (_hudFrame % 3 === 0) updateHUD(); }
+  if(state==="waveTransition"){
+    if(typeof cardPending!=="undefined" && cardPending){ render(); updateHUD(); requestAnimationFrame(gameLoop); return; } updatePlayer();updateDeathEffects();waveTransitionTimer--; if(waveTransitionTimer<=0)nextWave(); if (_hudFrame % 3 === 0) updateHUD(); }
   render();
   if(IS_MOBILE){ const ui=document.getElementById("mobileUI"); if(ui){ const idle=Date.now()-lastTouchTime>4000; ui.style.opacity=idle?"0.3":"1.0"; ui.style.transition="opacity 0.6s"; } }
   requestAnimationFrame(gameLoop);
