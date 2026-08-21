@@ -1581,7 +1581,8 @@ function renderShopAccount(container) {
     const _modes = [
       ["stick",     "Stick Aim",     "Right stick points the ship. Fires while held."],
       ["touch",     "Touch Aim",     "Tap anywhere on screen. The ship aims at that exact point and fires. Closest to mouse aiming."],
-      ["crosshair", "Crosshair Aim", "Right stick moves a floating crosshair. The ship aims at it and fires while held."]
+      ["crosshair", "Crosshair Aim", "Right stick becomes a trackpad. Drag to move a floating crosshair; the ship aims at it."],
+      ["target",    "Target Aim",    "Tap an enemy to lock on. The ship tracks and fires automatically, with a tiny aim wobble while you move hard."]
     ];
     const _cur = (typeof aimMode !== "undefined") ? aimMode : "stick";
     let _ah = '<h3 style="color:#0af;margin:18px 0 8px;font:bold 15px monospace">Aim Mode</h3>'
