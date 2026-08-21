@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.10.2";
+const CACHE = "galactic-horizons-v1.10.3";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -264,5 +264,6 @@ Versions:
 -V1.9.12 - Fixed the arena ship shop again
 -V1.10.0 - Arena V2 Update 1: Now ships have a set turn rate, no longer do they instantly follow mouse/phone joystick. This balances the larger ships while offers advantages on smaller ships.
 -V1.10.1 - Arena V2 Update 2: Now phone has more aiming options, as well as oscillation for allies/enemies has been fixed, and finally PDC's no longer destroy every enemy bullet.
--V1.10.2 - Area V2 Update 3: Enemy ships telegraph and shoot in randomized bursts. Shield faces tech deepened. Random chance of destroyed ship dropping Debris, which serves as temporary cover. 
+-V1.10.2 - Arena V2 Update 3: Enemy ships telegraph and shoot in randomized bursts. Shield faces tech deepened. Random chance of destroyed ship dropping Debris, which serves as temporary cover. 
+-V1.10.3 - Arena V2 Update 4: Fixes to Vengeance, new fire modes and fixed them.
 */
