@@ -984,12 +984,12 @@ function weaponUsesHeat(wStats){
 
 // ARENA V2 §5 — active reload (ballistic only)
 const RELOAD_GRACE_FRAMES   = 60;   // 1.0s to SEE the prompt before taps register
-const RELOAD_BAR_FRAMES     = 60;
-const RELOAD_PERFECT_START  = 33;
-const RELOAD_PERFECT_END    = 41;
-const RELOAD_GOOD_START     = 24;
-const RELOAD_GOOD_END       = 50;
-const RELOAD_FULL_FRAMES    = 90;
+const RELOAD_BAR_FRAMES     = 110;  // slower sweep: 1.8s each way
+const RELOAD_PERFECT_START  = 56;
+const RELOAD_PERFECT_END    = 74;   // 18f window (was 8) - hittable on a bouncing bar
+const RELOAD_GOOD_START     = 34;
+const RELOAD_GOOD_END       = 92;
+const RELOAD_FULL_FRAMES    = 330;  // 3 full bounces before it auto-completes
 const RELOAD_GOOD_FRAMES    = 20;
 const RELOAD_PERFECT_BUFF   = 1.20;
 const RELOAD_BUFF_FRAMES    = 180;
@@ -1079,3 +1079,97 @@ const BASE_BUILDINGS = {
 const CARRYOVER_FRAC = 0.05;
 const CARRYOVER_CAP  = 175000;   // ~half a Bulwark (350k) after a strong run
 const CARRYOVER_MIN_WAVE = 5;
+
+// ============================================================
+// CHUNK 4 — Descent core
+// ============================================================
+const CARD_CAP            = 8;     // taking a 9th forces a discard
+const CARD_RARITY_WEIGHTS = { common: 68, rare: 26, epic: 6 };
+const CARD_RARITY_SCALE   = { common: 1.0, rare: 1.6, epic: 2.4 };
+const CARD_PITY_LIMIT     = 4;     // 4 screens with no rare+ forces one
+const WEAPON_INV_CAP      = 4;
+
+// Wave perturbation: fixed WAVES kept their identity but were identical every
+// run. Perturb count and swap a sibling so no two runs match.
+const WAVE_COUNT_JITTER   = [-1, 2];
+const WAVE_SUB_CHANCE     = 0.25;
+
+// Infinite mode scales card power, never grants raw stats.
+const INF_CARD_SCALE_PER_10 = 0.06;   // +6% card effect per 10 waves, capped
+const INF_CARD_SCALE_CAP    = 2.2;
+
+// ── Distortion meter ──────────────────────────────────────────
+const DISTORT_MAX          = 100;
+const DISTORT_DRAIN        = 12/60;   // per frame
+const DISTORT_RESIST_FRAMES= 360;
+const DISTORT_RESIST_MULT  = 0.40;
+const DISTORT_CHARGE = { distortion: 6, distortion_pulse: 9, gravity_beam: 45 };
+function distortStunFor(size){
+  if(size >= 6) return 120;
+  if(size >= 3) return 180;
+  return 240;
+}
+
+// ── Archetypes ────────────────────────────────────────────────
+const ARCHETYPES = {
+  redline:    { name:"Redline",    color:"#ffaa22", desc:"Live in the heat band" },
+  aspect:     { name:"Aspect",     color:"#3399ff", desc:"The right face eats the hit" },
+  wolfpack:   { name:"Wolfpack",   color:"#44ffcc", desc:"You are a flagship" },
+  salvage:    { name:"Salvage",    color:"#aa8855", desc:"The battlefield is a weapon" },
+  disruption: { name:"Disruption", color:"#cc88ff", desc:"Turn their strength into loot" },
+  vendetta:   { name:"Vendetta",   color:"#ff4455", desc:"Power bought with hull" },
+};
+
+// Every card must be worth taking with an EMPTY build.
+// kind: mod | weapon | ship | heal    role: enabler | payoff | standalone
+const CARD_LIBRARY = [
+  // ── REDLINE ──
+  { id:"r_lance",   arch:"redline", role:"enabler",    rarity:"common", name:"Thermal Lance",    desc:"+15% damage always. Heat builds 40% faster.",              mod:"thermal_lance" },
+  { id:"r_vent",    arch:"redline", role:"enabler",    rarity:"common", name:"Vent Bypass",      desc:"Heat never falls below 50. Reach the band sooner.",        mod:"vent_bypass" },
+  { id:"r_bore",    arch:"redline", role:"standalone", rarity:"common", name:"Ceramic Bore",     desc:"+1 penetration. +2 more while at redline.",                mod:"ceramic_bore" },
+  { id:"r_runaway", arch:"redline", role:"payoff",     rarity:"rare",   name:"Runaway Reaction", desc:"At redline, every 5th shot fires twice.",                  mod:"runaway" },
+  { id:"r_melt",    arch:"redline", role:"payoff",     rarity:"rare",   name:"Meltdown Core",    desc:"Overheating detonates for 300 in 140px instead of locking out.", mod:"meltdown" },
+  { id:"r_coolant", arch:"redline", role:"standalone", rarity:"common", name:"Coolant Flush",    desc:"Heat decays twice as fast once you stop firing.",          mod:"coolant" },
+  // ── ASPECT ──
+  { id:"a_plate",   arch:"aspect", role:"enabler",    rarity:"common", name:"Prow Plating",      desc:"Front face +50% capacity, rear face -20%.",                mod:"prow_plating" },
+  { id:"a_rotor",   arch:"aspect", role:"enabler",    rarity:"common", name:"Gyro Rotor",        desc:"+35% turn rate. Facing is a decision you can act on.",     mod:"gyro" },
+  { id:"a_deflect", arch:"aspect", role:"payoff",     rarity:"rare",   name:"Deflection Field",  desc:"Hits on a face above 50% reflect 25% damage back.",        mod:"deflect" },
+  { id:"a_cascade", arch:"aspect", role:"payoff",     rarity:"rare",   name:"Cascade Regen",     desc:"A full face feeds its neighbours at 30% rate.",            mod:"cascade" },
+  { id:"a_hard",    arch:"aspect", role:"standalone", rarity:"common", name:"Hardened Arcs",     desc:"Face regen lock lasts 40 frames instead of 90.",           mod:"hardened" },
+  // ── WOLFPACK ──
+  { id:"w_wing",    arch:"wolfpack", role:"enabler",    rarity:"common", name:"Wing Commander",  desc:"+1 ally slot for the run.",                                mod:"wing" },
+  { id:"w_drill",   arch:"wolfpack", role:"enabler",    rarity:"common", name:"Drilled Crews",   desc:"Allies fire 25% faster and hold formation tighter.",       mod:"drilled" },
+  { id:"w_focus",   arch:"wolfpack", role:"payoff",     rarity:"rare",   name:"Focus Fire",      desc:"Your pinged target takes +12% per living ally.",           mod:"focusfire" },
+  { id:"w_screen",  arch:"wolfpack", role:"payoff",     rarity:"rare",   name:"Screening Line",  desc:"Each living ally reduces damage to you by 6%, cap 30%.",   mod:"screen" },
+  { id:"w_salv",    arch:"wolfpack", role:"standalone", rarity:"common", name:"Field Repairs",   desc:"Allies revive 50% faster between waves.",                   mod:"fieldrepair" },
+  // ── SALVAGE ──
+  { id:"s_break",   arch:"salvage", role:"enabler",    rarity:"common", name:"Breaker Charges",  desc:"Wrecks drop twice as often. Wreck HP -25%.",               mod:"breaker" },
+  { id:"s_feed",   arch:"salvage", role:"payoff",     rarity:"common", name:"Scrap Feed",        desc:"Destroying a wreck restores 4% hull.",                      mod:"scrapfeed" },
+  { id:"s_curtain", arch:"salvage", role:"payoff",     rarity:"rare",   name:"Iron Curtain",     desc:"Each wreck within 200px cuts incoming damage 15%, cap 45%.", mod:"ironcurtain" },
+  { id:"s_sweep",   arch:"salvage", role:"standalone", rarity:"rare",   name:"Kinetic Sweep",    desc:"Shots passing over a wreck gain +30% damage.",              mod:"sweep" },
+  { id:"s_dense",   arch:"salvage", role:"enabler",    rarity:"common", name:"Dense Debris",     desc:"Debris field cap raised by half.",                          mod:"dense" },
+  // ── DISRUPTION ──
+  { id:"d_amp",     arch:"disruption", role:"enabler",    rarity:"common", name:"Phase Amplifier", desc:"Distortion charge per hit +50%.",                        mod:"distamp" },
+  { id:"d_thresh",  arch:"disruption", role:"enabler",    rarity:"common", name:"Low Threshold",   desc:"Enemies distort at 70 meter instead of 100.",             mod:"distthresh" },
+  { id:"d_pry",     arch:"disruption", role:"payoff",     rarity:"rare",   name:"Pry Bar",        desc:"Distorted enemies take +25% more (stacks with the base 25%).", mod:"prybar" },
+  { id:"d_chain",   arch:"disruption", role:"payoff",     rarity:"rare",   name:"Chain Suppression", desc:"Distorting an enemy adds 40 meter to others within 180px.", mod:"chainsupp" },
+  { id:"d_strip",   arch:"disruption", role:"standalone", rarity:"common", name:"Affix Siphon",   desc:"Stripping an affix grants 250 credits and 2% hull.",       mod:"siphon" },
+  // ── VENDETTA ──
+  { id:"v_spite",   arch:"vendetta", role:"payoff",     rarity:"common", name:"Spite Rounds",    desc:"+1% damage per 2% hull missing.",                          mod:"spite" },
+  { id:"v_bleed",   arch:"vendetta", role:"enabler",    rarity:"common", name:"Open Coolant",    desc:"Lose 8% max hull. +25% fire rate for the run.",            mod:"opencoolant" },
+  { id:"v_last",    arch:"vendetta", role:"payoff",     rarity:"rare",   name:"Last Breath",     desc:"Below 25% hull, gain 40% dodge.",                          mod:"lastbreath" },
+  { id:"v_siphon",  arch:"vendetta", role:"standalone", rarity:"common", name:"Siphon Rounds",   desc:"2% lifesteal on hull damage.",                             mod:"vsiphon" },
+  { id:"v_martyr",  arch:"vendetta", role:"payoff",     rarity:"rare",   name:"Martyr Protocol", desc:"Killing while below 40% hull restores 6% hull.",           mod:"martyr" },
+];
+
+// Fusions: locked until you hold a card from BOTH archetypes.
+const CARD_FUSIONS = [
+  { id:"f_critmass", name:"Critical Mass",  req:["redline","aspect"],     desc:"Overheat detonation refills every shield face.",              mod:"critmass" },
+  { id:"f_bonefield",name:"Bonefield",      req:["salvage","disruption"], desc:"Distorted enemies always leave a wreck on death.",            mod:"bonefield" },
+  { id:"f_pyre",     name:"Funeral Pyre",   req:["redline","vendetta"],   desc:"Below 40% hull, heat decays 3x slower and redline damage doubles.", mod:"pyre" },
+  { id:"f_picket",   name:"Picket Line",    req:["wolfpack","salvage"],   desc:"Allies take cover behind wrecks for 30% damage reduction.",   mod:"picket" },
+  { id:"f_broadside",name:"Broadside",      req:["aspect","wolfpack"],    desc:"Allies mirror your facing and share your strongest face.",    mod:"broadside" },
+  { id:"f_vulture",  name:"Vulture",        req:["vendetta","salvage"],   desc:"Wrecks heal three times as much below 50% hull.",             mod:"vulture" },
+  { id:"f_static",   name:"Static Field",   req:["disruption","redline"], desc:"At redline, distortion charges everything within 160px.",     mod:"staticfield" },
+];
+const FUSION_OFFER_CHANCE = 0.15;
