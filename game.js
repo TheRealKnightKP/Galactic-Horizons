@@ -350,7 +350,6 @@ function buildMobileControls() {
     mobileAim.startX   = r.left + r.width  / 2;
     mobileAim.startY   = r.top  + r.height / 2;
     mobileAim._lastX = t.clientX; mobileAim._lastY = t.clientY;
-    if(typeof player === "object" && player.reloadTimer > 0) tapReload(player);
     mouse.down = true;
     initAudio();
   }, { passive: false });
@@ -1538,13 +1537,37 @@ function createEnemyObject(name, spawnX, spawnY) {
   return e;
 }
 
+// Chunk 4: campaign waves were a fixed table, so wave 7 was the same wave 7
+// every run. Perturb count and swap a sibling: identity kept, determinism gone.
+function perturbWave(list){
+  if(!Array.isArray(list) || !list.length) return list;
+  const out = list.slice();
+  const jitter = WAVE_COUNT_JITTER[0] + Math.floor(Math.random()*(WAVE_COUNT_JITTER[1]-WAVE_COUNT_JITTER[0]+1));
+  if(jitter > 0){ for(let i=0;i<jitter;i++) out.push(out[Math.floor(Math.random()*out.length)]); }
+  else if(jitter < 0 && out.length > 1){ out.splice(Math.floor(Math.random()*out.length), Math.min(-jitter, out.length-1)); }
+  if(Math.random() < WAVE_SUB_CHANCE && out.length){
+    const idx = Math.floor(Math.random()*out.length);
+    const cur = ENEMIES[out[idx]];
+    if(cur){
+      const sibs = Object.keys(ENEMIES).filter(k => ENEMIES[k].size === cur.size && k !== out[idx]
+                    && !ENEMIES[k].isBoss && !k.startsWith("Shadow"));
+      if(sibs.length) out[idx] = sibs[Math.floor(Math.random()*sibs.length)];
+    }
+  }
+  return out;
+}
+
 function spawnWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[]; debris=[]; _debrisArea=0;
   waveReinforceTimer=0; waveReinforceDone=false;
   _enemyCapFormation="default"; _enemyCapTimer=0; _enemyCapRegen=1.0; _playerYHistory=[];
   _waveMissileFired = false; shadowCometActive = false; shadowVenganceActive = false;
   pdcDisabledThisWave = false; dreadnaughtReinforceTriggered = false; dreadnaughtEnraged = false;
-  const waveData=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
+  let waveData=infiniteMode?generateInfiniteWave(currentWave):WAVES[currentWave-1];
+  // Chunk 4: perturb the fixed campaign table so no two runs are identical.
+  if(!infiniteMode && waveData && Array.isArray(waveData.enemies) && !waveData.shadowCometWave && !waveData.shadowVenganceWave){
+    try { waveData = { ...waveData, enemies: perturbWave(waveData.enemies) }; } catch(e){}
+  }
   if (waveData && waveData.shadowCometWave) {
     spawnShadowCometWave(); state = "shadowCometCutscene";
     document.getElementById("hud").style.display = "block"; document.getElementById("inGameBack").style.display = "block";
@@ -1583,7 +1606,7 @@ function nextWave() {
 
 function startGame(infinite) {
   window.runCreditsEarned = 0; window.waveCreditsEarned = 0;
-  try { if(typeof pickNextCondition==="function") pickNextCondition(); if(typeof resetConditionProgress==="function") resetConditionProgress(); } catch(e){}
+  try { if(typeof resetRunState==="function") resetRunState(); if(typeof pickNextCondition==="function") pickNextCondition(); if(typeof resetConditionProgress==="function") resetConditionProgress(); } catch(e){}
   infiniteMode=infinite; currentWave=0;
   document.getElementById("arenaMenu").style.display="none";
   if(!ownedShips||ownedShips.length===0) ownedShips=["Starlight"];
@@ -1637,6 +1660,7 @@ function applyDamage(target,bullet) {
     const dodge=player.boosting?player.dodgeBoosted:player.dodgeBase;
     if(dodge>0&&Math.random()<dodge){ doDodgeBlink(); return; }
     playerTookDamageThisWave=true;
+    try{ const _im=modIncomingMult(); if(_im!==1) bullet={...bullet,damage:(bullet.damage||0)*_im}; }catch(e){}
     window._lastKiller = (bullet && (bullet._srcType || bullet.ownerType)) || window._lastKiller || "enemy fire";
     if(player.specialActive&&currentShipName==="Marauder") bullet={...bullet,damage:(bullet.damage||0)*0.5};
     if(player.specialActive&&currentShipName==="Nemesis")  bullet={...bullet,damage:(bullet.damage||0)*0.5};
@@ -1926,7 +1950,11 @@ function debrisCollide(list){
         d.hp -= (b.damage || 10);
         spawnHitEffect(b.x + (b.w||2)/2, b.y + (b.h||2)/2, b);
         b.dead = true;
-        if(d.hp <= 0){ d.dead = true; _debrisArea -= d.w*d.h; }
+        if(d.hp <= 0){ d.dead = true; _debrisArea -= d.w*d.h;
+          const sf = ml("scrapfeed");
+          if(sf){ let heal = player.maxHp*0.04*sf;
+            if(ml("vulture") && player.hp < player.maxHp*0.5) heal *= 3;
+            player.hp = Math.min(player.maxHp, player.hp + heal); } }
         break;
       }
     }
@@ -1982,6 +2010,7 @@ function killEnemy(e, source){
   window.recordCreditsEarned?.(e.score || 0);
   window.recordKill?.(e);
   try { affixOnDeath(e); } catch(err) {}
+  try { if(ml("martyr") && player.hp < player.maxHp*0.40) player.hp = Math.min(player.maxHp, player.hp + player.maxHp*0.06*ml("martyr")); } catch(err) {}
   try { if(e.affix && typeof noteAffixKill==="function") noteAffixKill(); } catch(err) {}
   try { spawnDebris(e); } catch(err) {}
   return true;
@@ -2007,7 +2036,8 @@ function addHeat(obj, wStats){
   if(!weaponUsesHeat(wStats)) return;
   const bonus = HEAT_REDLINE_BONUS[wStats.category] || {};
   const mult = (obj.heat >= HEAT_REDLINE_START && bonus.heat) ? bonus.heat : 1;
-  obj.heat = Math.min(100, obj.heat + heatPerShot(wStats) * mult);
+  const _tl = (typeof ml==="function") ? 1 + 0.40*ml("thermal_lance") : 1;
+  obj.heat = Math.min(100, obj.heat + heatPerShot(wStats) * mult * _tl);
   obj._heatCoolDelay = HEAT_COOL_DELAY;
   if(obj.heat >= 100 && obj.heatLockout <= 0){
     obj.heatLockout = HEAT_LOCKOUT_FRAMES;
@@ -2212,6 +2242,8 @@ function updateReload(obj){
   obj.reloadTimer--;
   if(obj.reloadTimer <= 0){
     obj.mag = obj.magMax; obj.reloadBar = 0; obj._reloadTapped = false; obj._reloadDir = 1;
+    obj._reloadGrace = 0;
+    if(typeof showSpecialToast === "function") showSpecialToast("RELOADED");
   }
 }
 // Drawn above the aim controls so it never overlaps the fire area.
@@ -2382,6 +2414,37 @@ function drawDodgeAura(){
   if(_shadowsEnabled){ ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 12*f; }
   ctx.beginPath(); ctx.arc(cx, cy, Math.max(player.w, player.h)*0.7 + 4, 0, Math.PI*2);
   ctx.stroke(); ctx.restore();
+}
+
+// ── Chunk 4: card mods applied to live systems ────────────────
+function ml(k){ return (typeof modLevel==="function") ? modLevel(k) : 0; }
+function applyRunMods(){
+  if(typeof runMods === "undefined" || !player) return;
+  // REDLINE
+  if(ml("vent_bypass") && player.heat < 50) player.heat = 50;
+  if(ml("coolant") && player._heatCoolDelay > 0) player._heatCoolDelay -= 1;
+  // VENDETTA
+  if(ml("lastbreath") && player.hp < player.maxHp*0.25) player.dodgeBase = Math.min(0.95,(player.dodgeBase||0)+0.40*ml("lastbreath"));
+  // WOLFPACK
+  const scr = ml("screen");
+  player._screenDR = scr ? Math.min(0.30, 0.06*scr*allies.filter(a=>!a.dead).length) : 0;
+  // SALVAGE
+  const ic = ml("ironcurtain");
+  if(ic){
+    let near=0; const pcx=player.x+player.w/2, pcy=player.y+player.h/2;
+    for(const d of debris){ if(!d.dead && Math.hypot(d.x+d.w/2-pcx, d.y+d.h/2-pcy) < 200) near++; }
+    player._coverDR = Math.min(0.45, 0.15*ic*near);
+  } else player._coverDR = 0;
+}
+function modOutgoingMult(){
+  let m = 1;
+  m *= 1 + 0.15*ml("thermal_lance");
+  if(ml("spite")) m *= 1 + (1 - player.hp/(player.maxHp||1))*0.5*ml("spite");
+  if(ml("pyre") && player.hp < player.maxHp*0.40 && player.heat >= HEAT_REDLINE_START) m *= 2;
+  return m;
+}
+function modIncomingMult(){
+  return Math.max(0.2, 1 - (player._screenDR||0) - (player._coverDR||0));
 }
 
 function drawTelegraphs() {
@@ -2812,6 +2875,7 @@ function updatePlayer() {
   if(aimMode === "target" && aimTarget && !aimTarget.dead) isShooting = true;
   if(player.gimbalLocked) isShooting=false;   // Arena V2 §10: out of arc, hold fire
   if(player.dodgeIFrames > 0) player.dodgeIFrames--;
+  try{ applyRunMods(); }catch(e){}
   updateHeat(player);
   if(!canFireHeat(player)) isShooting=false;   // §2: overheated or broken
   if(usesReload(player) && (player.reloadTimer > 0 || player.mag <= 0)){
@@ -2848,6 +2912,7 @@ function updatePlayer() {
       else finalBullets=fireBullets(player,player.weaponStats,player.gimbalAngle,true);
       if(currentShipName==="Vengeance") finalBullets.forEach(b=>{ b.vengeanceShot=true; });
       if(currentShipName==="Retribution"){ const vm=vendettaMult(); finalBullets.forEach(b=>{ b.damage=(b.damage||0)*vm; b.vendettaShot=true; }); }
+      try{ const _mm=modOutgoingMult(); if(_mm!==1) finalBullets.forEach(b=>{b.damage=(b.damage||0)*_mm;}); }catch(e){}
       applyHeatModifiers(player, finalBullets, player.weaponStats);
       addHeat(player, player.weaponStats);
       if(usesReload(player)){
@@ -3444,7 +3509,6 @@ function render() {
   if(state==="shadowCometCutscene"){ drawShadowCometCutscene(); return; }
   if(state==="shadowVenganceCutscene"){ drawShadowVenganceCutscene(); return; }
   if(state==="waveTransition"){
-    if(typeof cardPending!=="undefined" && cardPending){ render(); updateHUD(); requestAnimationFrame(gameLoop); return; }
     allies.forEach(drawEntity);drawEntity(player);drawDeathEffects();
     const secs=Math.ceil(waveTransitionTimer/60);
     ctx.fillStyle="rgba(0,0,0,0.55)";ctx.fillRect(GAME_W/2-320,GAME_H/2-55,640,110);
@@ -3579,7 +3643,14 @@ function gameLoop() {
         money+=reward; player.shields=player.maxShields;player.armor=player.maxArmor; if(player.shieldFaces) initShieldFaces(player);
         if(isDeployed && capitalShipObj) { capitalShipObj.shields=capitalShipObj.maxShields; capitalShipObj.armor=capitalShipObj.maxArmor; if(capitalShipObj.shieldFaces) initShieldFaces(capitalShipObj); }
         allies.forEach(a=>{ a.shields=a.maxShields;a.armor=a.maxArmor; if(a.shieldFaces) initShieldFaces(a); });
-        waveTransitionText="Wave "+currentWave+" Cleared!  +"+reward+" credits"; waveTransitionTimer=300;state="waveTransition";updateHUD();
+        waveTransitionText="Wave "+currentWave+" Cleared!  +"+reward+" credits";
+        // THE live wave-clear path. Two earlier hooks (1282/1453) are dead code.
+        window.waveCreditsEarned = 0;
+        const _isCard = (typeof isCardWave==="function") && isCardWave(currentWave);
+        waveTransitionTimer = _isCard ? 300 : (typeof WAVE_TRANSITION_FAST!=="undefined"?WAVE_TRANSITION_FAST:120);
+        if(_isCard){ try { showCardScreen(currentWave); } catch(err){ console.error("card screen:", err); } }
+        try { if(typeof resetConditionProgress==="function") resetConditionProgress(); } catch(err){}
+        state="waveTransition";updateHUD();
         const _hitless = !playerTookDamageThisWave, _allAlliesAlive = allies.length > 0 && allies.every(a => !a.dead), _noMissiles = !_waveMissileFired;
         window.recordCreditsEarned?.(reward); window.recordWaveEnd?.(currentWave, _hitless, _allAlliesAlive, _noMissiles, _hitless); window.tickSessionWave?.();
         if (typeof infiniteMode !== "undefined" && infiniteMode) window.checkChallengeCondition?.("waveReach", { wave: currentWave, infinite: true });
