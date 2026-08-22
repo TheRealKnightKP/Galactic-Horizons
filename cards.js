@@ -64,7 +64,11 @@ function conditionMet(cond) {
   return false;
 }
 
-// ── card generation ───────────────────────────────────────────
+// ── card generation (Chunk 4) ─────────────────────────────────
+let runDeck = [];            // cards held this run (cap CARD_CAP)
+let runWeapons = [];         // weapon inventory, cap WEAPON_INV_CAP
+let pityCounter = 0;
+
 function isCardWave(wave) {
   if (wave < CARD_START_WAVE) return false;
   if (wave % CARD_SPECIAL_EVERY === 0) return true;
@@ -72,19 +76,66 @@ function isCardWave(wave) {
 }
 function isSpecialWave(wave) { return wave >= CARD_START_WAVE && wave % CARD_SPECIAL_EVERY === 0; }
 
+function heldArchetypes() {
+  const set = {};
+  for (const c of runDeck) if (c.arch) set[c.arch] = true;
+  return set;
+}
+function availableFusions() {
+  const held = heldArchetypes();
+  const have = new Set(runDeck.map(c => c.id));
+  return CARD_FUSIONS.filter(f => !have.has(f.id) && f.req.every(a => held[a]));
+}
+function rollRarity() {
+  if (pityCounter >= CARD_PITY_LIMIT) return "rare";
+  const r = Math.random() * 100;
+  if (r < CARD_RARITY_WEIGHTS.epic) return "epic";
+  if (r < CARD_RARITY_WEIGHTS.epic + CARD_RARITY_WEIGHTS.rare) return "rare";
+  return "common";
+}
+// Infinite mode scales card EFFECT, never grants flat stats.
+function infiniteScale() {
+  if (!infiniteMode) return 1;
+  return Math.min(INF_CARD_SCALE_CAP, 1 + Math.floor(currentWave / 10) * INF_CARD_SCALE_PER_10);
+}
+
 function rollCards(wave) {
   const n = cardOptionCount();
-  let pool = [];
-  if (isSpecialWave(wave) && nextCondition && conditionMet(nextCondition)) {
-    pool = (CARD_POOLS[nextCondition.pool] || []).slice();
-  }
-  if (!pool.length) {
-    for (const p of CARD_STANDARD_POOLS) pool = pool.concat(CARD_POOLS[p] || []);
-  }
-  pool = pool.filter(c => !(c.kind === "ship" && c.value === currentShipName));
+  const have = new Set(runDeck.map(c => c.id));
   const out = [];
-  while (out.length < n && pool.length) out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+
+  // fusion offer, if prerequisites are met
+  const fus = availableFusions();
+  if (fus.length && Math.random() < (isSpecialWave(wave) ? FUSION_OFFER_CHANCE * 1.7 : FUSION_OFFER_CHANCE)) {
+    const f = fus[Math.floor(Math.random() * fus.length)];
+    out.push({ ...f, rarity: "fusion", kind: "mod", arch: null, isFusion: true });
+  }
+
+  // bias toward archetypes already held, so builds converge instead of scattering
+  const held = heldArchetypes();
+  const heldKeys = Object.keys(held);
+  let pool = CARD_LIBRARY.filter(c => !have.has(c.id));
+  const biased = heldKeys.length ? pool.filter(c => held[c.arch]) : [];
+
+  let gotRare = false;
+  while (out.length < n && pool.length) {
+    const want = rollRarity();
+    let src = (biased.length && Math.random() < 0.55) ? biased : pool;
+    let cands = src.filter(c => c.rarity === want);
+    if (!cands.length) cands = src.length ? src : pool;
+    if (!cands.length) break;
+    const pick = cands[Math.floor(Math.random() * cands.length)];
+    if (pick.rarity !== "common") gotRare = true;
+    out.push(pick);
+    pool = pool.filter(c => c.id !== pick.id);
+    const bi = biased.indexOf(pick); if (bi >= 0) biased.splice(bi, 1);
+  }
+  pityCounter = gotRare ? 0 : pityCounter + 1;
   return out;
+}
+
+function cardEffectScale(card) {
+  return (CARD_RARITY_SCALE[card.rarity] || 1) * infiniteScale();
 }
 
 // ── applying a card ───────────────────────────────────────────
@@ -94,23 +145,34 @@ function applyCard(card) {
   if (card.kind === "ship") {
     if (!ownedShips.includes(card.value)) ownedShips.push(card.value);
     setPlayerShip(card.value); currentShipName = card.value;
-  } else if (card.kind === "weapon") {
+    return;
+  }
+  if (card.kind === "weapon") {
+    if (runWeapons.length < WEAPON_INV_CAP) runWeapons.push(card.value);
     playerLoadout.weaponType = card.value;
     setPlayerShip(currentShipName);
-  } else if (card.kind === "heal") {
-    if (card.value === "hull") player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.4);
-    else if (card.value === "shields" && player.shieldFaces) {
-      for (const f of ["front", "back", "left", "right"]) {
-        player.shieldFaces[f] = player.maxShieldFaces[f];
-        if (player._faceRegenLock) player._faceRegenLock[f] = 0;
-      }
-    }
-  } else if (card.kind === "mod") {
-    runMods[card.value] = (runMods[card.value] || 0) + 1;
-    if (card.value === "pdc") player.pdcCount = (player.pdcCount || 0) + 2;
-    if (card.value === "mag") { player.magMax = Math.round(player.magMax * 1.5); player.mag = player.magMax; }
+    return;
   }
+  if (card.kind === "heal") {
+    if (card.value === "hull") player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.4);
+    return;
+  }
+  // mods stack; magnitude scales with rarity and (in infinite) with depth
+  runDeck.push(card);
+  runMods[card.mod] = (runMods[card.mod] || 0) + cardEffectScale(card);
+  if (typeof onCardApplied === "function") onCardApplied(card);
 }
+
+// Cap enforcement: taking a 9th card means giving one up. That single rule is
+// what turns "is this good?" into "is this better than what I would lose?".
+function needsDiscard() { return runDeck.length > CARD_CAP; }
+function discardCard(idx) {
+  const c = runDeck[idx];
+  if (!c) return;
+  runDeck.splice(idx, 1);
+  if (c.mod) { runMods[c.mod] -= cardEffectScale(c); if (runMods[c.mod] <= 0.001) delete runMods[c.mod]; }
+}
+function modLevel(k) { return runMods[k] || 0; }
 
 // ── card UI ───────────────────────────────────────────────────
 function showCardScreen(wave) {
@@ -121,39 +183,56 @@ function showCardScreen(wave) {
   if (!el) {
     el = document.createElement("div");
     el.id = "cardOverlay";
-    el.style.cssText = "position:fixed;inset:0;background:rgba(0,8,16,0.92);z-index:1200;display:flex;" +
-      "flex-direction:column;align-items:center;justify-content:center;padding:16px;overflow-y:auto";
+    el.style.cssText = "position:fixed;inset:0;background:rgba(0,8,16,0.94);z-index:1200;display:flex;" +
+      "flex-direction:column;align-items:center;justify-content:center;padding:14px;overflow-y:auto";
     document.body.appendChild(el);
   }
   const special = isSpecialWave(wave);
   const met = special && nextCondition && conditionMet(nextCondition);
-  let html = '<div style="font:bold 20px monospace;color:#0af;margin-bottom:4px">' +
-    (special ? "SPECIAL SALVAGE" : "SALVAGE") + '</div>' +
-    '<div style="font:12px monospace;color:#888;margin-bottom:14px">Wave ' + wave + ' cleared</div>';
+  const RC = { common:"#8899aa", rare:"#3399ff", epic:"#cc66ff", fusion:"#ffcc44" };
+
+  let html = '<div style="font:bold 19px monospace;color:#0af">' + (special ? "SPECIAL SALVAGE" : "SALVAGE") + '</div>' +
+    '<div style="font:11px monospace;color:#888;margin-bottom:10px">Wave ' + wave +
+    ' &middot; deck ' + runDeck.length + '/' + CARD_CAP + (infiniteMode ? ' &middot; scale ' + infiniteScale().toFixed(2) + 'x' : '') + '</div>';
   if (special) {
-    html += '<div style="font:12px monospace;color:' + (met ? "#4f9" : "#f66") + ';margin-bottom:12px">' +
-      (met ? "&#10003; Condition met: " : "&#10007; Condition failed: ") +
-      (nextCondition ? nextCondition.label : "") + '</div>';
+    html += '<div style="font:11px monospace;color:' + (met ? "#4f9" : "#f66") + ';margin-bottom:10px">' +
+      (met ? "&#10003; " : "&#10007; ") + (nextCondition ? nextCondition.label : "") + '</div>';
   }
-  html += '<div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:760px">';
-  cards.forEach((c, i) => {
-    html += '<div data-card="' + i + '" style="cursor:pointer;width:190px;padding:12px;border-radius:10px;' +
-      'border:2px solid #235;background:rgba(0,120,200,0.09)">' +
-      '<div style="font:bold 13px monospace;color:#0af;margin-bottom:6px">' + c.name + '</div>' +
-      '<div style="font:11px monospace;color:#9ab;line-height:1.5">' + c.desc + '</div></div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:9px;justify-content:center;max-width:780px">';
+  cards.forEach((c, i2) => {
+    const col = RC[c.rarity] || "#889";
+    const a = c.arch && ARCHETYPES[c.arch];
+    html += '<div data-card="' + i2 + '" style="cursor:pointer;width:184px;padding:11px;border-radius:9px;' +
+      'border:2px solid ' + col + ';background:rgba(255,255,255,0.04)">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">' +
+      '<span style="font:bold 12px monospace;color:' + col + '">' + c.name + '</span>' +
+      '<span style="font:9px monospace;color:' + col + ';opacity:.8">' + (c.rarity||"").toUpperCase() + '</span></div>' +
+      (a ? '<div style="font:9px monospace;color:' + a.color + ';margin-bottom:5px">' + a.name.toUpperCase() +
+           (c.role ? ' &middot; ' + c.role : '') + '</div>' : '') +
+      '<div style="font:11px monospace;color:#9ab;line-height:1.45">' + c.desc + '</div></div>';
   });
-  html += '<div data-card="skip" style="cursor:pointer;width:190px;padding:12px;border-radius:10px;' +
-    'border:2px dashed #444;background:rgba(255,255,255,0.03)">' +
-    '<div style="font:bold 13px monospace;color:#ccc;margin-bottom:6px">Keep what I have</div>' +
-    '<div style="font:11px monospace;color:#888;line-height:1.5">+' +
-    Math.round(CARD_SKIP_BONUS * 100) + '% credits from this wave.</div></div>';
-  html += '</div>';
+  html += '<div data-card="skip" style="cursor:pointer;width:184px;padding:11px;border-radius:9px;' +
+    'border:2px dashed #444;background:rgba(255,255,255,0.02)">' +
+    '<div style="font:bold 12px monospace;color:#ccc;margin-bottom:5px">Keep what I have</div>' +
+    '<div style="font:11px monospace;color:#888;line-height:1.45">+' + Math.round(CARD_SKIP_BONUS*100) +
+    '% credits from this wave.</div></div></div>';
+
+  // show what you are building toward
+  const fus = availableFusions();
+  if (fus.length) {
+    html += '<div style="margin-top:12px;font:10px monospace;color:#ffcc44">Fusion available: ' +
+      fus.map(f => f.name).join(", ") + '</div>';
+  } else {
+    const held = Object.keys(heldArchetypes());
+    const near = CARD_FUSIONS.filter(f => f.req.some(a => held.includes(a)));
+    if (near.length) html += '<div style="margin-top:12px;font:10px monospace;color:#665">Locked: ' +
+      near.slice(0,3).map(f => f.name + ' (needs ' + f.req.filter(a=>!held.includes(a)).map(a=>ARCHETYPES[a].name).join("+") + ')').join(" &middot; ") + '</div>';
+  }
 
   const nextSpecial = Math.ceil((wave + 1) / CARD_SPECIAL_EVERY) * CARD_SPECIAL_EVERY;
   pickNextCondition();
-  html += '<div style="margin-top:18px;font:11px monospace;color:#7a8;text-align:center;max-width:520px">' +
-    'Next special card (wave ' + nextSpecial + ') condition:<br>' +
-    '<span style="color:#ffcc55">' + nextCondition.label + '</span></div>';
+  html += '<div style="margin-top:12px;font:11px monospace;color:#7a8;text-align:center;max-width:520px">' +
+    'Next special (wave ' + nextSpecial + '): <span style="color:#ffcc55">' + nextCondition.label + '</span></div>';
   el.innerHTML = html;
   el.style.display = "flex";
 
@@ -161,15 +240,38 @@ function showCardScreen(wave) {
     node.onclick = () => {
       const k = node.getAttribute("data-card");
       if (k === "skip") {
-        const bonus = Math.round((waveCreditsEarned || 0) * CARD_SKIP_BONUS);
+        const bonus = Math.round((window.waveCreditsEarned || 0) * CARD_SKIP_BONUS);
         money += bonus; window.recordCreditsEarned?.(bonus);
         runCards.push("(skipped)");
       } else {
         applyCard(cards[parseInt(k, 10)]);
       }
-      el.style.display = "none";
-      cardPending = false;
-      resetConditionProgress();
+      if (needsDiscard()) { showDiscardScreen(el); return; }
+      el.style.display = "none"; cardPending = false; resetConditionProgress();
+    };
+  });
+}
+
+function showDiscardScreen(el) {
+  const RC = { common:"#8899aa", rare:"#3399ff", epic:"#cc66ff", fusion:"#ffcc44" };
+  let html = '<div style="font:bold 18px monospace;color:#f95">DECK FULL</div>' +
+    '<div style="font:11px monospace;color:#888;margin-bottom:12px">Hold ' + CARD_CAP +
+    '. Give one up.</div><div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:780px">';
+  runDeck.forEach((c, i) => {
+    const col = RC[c.rarity] || "#889";
+    const a = c.arch && ARCHETYPES[c.arch];
+    html += '<div data-drop="' + i + '" style="cursor:pointer;width:170px;padding:9px;border-radius:8px;' +
+      'border:2px solid ' + col + ';background:rgba(255,255,255,0.03)">' +
+      '<div style="font:bold 11px monospace;color:' + col + '">' + c.name + '</div>' +
+      (a ? '<div style="font:9px monospace;color:' + a.color + '">' + a.name.toUpperCase() + '</div>' : '') +
+      '<div style="font:10px monospace;color:#9ab;margin-top:4px;line-height:1.4">' + c.desc + '</div></div>';
+  });
+  html += '</div>';
+  el.innerHTML = html;
+  el.querySelectorAll("[data-drop]").forEach(n => {
+    n.onclick = () => {
+      discardCard(parseInt(n.getAttribute("data-drop"), 10));
+      el.style.display = "none"; cardPending = false; resetConditionProgress();
     };
   });
 }
@@ -217,6 +319,10 @@ function showDeathReport(info) {
     applyCarryover();
     runCards = []; runMods = {};
   };
+}
+
+function resetRunState(){
+  runDeck = []; runWeapons = []; runMods = {}; runCards = []; pityCounter = 0;
 }
 
 function carryoverFor() {
