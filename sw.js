@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.10.4";
+const CACHE = "galactic-horizons-v1.10.6";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -269,4 +269,5 @@ Versions:
 -V1.10.3 - Arena V2 Update 4: Fixes to Vengeance, new fire modes and fixed them.
 -V1.10.4 - Arena V2 Update 5: Weapon heat, pilot scope, affixes, asymmetric shields, active reload.
 -V1.10.5 - Arena V2 Update 6: Retribution changes, Dodges, Cards, and partial builldings and card's full function.
+-V1.10.6 - Arena V2 Update 7: Rouguelike final changes.
 */
