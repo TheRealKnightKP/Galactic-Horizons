@@ -408,6 +408,52 @@ function startDescent(){
   window.camX = 0; window.camY = 0;
   seedAmbientDust();
   if(typeof resetRunState === "function") resetRunState();
+
+  // startGame() only opens the "Enter Waves Mode?" confirm and returns, so
+  // calling it here left both menus hidden and the run never started.
+  // Confirm first, then begin on accept.
+  document.getElementById("topMenu").style.display = "none";
+  document.getElementById("arenaMenu").style.display = "none";
+  if(typeof startGame === "function") startGame(false);
+  const wc = document.getElementById("wavesConfirm");
+  if(!wc){ beginDescentRun(); return; }
+  const box = wc.querySelector("div");
+  if(box){
+    const title = box.querySelector("div");
+    if(title) title.textContent = "Begin the Descent?";
+    const body = box.querySelectorAll("div")[1];
+    if(body) body.innerHTML = "You go in alone and you do not come back out.<br>" +
+      "Nothing is repaired for you. What you carry is what you find.<br>" +
+      "There is no turning back.";
+  }
+  const yes = wc.querySelector("#wc_yes");
+  const no  = wc.querySelector("#wc_no");
+  if(yes) yes.onclick = () => { wc.style.display = "none"; beginDescentRun(); };
+  if(no)  no.onclick  = () => {
+    wc.style.display = "none";
+    descentActive = false; window.gameMode = "arena";
+    window.quadW = GAME_W; window.quadH = GAME_H;
+    document.getElementById("arenaMenu").style.display = "block";
+  };
+}
+
+function beginDescentRun(){
+  if(typeof nextWave === "function") nextWave();
+  window.gameMode = "descent";
+  descentActive = true;
+  const sz = DESCENT_MAP_SIZES[descentType];
+  window.quadW = sz.w; window.quadH = sz.h;
+  seedAmbientDust();
+  // drop the player near the left edge so there is map ahead of them
+  player.x = 120; player.y = window.quadH/2 - player.h/2;
+  window.camX = 0; window.camY = 0;
+  salvageObjects = [];
+  for(let i = 0; i < 6; i++){
+    spawnSalvage(400 + Math.random()*(window.quadW-800),
+                 120 + Math.random()*(window.quadH-240),
+                 Math.random() < 0.4 ? "hulk" : "scrapfield");
+  }
+  if(typeof showSpecialToast === "function") showSpecialToast("DESCENT: THE DRIFT");
 }
 function endDescent(){
   descentActive = false;
