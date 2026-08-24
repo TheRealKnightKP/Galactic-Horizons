@@ -23,6 +23,12 @@ window.camY = 0;
 window.quadW = 1280;
 window.quadH = 720;
 
+// ── Open-map modes ────────────────────────────────────────────
+// Universe and Descent both use a world larger than the screen with a
+// following camera. One helper instead of 13 scattered string compares.
+function usesOpenMap(){ return window.gameMode === "universe" || window.gameMode === "descent"; }
+function isDescent(){ return window.gameMode === "descent"; }
+
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1);
 
 let _starCanvas = null; // declared early — resizeCanvas nulls it on resize
@@ -277,11 +283,17 @@ function buildMobileControls() {
     aimCursor.x=p.x; aimCursor.y=p.y; aimCursor.active=true;
   }
   function _overControl(t){
+    // The pad covers the whole field with pointer-events:auto, so
+    // elementFromPoint would always return the pad itself and every button
+    // underneath it (Leave, HUD, joystick) would be unreachable. Blind the pad
+    // for the duration of the hit test.
+    const prev = touchAimPad.style.pointerEvents;
+    touchAimPad.style.pointerEvents = "none";
     const el = document.elementFromPoint(t.clientX, t.clientY);
+    touchAimPad.style.pointerEvents = prev;
     if(!el) return false;
     if(el === touchAimPad) return false;
-    // anything interactive: our controls, the HUD, the Leave button, menus
-    return !!(el.closest("button, .menu, #hud, #inGameBack, [data-ctl]"));
+    return !!(el.closest("button, .menu, #hud, #inGameBack, [data-ctl], #reloadBtn"));
   }
   touchAimPad.addEventListener("touchstart", e => {
     if(aimMode==="target"){
@@ -315,6 +327,21 @@ function buildMobileControls() {
   touchAimPad.addEventListener("touchcancel", _touchAimEnd);
 
   // Show the right stick only in the modes that use it; enable the field pad in touch mode.
+  const reloadBtn = document.createElement("div");
+  reloadBtn.id = "reloadBtn";
+  reloadBtn.setAttribute("data-ctl","1");
+  reloadBtn.textContent = "RELOAD";
+  reloadBtn.style.cssText = "position:absolute;left:50%;transform:translateX(-50%);bottom:210px;" +
+    "width:150px;padding:14px 0;text-align:center;font:bold 14px monospace;border-radius:10px;" +
+    "pointer-events:auto;touch-action:none;display:none;z-index:5;" +
+    "background:rgba(255,190,60,0.20);border:2px solid #ffbe3c;color:#ffdd55";
+  ui.appendChild(reloadBtn);
+  window._reloadBtnEl = reloadBtn;
+  const _tapRl = (ev) => { ev.preventDefault(); ev.stopPropagation();
+    if(typeof tapReload === "function") tapReload(player); };
+  reloadBtn.addEventListener("touchstart", _tapRl, { passive:false });
+  reloadBtn.addEventListener("mousedown", _tapRl);
+
   window._applyAimModeUI = function(){
     if(!rightBase || !touchAimPad) return;
     rightBase.style.display = (aimMode==="touch") ? "none" : "block";
@@ -391,8 +418,8 @@ function buildMobileControls() {
       rightKnob.style.left = "50px"; rightKnob.style.top = "50px";
       return;
     } else if (dist > 6) {
-      const camOfsX = window.gameMode === "universe" ? (window.camX || 0) : 0;
-      const camOfsY = window.gameMode === "universe" ? (window.camY || 0) : 0;
+      const camOfsX = usesOpenMap() ? (window.camX || 0) : 0;
+      const camOfsY = usesOpenMap() ? (window.camY || 0) : 0;
       mouse.x = (player.x + player.w / 2) - camOfsX + (dx / maxR) * 800;
       mouse.y = (player.y + player.h / 2) - camOfsY + (dy / maxR) * 800;
     }
@@ -428,7 +455,7 @@ function buildMobileControls() {
   deployBtn.id = "deployBtn";
   deployBtn.textContent = "DEPLOY";
   deployBtn.setAttribute("data-ctl","1");
-  deployBtn.style.cssText = "position:absolute;bottom:70px;left:50%;transform:translateX(-50%);padding:7px 18px;background:rgba(255,170,0,0.18);border:2px solid rgba(255,170,0,0.7);border-radius:14px;color:#ffaa00;font:bold 14px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10;display:none";
+  deployBtn.style.cssText = "position:absolute;bottom:112px;left:50%;transform:translateX(-50%);padding:7px 18px;background:rgba(255,170,0,0.18);border:2px solid rgba(255,170,0,0.7);border-radius:14px;color:#ffaa00;font:bold 14px monospace;pointer-events:all;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap;z-index:10;display:none";
   deployBtn.addEventListener("touchstart", e => {
     e.preventDefault();
     if (isDeployed) recallToCapital();
@@ -1636,6 +1663,7 @@ function returnToMenuPreserveMoney() {
 }
 
 function endGame(won) {
+  if(window._reloadBtnEl) window._reloadBtnEl.style.display = "none";
   if(!won){ try { showDeathReport({ killer: window._lastKiller || "unknown" }); } catch(e){} }
   state="gameover"; if (!won) window.recordPlayerDeath?.(); window.recordSessionEnd?.(); window.saveGame?.(); window.submitLeaderboard?.();
   document.getElementById("gameOverText").textContent=won?"Victory!":"Game Over";
@@ -1660,6 +1688,7 @@ function applyDamage(target,bullet) {
     const dodge=player.boosting?player.dodgeBoosted:player.dodgeBase;
     if(dodge>0&&Math.random()<dodge){ doDodgeBlink(); return; }
     playerTookDamageThisWave=true;
+    try{ if(typeof alertAdd==="function"){ alertAdd(ALERT_ON_HIT); addCorruption((bullet.damage||0)*0.04); } }catch(e){}
     try{ const _im=modIncomingMult(); if(_im!==1) bullet={...bullet,damage:(bullet.damage||0)*_im}; }catch(e){}
     window._lastKiller = (bullet && (bullet._srcType || bullet.ownerType)) || window._lastKiller || "enemy fire";
     if(player.specialActive&&currentShipName==="Marauder") bullet={...bullet,damage:(bullet.damage||0)*0.5};
@@ -1700,6 +1729,10 @@ function applyDamage(target,bullet) {
   } else if (cat==="void") { shieldDmg = rawDmg * laserShieldMult; hullDmg = rawDmg * dirMult * critBoost; }
   else { shieldDmg = rawDmg * laserShieldMult; hullDmg = rawDmg * dirMult * critBoost; }
   if (target!==player && currentShipName==="Vengeance" && player.revengeActive) { shieldDmg*=2; hullDmg*=2; }
+  if (typeof isDistorted === "function" && isDistorted(target)) {
+    let dm = 1.25; if (typeof ml === "function" && ml("prybar")) dm += 0.25*ml("prybar");
+    shieldDmg *= dm; hullDmg *= dm;
+  }
   const _afx = (typeof affixDamageMult === "function") ? affixDamageMult(target, bullet) : 1;
   if (_afx !== 1) { shieldDmg *= _afx; hullDmg *= _afx; }
   const faceWasDown = isFaceDown(target, bullet);
@@ -1739,6 +1772,7 @@ function applyDamage(target,bullet) {
     const hitFaceDown = isFaceDown(target, bullet);
     if (hitFaceDown && !target.stunTimer) { target.stunTimer = getStunDuration(wSize); target.distortionWeakened = false; }
     else if (!hitFaceDown) target.distortionWeakened = true;
+    try { distortCharge(target, bullet); } catch(e){}
     // §6: distortion STRIPS an affix. This is the job that makes a weapon which
     // disables rather than kills worth a slot.
     if (target.affix && !(target.affixStripped > 0)) {
@@ -1792,7 +1826,7 @@ function fireRailgun(origin,wStats,angle,isPlayer) {
   if(!wStats)return;
   const bx=origin.x+origin.w/2, by=origin.y+origin.h/2;
   const col=isPlayer?wStats.playerColor:wStats.enemyColor;
-  const base={category:wStats.category,weaponSize:wStats.size,penetration:wStats.penetration,color:col};
+  const base={category:wStats.category,weaponSize:wStats.size,penetration:wStats.penetration,_wKey:wStats._key||wStats.key,color:col};
   const cos=Math.cos(angle),sin=Math.sin(angle);
   const ep=rayEndpoint(bx,by,cos,sin);
   if(isPlayer){
@@ -1817,7 +1851,7 @@ function fireBullets(origin,wStats,angle,isPlayer) {
   if(!wStats)return[];
   const bx=origin.x+origin.w/2, by=origin.y+origin.h/2;
   const col=isPlayer?wStats.playerColor:wStats.enemyColor;
-  const base={category:wStats.category,weaponSize:wStats.size,penetration:wStats.penetration,
+  const base={category:wStats.category,weaponSize:wStats.size,penetration:wStats.penetration,_wKey:wStats._key||wStats.key,
               color:col, critChance:wStats.critChance, critMult:wStats.critMult,
               staggerOnHit:wStats.staggerOnHit, staggerDur:wStats.staggerDur,
               chainHops:wStats.chainHops, chainRange:wStats.chainRange, chainDmgMult:wStats.chainDmgMult,
@@ -2013,6 +2047,18 @@ function killEnemy(e, source){
   try { if(ml("martyr") && player.hp < player.maxHp*0.40) player.hp = Math.min(player.maxHp, player.hp + player.maxHp*0.06*ml("martyr")); } catch(err) {}
   try { if(e.affix && typeof noteAffixKill==="function") noteAffixKill(); } catch(err) {}
   try { spawnDebris(e); } catch(err) {}
+  try {
+    if(typeof descentActive!=="undefined" && descentActive){
+      if(!e._hasFired) alertAdd(ALERT_SILENT_KILL);
+      const sz=(ENEMIES[e.type]?.size)||1;
+      const cxs=e.x+e.w/2, cys=e.y+e.h/2;
+      if(sz>=6 || e.isHunter) spawnSalvage(cxs,cys,"core");
+      if(sz>=4) spawnSalvage(cxs,cys,"hulk");
+      else for(let i=0;i<1+Math.floor(Math.random()*2);i++)
+        spawnSalvage(cxs+(Math.random()-0.5)*40, cys+(Math.random()-0.5)*40, "scrapfield");
+      if(e.isHunter) hunterLevelsAlive=0;
+    }
+  } catch(err) {}
   return true;
 }
 
@@ -2207,14 +2253,7 @@ function startReload(obj){
   obj._reloadDir = 1;
   if(typeof showSpecialToast === "function") showSpecialToast("AMMO EMPTY - RELOAD!");
 }
-function _hitReloadBtn(worldX, worldY){
-  const r = player && player._reloadBtnRect;
-  if(!r || !reloadTappable(player)) return false;
-  if(worldX >= r.x && worldX <= r.x + r.w && worldY >= r.y && worldY <= r.y + r.h){
-    tapReload(player); return true;
-  }
-  return false;
-}
+function _hitReloadBtn(){ return false; }   // superseded by the DOM button
 function reloadTappable(obj){
   return obj.reloadTimer > 0 && (obj._reloadGrace || 0) <= 0 && !obj._reloadTapped;
 }
@@ -2247,7 +2286,19 @@ function updateReload(obj){
   }
 }
 // Drawn above the aim controls so it never overlaps the fire area.
+function syncReloadButton(){
+  const b = window._reloadBtnEl; if(!b) return;
+  const on = usesReload(player) && player.reloadTimer > 0;
+  b.style.display = on ? "block" : "none";
+  if(!on) return;
+  const grace = (player._reloadGrace || 0) > 0 || player._reloadTapped;
+  b.style.opacity = grace ? "0.35" : "1";
+  b.style.borderColor = grace ? "#666" : "#ffbe3c";
+  b.style.color = grace ? "#888" : "#ffdd55";
+  b.textContent = grace ? (player._reloadTapped ? "RELOADING" : "WAIT...") : "RELOAD";
+}
 function drawReloadBar(){
+  syncReloadButton();
   if(!usesReload(player) || player.reloadTimer <= 0) return;
   const w = 190, h = 12;
   const x = GAME_W/2 - w/2;
@@ -2275,7 +2326,7 @@ function drawReloadBar(){
   ctx.fillStyle = "#fff"; ctx.fillRect(x + w*p - 1.5, y-4, 3, h+8);
   // the button
   const bw = 96, bh = 24, bx = GAME_W/2 - bw/2, by = y + h + 6;
-  player._reloadBtnRect = { x: bx, y: by, w: bw, h: bh };
+  player._reloadBtnRect = null;   // hit-testing is on the DOM button now
   ctx.globalAlpha = grace ? 0.35 : 0.95;
   ctx.fillStyle = grace ? "rgba(70,70,80,0.8)" : "rgba(255,190,60,0.22)";
   ctx.fillRect(bx, by, bw, bh);
@@ -2445,6 +2496,71 @@ function modOutgoingMult(){
 }
 function modIncomingMult(){
   return Math.max(0.2, 1 - (player._screenDR||0) - (player._coverDR||0));
+}
+
+// ── Chunk 4: distortion meter ─────────────────────────────────
+// Distortion was chip damage (dmgMult 0.25) with an occasional stun. Now it is
+// a SETUP weapon: charge a meter, then cash it in for a real window.
+function distortCharge(target, bullet){
+  if(!target || target === player) return;
+  const key = bullet && bullet._wKey;
+  let amt = (key && DISTORT_CHARGE[key]) || 0;
+  if(!amt && bullet && bullet.category === "distortion") amt = 6;
+  if(!amt) return;
+  if(bullet && bullet._fusionCharge) amt *= bullet._fusionCharge;
+  if(typeof ml === "function"){
+    amt *= 1 + 0.5*ml("distamp");
+    if(player.heat >= HEAT_REDLINE_START) amt *= 1.5;   // redline bonus
+  }
+  if(target._distResist > 0) amt *= DISTORT_RESIST_MULT;
+  target.distort = (target.distort || 0) + amt;
+  const thresh = DISTORT_MAX - (typeof ml === "function" ? 30*Math.min(1, ml("distthresh")) : 0);
+  if(target.distort >= thresh && !(target._distStun > 0)) triggerDistort(target);
+}
+function triggerDistort(t){
+  const size = (ENEMIES[t.type]?.size) || t.size || 2;
+  t._distStun = distortStunFor(size);
+  t.stunTimer = Math.max(t.stunTimer || 0, t._distStun);
+  t.distort = 0;
+  t._distResist = DISTORT_RESIST_FRAMES;
+  if(t.affix) t.affixStripped = Math.max(t.affixStripped || 0, t._distStun);
+  if(typeof ml === "function" && ml("chainsupp")){
+    const cx=t.x+t.w/2, cy=t.y+t.h/2;
+    for(const o of enemies){
+      if(o===t||o.dead) continue;
+      if(Math.hypot(o.x+o.w/2-cx, o.y+o.h/2-cy) < 180) o.distort = (o.distort||0) + 40*ml("chainsupp");
+    }
+  }
+  if(typeof showSpecialToast === "function") showSpecialToast("DISTORTED");
+}
+function tickDistort(){
+  for(const e of enemies){
+    if(e.dead) continue;
+    if(e._distStun > 0) e._distStun--;
+    if(e._distResist > 0) e._distResist--;
+    if(e.distort > 0 && !(e._distStun > 0)) e.distort = Math.max(0, e.distort - DISTORT_DRAIN);
+  }
+}
+function isDistorted(e){ return e && e._distStun > 0; }
+function drawDistortMeters(){
+  for(const e of enemies){
+    if(e.dead) continue;
+    const stunned = e._distStun > 0;
+    if(!stunned && !(e.distort > 1)) continue;
+    const w = Math.max(22, e.w), x = e.x + e.w/2 - w/2, y = e.y - 9;
+    ctx.save();
+    if(stunned){
+      ctx.globalAlpha = 0.9; ctx.fillStyle = "#cc88ff";
+      ctx.fillRect(x, y, w * (e._distStun / distortStunFor((ENEMIES[e.type]?.size)||2)), 3);
+      ctx.globalAlpha = 0.5; ctx.strokeStyle="#cc88ff"; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.arc(e.x+e.w/2, e.y+e.h/2, Math.max(e.w,e.h)*0.65, 0, Math.PI*2); ctx.stroke();
+    } else {
+      ctx.globalAlpha = 0.55; ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(x, y, w, 3);
+      ctx.globalAlpha = 0.9; ctx.fillStyle = e._distResist > 0 ? "#775588" : "#cc88ff";
+      ctx.fillRect(x, y, w * Math.min(1, e.distort / DISTORT_MAX), 3);
+    }
+    ctx.restore();
+  }
 }
 
 function drawTelegraphs() {
@@ -2846,8 +2962,8 @@ function updatePlayer() {
   if(keys["ArrowLeft"]||keys["KeyA"])player.vx-=curAccel; if(keys["ArrowRight"]||keys["KeyD"])player.vx+=curAccel;
   player.vx*=FRICTION;player.vy*=FRICTION;
   const spd=Math.hypot(player.vx,player.vy); if(spd>curMaxSpd){player.vx*=curMaxSpd/spd;player.vy*=curMaxSpd/spd;}
-  const _boundW = window.gameMode === "universe" ? window.quadW : GAME_W;
-  const _boundH = window.gameMode === "universe" ? window.quadH : GAME_H;
+  const _boundW = usesOpenMap() ? window.quadW : GAME_W;
+  const _boundH = usesOpenMap() ? window.quadH : GAME_H;
   player.x=Math.max(0,Math.min(_boundW-player.w,player.x+player.vx)); player.y=Math.max(0,Math.min(_boundH-player.h,player.y+player.vy));
   if (window.gameMode === "universe") {
     player.targetRotation=Math.atan2((mouse.y+window.camY)-player.y-player.h/2,(mouse.x+window.camX)-player.x-player.w/2);
@@ -2876,6 +2992,7 @@ function updatePlayer() {
   if(player.gimbalLocked) isShooting=false;   // Arena V2 §10: out of arc, hold fire
   if(player.dodgeIFrames > 0) player.dodgeIFrames--;
   try{ applyRunMods(); }catch(e){}
+  try{ if(typeof descentUpdate==="function") descentUpdate(); }catch(e){}
   updateHeat(player);
   if(!canFireHeat(player)) isShooting=false;   // §2: overheated or broken
   if(usesReload(player) && (player.reloadTimer > 0 || player.mag <= 0)){
@@ -2913,6 +3030,7 @@ function updatePlayer() {
       if(currentShipName==="Vengeance") finalBullets.forEach(b=>{ b.vengeanceShot=true; });
       if(currentShipName==="Retribution"){ const vm=vendettaMult(); finalBullets.forEach(b=>{ b.damage=(b.damage||0)*vm; b.vendettaShot=true; }); }
       try{ const _mm=modOutgoingMult(); if(_mm!==1) finalBullets.forEach(b=>{b.damage=(b.damage||0)*_mm;}); }catch(e){}
+      if(typeof alertAdd==="function"){ alertAdd(ALERT_PER_SHOT); player._firedRecently=true; player._quietTimer=0; }
       applyHeatModifiers(player, finalBullets, player.weaponStats);
       addHeat(player, player.weaponStats);
       if(usesReload(player)){
@@ -2995,7 +3113,7 @@ function updatePlayer() {
     });
   }
   // Camera follow in universe mode
-  if (window.gameMode === "universe") {
+  if (usesOpenMap()) {
     window.camX = Math.max(0, Math.min(window.quadW - GAME_W, player.x + player.w/2 - GAME_W/2));
     window.camY = Math.max(0, Math.min(window.quadH - GAME_H, player.y + player.h/2 - GAME_H/2));
   }
@@ -3262,8 +3380,8 @@ function updateEnemies() {
       e.vx*=friction;e.vy*=friction; const spd=Math.hypot(e.vx,e.vy); if(spd>e.speed){e.vx*=e.speed/spd;e.vy*=e.speed/spd;}
       if(!isSmallEnemy(e.type)){ const dToPlayer=Math.hypot(pcx-e.x-e.w/2,pcy-e.y-e.h/2); if(Math.abs(dToPlayer-430)<60){e.vx*=0.88;e.vy*=0.88;} }
       e.x+=e.vx;e.y+=e.vy; const m=25;
-      const _eBndW = window.gameMode === "universe" ? (window.quadW||GAME_W) : GAME_W;
-      const _eBndH = window.gameMode === "universe" ? (window.quadH||GAME_H) : GAME_H;
+      const _eBndW = usesOpenMap() ? (window.quadW||GAME_W) : GAME_W;
+      const _eBndH = usesOpenMap() ? (window.quadH||GAME_H) : GAME_H;
       if(e.x<m)e.vx+=accel*1.5;if(e.x>_eBndW-e.w-m)e.vx-=accel*1.5;if(e.y<m)e.vy+=accel*1.5;if(e.y>_eBndH-e.h-m)e.vy-=accel*1.5;
       e.x=Math.max(0,Math.min(_eBndW-e.w,e.x));e.y=Math.max(0,Math.min(_eBndH-e.h,e.y));
     }
@@ -3272,6 +3390,7 @@ function updateEnemies() {
     const targetRot=Math.atan2(pcy-e.y-e.h/2,pcx-e.x-e.w/2); let rotDiff=targetRot-(e.rotation||0);
     while(rotDiff>Math.PI)rotDiff-=Math.PI*2;while(rotDiff<-Math.PI)rotDiff+=Math.PI*2;
     e.rotation=(e.rotation||0)+Math.sign(rotDiff)*Math.min(Math.abs(rotDiff),e.turnSpeed||0.04);
+    if(typeof descentCulled==="function" && descentCulled(e)){ if((_hudFrame||0)%4!==0) return; }
     const frMult=e.stunTimer>0?2:1;
     // ── Arena V2 §1: telegraph / burst gate ──────────────────────
     // Telegraph lives on the ENEMY, not the turret: a 10-turret Dominion must
@@ -3281,7 +3400,8 @@ function updateEnemies() {
     const _isBurst = _fr0 < BURST_FIRERATE_THRESHOLD;
     const _tgLen = telegraphFramesFor(e.turrets&&e.turrets[0]&&e.turrets[0].weaponStats);
     let _mayFire = true;
-    if(e._tgActive>0){ e._tgActive--; _mayFire=false; }        // winding up
+    if(isDistorted(e)){ _mayFire=false; }
+    else if(e._tgActive>0){ e._tgActive--; _mayFire=false; }        // winding up
     else if(_isBurst){
       if(e._burstLeft>0){ _mayFire=true; }                     // mid-burst, keep firing
       else {
@@ -3306,6 +3426,7 @@ function updateEnemies() {
         const isSideShot=Math.abs(Math.abs(sideAngle)-Math.PI/2)<Math.PI/4; const sideMult=isSideShot?2.0:1.0;
         if(t.weaponStats.hitscan){ const cos=Math.cos(aimAngle),sin=Math.sin(aimAngle); const ep=rayEndpoint(tx,ty,cos,sin); beamFlashes.push({x1:tx,y1:ty,x2:ep.x,y2:ep.y,life:12,maxLife:12,color:"#ffff88"}); if(rayHitsRect(tx,ty,cos,sin,player)){spawnRailgunEffect(player.x+player.w/2,player.y+player.h/2,t.weaponStats.size||3);applyDamage(player,{...t.weaponStats,damage:t.weaponStats.damage,category:"ballistic"});} allies.forEach(a=>{if(rayHitsRect(tx,ty,cos,sin,a)){applyDamage(a,{...t.weaponStats,damage:t.weaponStats.damage,category:"ballistic"});}}); }
         else enemyBullets.push(...fireBullets({x:tx-1,y:ty-1,w:2,h:2},t.weaponStats,aimAngle,false));
+        e._hasFired=true;
         t.shootTimer=Math.round(t.fireRate*frMult*sideMult*(e._ecFireMult||1.0));
       }
     });
@@ -3323,6 +3444,7 @@ function updateEnemies() {
 function updateBullets() {
   updateDebris();
   tickAffixes();
+  tickDistort();
   tickFaceFlashes(player);
   for(const a of allies) tickFaceFlashes(a);
   for(const e of enemies) tickFaceFlashes(e);
@@ -3330,8 +3452,8 @@ function updateBullets() {
   beamFlashes.forEach(f=>f.life--); nukeRings.forEach(r=>{r.life--;r.r=r.maxR*(1-(r.life/r.maxLife));});
   nukeRings=nukeRings.filter(r=>r.life>0); beamFlashes=beamFlashes.filter(f=>f.life>0);
   updateHitEffects(); updateDeathEffects(); updateThrusterParticles(); window.tickAutoSave?.();
-  const _bndW = window.gameMode === "universe" ? (window.quadW||GAME_W) : GAME_W;
-  const _bndH = window.gameMode === "universe" ? (window.quadH||GAME_H) : GAME_H;
+  const _bndW = usesOpenMap() ? (window.quadW||GAME_W) : GAME_W;
+  const _bndH = usesOpenMap() ? (window.quadH||GAME_H) : GAME_H;
   const inBounds=b=>!b.dead&&b.x>-60&&b.x<_bndW+60&&b.y>-60&&b.y<_bndH+60;
   playerBullets=playerBullets.filter(inBounds); enemyBullets=enemyBullets.filter(inBounds);
 }
@@ -3519,7 +3641,7 @@ function render() {
   if(state!=="playing")return;
 
   // Camera offset for universe mode
-  const _isUni = window.gameMode === "universe";
+  const _isUni = usesOpenMap();
   if (_isUni) { ctx.save(); ctx.translate(-window.camX, -window.camY); }
 
   if(!_isUni && currentShipName==="Vengeance"&&player.revengeActive){ ctx.save();ctx.globalAlpha=0.07;ctx.fillStyle="#ff0000";ctx.fillRect(0,0,GAME_W,GAME_H);ctx.restore(); }
@@ -3527,7 +3649,9 @@ function render() {
   drawDebris();
   drawThrusterParticles(); enemies.forEach(drawEntity); allies.forEach(drawEntity);
   if(isDeployed && capitalShipObj && !capitalDestroyed) drawEntity(capitalShipObj);
-  drawAffixAuras(); drawEntity(player); drawRailgunCharge(); drawTelegraphs(); drawDodgeAura(); drawTargetLock(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings(); drawHeatBar(); drawReloadBar(); drawAmmoCounter();
+  try{ if(typeof descentDrawWorld==="function") descentDrawWorld(); }catch(e){}
+  drawAffixAuras(); drawDistortMeters(); drawEntity(player); drawRailgunCharge(); drawTelegraphs(); drawDodgeAura(); drawTargetLock(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings(); drawHeatBar(); drawReloadBar(); drawAmmoCounter();
+  try{ if(typeof descentDrawHUD==="function") descentDrawHUD(); }catch(e){}
 
   // Restore camera offset before drawing HUD (HUD is screen-space)
   if (_isUni) { ctx.restore(); }
