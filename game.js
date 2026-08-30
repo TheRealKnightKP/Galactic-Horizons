@@ -270,7 +270,11 @@ function buildMobileControls() {
     const c = document.getElementById("gameCanvas");
     const r = c.getBoundingClientRect();
     const sx = GAME_W / r.width, sy = GAME_H / r.height;
-    return { x:(clientX - r.left)*sx, y:(clientY - r.top)*sy };
+    // On open maps the world is offset by the camera, so a raw screen
+    // coordinate points at the wrong place entirely.
+    const ox = (typeof usesOpenMap === "function" && usesOpenMap()) ? (window.camX||0) : 0;
+    const oy = (typeof usesOpenMap === "function" && usesOpenMap()) ? (window.camY||0) : 0;
+    return { x:(clientX - r.left)*sx + ox, y:(clientY - r.top)*sy + oy };
   }
   function _pickTargetAt(t){
     const p=_fieldToWorld(t.clientX,t.clientY);
@@ -410,8 +414,10 @@ function buildMobileControls() {
         aimCursor.y += (t.clientY - mobileAim._lastY) * CROSSHAIR_SENS;
       }
       mobileAim._lastX = t.clientX; mobileAim._lastY = t.clientY;
-      aimCursor.x = Math.max(0, Math.min(GAME_W, aimCursor.x));
-      aimCursor.y = Math.max(0, Math.min(GAME_H, aimCursor.y));
+      const _cw = (typeof usesOpenMap==="function" && usesOpenMap()) ? (window.quadW||GAME_W) : GAME_W;
+      const _chh = (typeof usesOpenMap==="function" && usesOpenMap()) ? (window.quadH||GAME_H) : GAME_H;
+      aimCursor.x = Math.max(0, Math.min(_cw, aimCursor.x));
+      aimCursor.y = Math.max(0, Math.min(_chh, aimCursor.y));
       aimCursor.active = true;
       mouse.x = aimCursor.x; mouse.y = aimCursor.y;
       // trackpad has no "knob"; keep it centred
@@ -3650,11 +3656,15 @@ function render() {
   drawThrusterParticles(); enemies.forEach(drawEntity); allies.forEach(drawEntity);
   if(isDeployed && capitalShipObj && !capitalDestroyed) drawEntity(capitalShipObj);
   try{ if(typeof descentDrawWorld==="function") descentDrawWorld(); }catch(e){}
-  drawAffixAuras(); drawDistortMeters(); drawEntity(player); drawRailgunCharge(); drawTelegraphs(); drawDodgeAura(); drawTargetLock(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings(); drawHeatBar(); drawReloadBar(); drawAmmoCounter();
-  try{ if(typeof descentDrawHUD==="function") descentDrawHUD(); }catch(e){}
+  drawAffixAuras(); drawDistortMeters(); drawEntity(player); drawRailgunCharge(); drawTelegraphs(); drawDodgeAura(); drawTargetLock(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings();
 
   // Restore camera offset before drawing HUD (HUD is screen-space)
   if (_isUni) { ctx.restore(); }
+
+  // Screen-space HUD. These MUST be outside the camera transform or they
+  // render at world coordinates and scroll away with the map.
+  drawHeatBar(); drawReloadBar(); drawAmmoCounter();
+  try{ if(typeof descentDrawHUD==="function") descentDrawHUD(); }catch(e){}
 
   if (_isUni) {
     // Universe overlay: asteroids, station, POIs, mining beam, universe HUD
@@ -3784,7 +3794,8 @@ function gameLoop() {
     }
   }
   if(state==="waveTransition"){
-    if(typeof cardPending!=="undefined" && cardPending){ render(); updateHUD(); requestAnimationFrame(gameLoop); return; } updatePlayer();updateDeathEffects();waveTransitionTimer--; if(waveTransitionTimer<=0)nextWave(); if (_hudFrame % 3 === 0) updateHUD(); }
+    if(typeof cardPending!=="undefined" && cardPending){ render(); updateHUD(); requestAnimationFrame(gameLoop); return; }
+    if(typeof descentActive!=="undefined" && descentActive){ state="playing"; } updatePlayer();updateDeathEffects();waveTransitionTimer--; if(waveTransitionTimer<=0)nextWave(); if (_hudFrame % 3 === 0) updateHUD(); }
   render();
   if(IS_MOBILE){ const ui=document.getElementById("mobileUI"); if(ui){ const idle=Date.now()-lastTouchTime>4000; ui.style.opacity=idle?"0.3":"1.0"; ui.style.transition="opacity 0.6s"; } }
   requestAnimationFrame(gameLoop);
