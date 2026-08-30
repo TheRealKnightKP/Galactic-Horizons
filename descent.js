@@ -240,7 +240,7 @@ function drawDescentArrows(){
   const pcx = player.x + player.w/2, pcy = player.y + player.h/2;
   const marks = [];
   for(const o of descentObjectives) if(!o.dead) marks.push({ x:o.x, y:o.y, col:"#ffcc44", label:"OBJ" });
-  if(objectiveDone && extractionPoint) marks.push({ x:extractionPoint.x, y:extractionPoint.y, col:"#44ff88", label:"EXIT" });
+  if(warpGate) marks.push({ x:warpGate.x, y:warpGate.y, col:"#44ff88", label:"GATE" });
   if(hunter && !hunter.dead) marks.push({ x:hunter.x, y:hunter.y, col:"#ff8800", label:"HUNTER" });
   for(const s of salvageObjects){
     if(s.dead || s.kind === "scrapfield") continue;
@@ -303,7 +303,7 @@ function drawMinimap(){
     dot(s.x, s.y, s.kind === "core" ? "#66ddff" : "rgba(160,150,120,0.8)", 1.2);
   }
   for(const o of descentObjectives) if(!o.dead) dot(o.x, o.y, "#ffcc44", 2.2);
-  if(objectiveDone && extractionPoint) dot(extractionPoint.x, extractionPoint.y, "#44ff88", 2.4);
+  if(warpGate) dot(warpGate.x, warpGate.y, "#44ff88", 2.4);
   if(hunter && !hunter.dead) dot(hunter.x, hunter.y, "#ff8800", 2.2);   // ALWAYS shown
   // player
   ctx.fillStyle = "#ffffff";
@@ -383,15 +383,22 @@ function descentCulled(e){
 // ── Frame hooks ───────────────────────────────────────────────
 function descentUpdate(){
   if(!descentActive) return;
+  for(const e of enemies) if(e && !e.eldritchName) eldritchify(e);
+  updateWarp();
+  if(warpBlocksPlay()) return;      // world is swapping; freeze play
   updateAlert(); updateHunter(); updateSalvage(); updateCorruption();
+  updateWarpGate();
+  // objective placeholder until level types land: clearing opens the gate
+  if(!objectiveDone && enemies.filter(e=>!e.dead).length === 0 && descentLevel >= 1) openWarpGate();
 }
 function descentDrawWorld(){       // inside camera transform
   if(!descentActive) return;
-  drawAmbientDust(); drawSalvage();
+  drawAmbientDust(); drawSalvage(); drawWarpGate();
 }
 function descentDrawHUD(){         // outside camera transform
   if(!descentActive) return;
-  drawDescentArrows(); drawMinimap(); drawDescentHUD();
+  if(!warpBlocksPlay()){ drawDescentArrows(); drawMinimap(); drawDescentHUD(); }
+  drawWarpOverlay();
 }
 
 // ── Entry ─────────────────────────────────────────────────────
@@ -402,7 +409,7 @@ function startDescent(){
   alert = 0; corruption = 0; scrap = 0; cores = 0; ammoMags = 0;
   hunter = null; hunterLevelsAlive = 0;
   descentObjectives = []; salvageObjects = []; extractionPoint = null;
-  objectiveDone = false;
+  objectiveDone = false; warpGate = null; warpPhase = "none"; warpTimer = 0;
   const size = DESCENT_MAP_SIZES[descentType];
   window.quadW = size.w; window.quadH = size.h;
   window.camX = 0; window.camY = 0;
@@ -453,6 +460,7 @@ function beginDescentRun(){
                  120 + Math.random()*(window.quadH-240),
                  Math.random() < 0.4 ? "hulk" : "scrapfield");
   }
+  for(const e of enemies) eldritchify(e);
   if(typeof showSpecialToast === "function") showSpecialToast("DESCENT: THE DRIFT");
 }
 function endDescent(){
@@ -461,5 +469,209 @@ function endDescent(){
   window.quadW = GAME_W; window.quadH = GAME_H;
   window.camX = 0; window.camY = 0;
   salvageObjects = []; descentObjectives = []; ambientDust = [];
-  hunter = null;
+  hunter = null; warpGate = null; warpPhase = "none"; warpTimer = 0;
+}
+
+// ============================================================
+// WARP GATE, TRANSITION & ELDRITCH ROSTER
+// ============================================================
+
+// ── Eldritch enemy roster ─────────────────────────────────────
+// Named types for Descent. Art comes later; these reference existing
+// sprites via `art` until yours drop in. Names are the contract.
+const ELDRITCH_ENEMIES = {
+  Husk:     { base:"Raptor",   name:"Husk",      desc:"A Warden hull with something else steering." },
+  Gnaw:     { base:"Sprite",   name:"Gnaw",      desc:"Small, fast, teeth of torn plating." },
+  Lacerator:{ base:"Rouge",    name:"Lacerator", desc:"Bladed prow. Charges in straight lines." },
+  Weaver:   { base:"Corsair",  name:"Weaver",    desc:"Spins filament between wrecks." },
+  Bloat:    { base:"Bulwark",  name:"Bloat",     desc:"Distended. Ruptures when killed." },
+  Choir:    { base:"Healer",   name:"Choir",     desc:"Sings the others back together." },
+  Maw:      { base:"Dreadnaught", name:"Maw",    desc:"A mouth built from a carrier." },
+  Sentinel: { base:"Prometheus", name:"Sentinel",desc:"Grown into a station. Does not move." },
+};
+const ELDRITCH_STATIONS = {
+  Spire:   { art:"EldritchStation.png", name:"Eldritch Spire" },
+  Nursery: { art:"EldritchStation.png", name:"Nursery" },
+  Gate:    { art:"EldritchStation.png", name:"Hollow Gate" },
+};
+// Map a vanilla enemy type to its Eldritch counterpart for Descent spawns.
+function eldritchNameFor(type){
+  for(const k in ELDRITCH_ENEMIES) if(ELDRITCH_ENEMIES[k].base === type) return k;
+  return null;
+}
+function eldritchify(e){
+  if(!descentActive || !e) return e;
+  const k = eldritchNameFor(e.type);
+  if(k){ e.eldritchName = k; e.color = "#a0407a"; }
+  return e;
+}
+
+// ── Warp gate ─────────────────────────────────────────────────
+// You are not teleported onward. You fly to the gate and enter it.
+// If you die on the way, the run ends. Leaving is a choice.
+const GATE_RADIUS = 46;
+const GATE_HOLD_FRAMES = 45;      // ~0.75s inside the ring to commit
+let warpGate = null;              // { x, y, hold }
+
+function openWarpGate(){
+  if(warpGate) return;
+  const W = window.quadW || GAME_W, H = window.quadH || GAME_H;
+  // far side of the map from the player, so extraction is a commitment
+  const px = player.x;
+  warpGate = { x: px < W/2 ? W - 200 : 200, y: 120 + Math.random()*(H - 240), hold: 0 };
+  objectiveDone = true;
+  if(typeof showSpecialToast === "function") showSpecialToast("WARP GATE OPEN — GET OUT");
+}
+function updateWarpGate(){
+  if(!descentActive || !warpGate || warpTimer > 0) return;
+  const pcx = player.x + player.w/2, pcy = player.y + player.h/2;
+  const d = Math.hypot(warpGate.x - pcx, warpGate.y - pcy);
+  if(d < GATE_RADIUS){
+    // Hunter blocks extraction: you cannot outrun the consequence of greed
+    if(hunter && !hunter.dead){
+      warpGate.hold = 0;
+      if(typeof showSpecialToast === "function" && frameCount % 90 === 0)
+        showSpecialToast("GATE JAMMED — THE HUNTER IS HERE");
+      return;
+    }
+    warpGate.hold++;
+    if(warpGate.hold >= GATE_HOLD_FRAMES) beginWarp();
+  } else if(warpGate.hold > 0){
+    warpGate.hold = Math.max(0, warpGate.hold - 2);
+  }
+}
+function drawWarpGate(){
+  if(!warpGate) return;
+  const t = frameCount * 0.04;
+  ctx.save();
+  // outer ring
+  ctx.globalAlpha = 0.85; ctx.strokeStyle = "#44ff99"; ctx.lineWidth = 3;
+  if(_shadowsEnabled){ ctx.shadowColor = "#44ff99"; ctx.shadowBlur = 14; }
+  ctx.beginPath(); ctx.arc(warpGate.x, warpGate.y, GATE_RADIUS, 0, Math.PI*2); ctx.stroke();
+  // rotating inner shards
+  for(let i=0;i<5;i++){
+    const a = t + i * Math.PI*2/5;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.arc(warpGate.x, warpGate.y, GATE_RADIUS - 12, a, a + 0.5);
+    ctx.stroke();
+  }
+  // hold progress
+  if(warpGate.hold > 0){
+    ctx.globalAlpha = 0.95; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(warpGate.x, warpGate.y, GATE_RADIUS + 8, -Math.PI/2,
+            -Math.PI/2 + Math.PI*2*(warpGate.hold/GATE_HOLD_FRAMES));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ── Warp transition: out, travel, in ──────────────────────────
+// Deliberately NOT a resupply. You arrive with exactly what you left with.
+const WARP_OUT = 55, WARP_TRAVEL = 130, WARP_IN = 60;
+let warpTimer = 0, warpPhase = "none";
+let _warpStreaks = [];
+
+function beginWarp(){
+  warpPhase = "out"; warpTimer = WARP_OUT;
+  _warpStreaks = [];
+  for(let i=0;i<90;i++) _warpStreaks.push({
+    a: Math.random()*Math.PI*2, r: 40 + Math.random()*400,
+    len: 20 + Math.random()*90, v: 6 + Math.random()*16 });
+  if(typeof showSpecialToast === "function") showSpecialToast("WARPING OUT");
+}
+function updateWarp(){
+  if(warpPhase === "none") return;
+  warpTimer--;
+  if(warpTimer > 0) return;
+  if(warpPhase === "out"){
+    warpPhase = "travel"; warpTimer = WARP_TRAVEL;
+    advanceDescentLevel();          // world swaps mid-travel, unseen
+  } else if(warpPhase === "travel"){
+    warpPhase = "in"; warpTimer = WARP_IN;
+    if(typeof showSpecialToast === "function")
+      showSpecialToast(descentSectorDef().name.toUpperCase() + " — LEVEL " + descentLevel);
+  } else {
+    warpPhase = "none";
+  }
+}
+function warpBlocksPlay(){ return warpPhase !== "none"; }
+
+function drawWarpOverlay(){
+  if(warpPhase === "none") return;
+  const cx = GAME_W/2, cy = GAME_H/2;
+  const p = 1 - (warpTimer / (warpPhase==="out"?WARP_OUT:warpPhase==="travel"?WARP_TRAVEL:WARP_IN));
+  ctx.save();
+  if(warpPhase === "out"){
+    ctx.globalAlpha = p * 0.9; ctx.fillStyle = "#000";
+    ctx.fillRect(0,0,GAME_W,GAME_H);
+    for(const s of _warpStreaks){
+      const r = s.r * (1 - p*0.85);
+      ctx.globalAlpha = p * 0.8; ctx.strokeStyle = "#66ffcc"; ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(s.a)*r, cy + Math.sin(s.a)*r);
+      ctx.lineTo(cx + Math.cos(s.a)*(r + s.len*p), cy + Math.sin(s.a)*(r + s.len*p));
+      ctx.stroke();
+    }
+  } else if(warpPhase === "travel"){
+    ctx.fillStyle = "#000"; ctx.fillRect(0,0,GAME_W,GAME_H);
+    for(const s of _warpStreaks){
+      s.r += s.v;
+      if(s.r > 900) s.r = 20;
+      ctx.globalAlpha = 0.75; ctx.strokeStyle = "#3ad9a6"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(s.a)*s.r, cy + Math.sin(s.a)*s.r);
+      ctx.lineTo(cx + Math.cos(s.a)*(s.r + s.len*1.6), cy + Math.sin(s.a)*(s.r + s.len*1.6));
+      ctx.stroke();
+    }
+    // no resupply: state the cost plainly, mid-transit
+    ctx.globalAlpha = 0.85; ctx.textAlign = "center";
+    ctx.font = "bold 13px monospace"; ctx.fillStyle = "#7fd9bb";
+    ctx.fillText("IN TRANSIT", cx, cy - 16);
+    ctx.font = "11px monospace"; ctx.fillStyle = "#557";
+    ctx.fillText("no resupply · no repair · " + Math.round(corruption) + " corruption carried", cx, cy + 8);
+    ctx.textAlign = "left";
+  } else {
+    ctx.globalAlpha = 1 - p; ctx.fillStyle = "#000";
+    ctx.fillRect(0,0,GAME_W,GAME_H);
+    for(const s of _warpStreaks){
+      const r = s.r * (0.3 + p*1.4);
+      ctx.globalAlpha = (1-p) * 0.7; ctx.strokeStyle = "#66ffcc"; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(s.a)*r, cy + Math.sin(s.a)*r);
+      ctx.lineTo(cx + Math.cos(s.a)*(r + s.len*(1-p)), cy + Math.sin(s.a)*(r + s.len*(1-p)));
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+// ── Level advance ─────────────────────────────────────────────
+function advanceDescentLevel(){
+  descentLevel++;
+  descentSector = descentSectorFor(descentLevel);
+  const types = ["breach","hold","hunt","blackout","breach","siege"];
+  descentType = types[(descentLevel - 1) % types.length];
+  const sz = DESCENT_MAP_SIZES[descentType] || DESCENT_MAP_SIZES.breach;
+  window.quadW = sz.w; window.quadH = sz.h;
+  // Nothing is restored. That is the mode.
+  warpGate = null; objectiveDone = false;
+  salvageObjects = []; descentObjectives = [];
+  enemies.length = 0; enemyBullets.length = 0; playerBullets.length = 0;
+  if(typeof debris !== "undefined") { debris.length = 0; _debrisArea = 0; }
+  player.x = 120; player.y = window.quadH/2 - player.h/2;
+  player.vx = 0; player.vy = 0;
+  window.camX = 0; window.camY = 0;
+  seedAmbientDust();
+  for(let i = 0; i < 6 + descentLevel; i++){
+    spawnSalvage(400 + Math.random()*(window.quadW-800),
+                 120 + Math.random()*(window.quadH-240),
+                 Math.random() < 0.4 ? "hulk" : "scrapfield");
+  }
+  if(hunter && !hunter.dead) hunterLevelsAlive++;
+  alert = Math.max(0, alert - 25);   // you shook them briefly
+  if(typeof currentWave !== "undefined") currentWave = descentLevel;
+  if(typeof spawnWave === "function") { try { spawnWave(); } catch(e){} }
+  for(const e of enemies) eldritchify(e);
 }
