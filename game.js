@@ -26,6 +26,17 @@ window.quadH = 720;
 // ── Open-map modes ────────────────────────────────────────────
 // Universe and Descent both use a world larger than the screen with a
 // following camera. One helper instead of 13 scattered string compares.
+// ── Camera shake ──────────────────────────────────────────────
+// Applied to the camera translate, so it works in every mode.
+let _shakeAmt = 0, _shakeX = 0, _shakeY = 0;
+function addShake(n){ _shakeAmt = Math.min(26, _shakeAmt + n); }
+function updateShake(){
+  if(_shakeAmt <= 0.05){ _shakeAmt = 0; _shakeX = 0; _shakeY = 0; return; }
+  _shakeX = (Math.random()-0.5) * 2 * _shakeAmt;
+  _shakeY = (Math.random()-0.5) * 2 * _shakeAmt;
+  _shakeAmt *= 0.86;
+}
+
 function usesOpenMap(){ return window.gameMode === "universe" || window.gameMode === "descent"; }
 function isDescent(){ return window.gameMode === "descent"; }
 
@@ -1590,6 +1601,17 @@ function perturbWave(list){
   return out;
 }
 
+function spawnSingleEnemy(type, x, y){
+  if(typeof createEnemyObject !== 'function') return null;
+  const W = (typeof usesOpenMap==="function" && usesOpenMap()) ? window.quadW : GAME_W;
+  const H = (typeof usesOpenMap==="function" && usesOpenMap()) ? window.quadH : GAME_H;
+  const ex = (x===undefined) ? W - 60 : x;
+  const ey = (y===undefined) ? 60 + Math.random()*(H-120) : y;
+  const e = createEnemyObject(type, ex, ey);
+  if(e){ enemies.push(e); if(typeof eldritchify==="function") eldritchify(e); }
+  return e;
+}
+
 function spawnWave() {
   enemies=[]; playerBullets=[]; enemyBullets=[]; beamFlashes=[]; nukeRings=[]; hitEffects=[]; deathEffects=[]; debris=[]; _debrisArea=0;
   waveReinforceTimer=0; waveReinforceDone=false;
@@ -1694,6 +1716,7 @@ function applyDamage(target,bullet) {
     const dodge=player.boosting?player.dodgeBoosted:player.dodgeBase;
     if(dodge>0&&Math.random()<dodge){ doDodgeBlink(); return; }
     playerTookDamageThisWave=true;
+    addShake(Math.min(7, 1.5 + (bullet.damage||0)*0.02));
     try{ if(typeof alertAdd==="function"){ alertAdd(ALERT_ON_HIT); addCorruption((bullet.damage||0)*0.04); } }catch(e){}
     try{ const _im=modIncomingMult(); if(_im!==1) bullet={...bullet,damage:(bullet.damage||0)*_im}; }catch(e){}
     window._lastKiller = (bullet && (bullet._srcType || bullet.ownerType)) || window._lastKiller || "enemy fire";
@@ -2043,6 +2066,7 @@ function killEnemy(e, source){
   if(!e || e.dead) return false;
   e.dead = true;
   spawnDeathEffect(e);
+  addShake(2 + Math.min(9, ((ENEMIES[e.type]?.size)||1) * 1.2));
   playExplosion(ENEMIES[e.type]?.size || 2);
   money += (e.score || 0);
   window.waveCreditsEarned = (window.waveCreditsEarned||0) + (e.score||0);
@@ -3648,7 +3672,9 @@ function render() {
 
   // Camera offset for universe mode
   const _isUni = usesOpenMap();
-  if (_isUni) { ctx.save(); ctx.translate(-window.camX, -window.camY); }
+  updateShake();
+  if (_isUni) { ctx.save(); ctx.translate(-window.camX + _shakeX, -window.camY + _shakeY); }
+  else if (_shakeAmt > 0) { ctx.save(); ctx.translate(_shakeX, _shakeY); }
 
   if(!_isUni && currentShipName==="Vengeance"&&player.revengeActive){ ctx.save();ctx.globalAlpha=0.07;ctx.fillStyle="#ff0000";ctx.fillRect(0,0,GAME_W,GAME_H);ctx.restore(); }
   if(!_isUni && pdcDisabledThisWave){ ctx.save();ctx.globalAlpha=0.7;ctx.fillStyle="#ff2200";ctx.font="bold 13px monospace"; ctx.fillText("TURRETS DISABLED",10,GAME_H-30);ctx.restore(); }
@@ -3659,7 +3685,7 @@ function render() {
   drawAffixAuras(); drawDistortMeters(); drawEntity(player); drawRailgunCharge(); drawTelegraphs(); drawDodgeAura(); drawTargetLock(); drawAimArrow(); drawAimCursor(); drawBullets(); drawNukeRings(); drawBeamFlashes(); drawHitEffects(); drawDeathEffects(); drawBeamWarnings();
 
   // Restore camera offset before drawing HUD (HUD is screen-space)
-  if (_isUni) { ctx.restore(); }
+  if (_isUni || _shakeAmt > 0) { ctx.restore(); }
 
   // Screen-space HUD. These MUST be outside the camera transform or they
   // render at world coordinates and scroll away with the map.
