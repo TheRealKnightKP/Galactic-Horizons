@@ -15,6 +15,7 @@ const DESCENT_MAP_SIZES = {
   hold:     { w: 1600, h: 1200 },   // deliberately cramped: you are pinned
   siege:    { w: 2400, h: 2400 },
   trench:   { w: 6000, h: 720  },
+  shaft:    { w: 900,  h: 7000 },   // the trench with the axis swapped
 };
 
 // ── Sectors: each changes a RULE, not just a backdrop ─────────
@@ -277,7 +278,7 @@ function drawDescentArrows(){
 // Enemy visibility scales with ALERT: staying quiet costs you information.
 function drawMinimap(){
   if(!descentActive || state !== "playing") return;
-  if(descentType === "blackout") return;
+  if(descentType === "blackout" || (mission && mission.name === "Dead Reckoning")) return;
   const W = window.quadW || GAME_W, H = window.quadH || GAME_H;
   const mw = 112, mh = Math.max(56, Math.round(mw * (H / W)));
   const mx = GAME_W - mw - 12, my = 62;
@@ -387,17 +388,18 @@ function descentUpdate(){
   updateWarp();
   if(warpBlocksPlay()) return;      // world is swapping; freeze play
   updateAlert(); updateHunter(); updateSalvage(); updateCorruption();
+  missionTick();
   updateWarpGate();
-  // objective placeholder until level types land: clearing opens the gate
-  if(!objectiveDone && enemies.filter(e=>!e.dead).length === 0 && descentLevel >= 1) openWarpGate();
+  try { objectivesCollide(playerBullets); } catch(e){}
 }
 function descentDrawWorld(){       // inside camera transform
   if(!descentActive) return;
-  drawAmbientDust(); drawSalvage(); drawWarpGate();
+  drawGroundLayer(); drawAmbientDust(); drawSalvage(); drawObjectives(); drawWarpGate();
+  if(mission && mission.drawWorld){ try{ mission.drawWorld(); }catch(e){} }
 }
 function descentDrawHUD(){         // outside camera transform
   if(!descentActive) return;
-  if(!warpBlocksPlay()){ drawDescentArrows(); drawMinimap(); drawDescentHUD(); }
+  if(!warpBlocksPlay()){ drawDescentArrows(); drawMinimap(); drawDescentHUD(); missionDrawHUD(); }
   drawWarpOverlay();
 }
 
@@ -461,7 +463,7 @@ function beginDescentRun(){
                  Math.random() < 0.4 ? "hulk" : "scrapfield");
   }
   for(const e of enemies) eldritchify(e);
-  if(typeof showSpecialToast === "function") showSpecialToast("DESCENT: THE DRIFT");
+  loadMission(descentLevel);
 }
 function endDescent(){
   descentActive = false;
@@ -674,4 +676,320 @@ function advanceDescentLevel(){
   if(typeof currentWave !== "undefined") currentWave = descentLevel;
   if(typeof spawnWave === "function") { try { spawnWave(); } catch(e){} }
   for(const e of enemies) eldritchify(e);
+  loadMission(descentLevel);
+}
+
+// ============================================================
+// MISSIONS — the objective is never a body count
+// ============================================================
+
+let mission = null;   // { id, name, brief, tick(), done(), failed(), draw() }
+
+const MISSION_DEFS = {
+
+  // ── 1. Cut the Picket ─────────────────────────────────────
+  picket: {
+    name: "Cut the Picket", brief: "Destroy 2 of 3 Sentinel nodes. Ignore the Husks.",
+    setup(){
+      const W = window.quadW, H = window.quadH;
+      for(let i=0;i<3;i++)
+        descentObjectives.push({ x: W*0.55 + i*160, y: H*(0.25+i*0.25), w:54, h:54,
+          hp:2600, maxHp:2600, kind:"sentinel", dead:false, optional:i===2 });
+      this._respawn = 0;
+    },
+    tick(){
+      // Husks keep coming until the nodes fall: clearing them is not the answer
+      this._respawn = (this._respawn||0) + 1;
+      if(this._respawn > 260 && enemies.filter(e=>!e.dead).length < 7){
+        this._respawn = 0;
+        if(typeof spawnSingleEnemy === "function") spawnSingleEnemy("Raptor");
+      }
+    },
+    done(){ return descentObjectives.filter(o=>o.dead && !o.optional).length >= 2; }
+  },
+
+  // ── 2. Nothing Out Here ───────────────────────────────────
+  salvagerun: {
+    name: "Nothing Out Here", brief: "Bank 250 scrap before the gate closes.",
+    setup(){
+      this.target = 250; this.t = 90*60; this.start = scrap;
+      for(let i=0;i<14;i++)
+        spawnSalvage(300+Math.random()*(window.quadW-600), 100+Math.random()*(window.quadH-200),
+                     Math.random()<0.6 ? "hulk" : "scrapfield");
+      openWarpGate();   // gate is open from the start
+    },
+    tick(){ this.t--; if(this.t % 300 === 0) alertAdd(4); },
+    done(){ return (scrap - this.start) >= this.target; },
+    failed(){ return this.t <= 0; },
+    draw(){
+      ctx.font="bold 12px monospace"; ctx.textAlign="center";
+      ctx.fillStyle = this.t < 900 ? "#ff6655" : "#c9b98a";
+      ctx.fillText("SCRAP " + (scrap-this.start) + "/" + this.target +
+                   "   ·   " + Math.ceil(this.t/60) + "s", GAME_W/2, 34);
+      ctx.textAlign="left";
+    }
+  },
+
+  // ── 4. Quiet Passage ──────────────────────────────────────
+  quiet: {
+    name: "Quiet Passage", brief: "Reach the gate. Keep ALERT under 50.",
+    setup(){ openWarpGate(); this.tripped = false; },
+    tick(){
+      if(!this.tripped && alert >= 50){
+        this.tripped = true;
+        spawnHunter();
+        if(typeof showSpecialToast==="function") showSpecialToast("YOU WERE HEARD");
+      }
+    },
+    done(){ return false; }   // reaching the gate ends it
+  },
+
+  // ── 5. Nursery ────────────────────────────────────────────
+  nursery: {
+    name: "Nursery", brief: "Destroy all four Nurseries. They breed faster as they die.",
+    setup(){
+      const W=window.quadW,H=window.quadH;
+      const pts=[[0.3,0.25],[0.72,0.3],[0.35,0.75],[0.78,0.7]];
+      for(const [fx,fy] of pts)
+        descentObjectives.push({ x:W*fx, y:H*fy, w:48, h:48, hp:1800, maxHp:1800,
+                                 kind:"nursery", dead:false, t:0 });
+    },
+    tick(){
+      const killed = descentObjectives.filter(o=>o.dead).length;
+      const rate = Math.max(90, 240 - killed*55);
+      for(const o of descentObjectives){
+        if(o.dead) continue;
+        o.t = (o.t||0)+1;
+        if(o.t > rate){ o.t = 0;
+          if(typeof spawnSingleEnemy==="function") spawnSingleEnemy("Sprite", o.x, o.y); }
+      }
+    },
+    done(){ return descentObjectives.every(o=>o.dead); }
+  },
+
+  // ── 6. Dead Reckoning ─────────────────────────────────────
+  blackout: {
+    name: "Dead Reckoning", brief: "No sensors. Wrecks glow. Follow them to the gate.",
+    setup(){
+      openWarpGate();
+      for(let i=0;i<18;i++)
+        spawnSalvage(200+Math.random()*(window.quadW-400), 100+Math.random()*(window.quadH-200),
+                     Math.random()<0.35 ? "hulk" : "scrapfield");
+    },
+    done(){ return false; }
+  },
+
+  // ── 3. The Lacerator ──────────────────────────────────────
+  hunt: {
+    name: "The Lacerator", brief: "Kill the Lacerator. It flees and heals off wrecks.",
+    setup(){
+      const t = (typeof createEnemyObject==="function")
+        ? createEnemyObject("Rouge", window.quadW*0.7, window.quadH*0.5) : null;
+      if(t){ t.maxHp *= 4; t.hp = t.maxHp; t.isQuarry = true; t.color = "#ff5588";
+             t.eldritchName = "Lacerator"; enemies.push(t); this.q = t; }
+    },
+    tick(){
+      const q = this.q; if(!q || q.dead) return;
+      if(q.hp < q.maxHp*0.4){                       // flee
+        const a = Math.atan2(q.y-player.y, q.x-player.x);
+        q.vx += Math.cos(a)*0.35; q.vy += Math.sin(a)*0.35;
+      }
+      if(typeof debris !== "undefined"){            // heal off wrecks - including yours
+        for(const d of debris){
+          if(d.dead) continue;
+          if(Math.hypot(d.x-q.x, d.y-q.y) < 90){ q.hp = Math.min(q.maxHp, q.hp + 1.2); break; }
+        }
+      }
+    },
+    done(){ return this.q && this.q.dead; }
+  },
+
+  // ── Event Horizon (gravity well) ──────────────────────────
+  gravity: {
+    name: "Event Horizon", brief: "Take the Cores near the horizon. Then leave.",
+    setup(){
+      this.gx = window.quadW/2; this.gy = window.quadH/2;
+      this.inner = 150; this.K = 260000;
+      for(let i=0;i<3;i++){
+        const a = i*Math.PI*2/3, r = 330;
+        spawnSalvage(this.gx+Math.cos(a)*r, this.gy+Math.sin(a)*r, "core");
+      }
+      this.taken = cores;
+    },
+    tick(){
+      // a = K / d^2, clamped. Not a hazard you avoid: a force you fly against.
+      const pull = (o, m) => {
+        const dx = this.gx-(o.x+(o.w||0)/2), dy = this.gy-(o.y+(o.h||0)/2);
+        const d = Math.max(40, Math.hypot(dx,dy));
+        const a = Math.min(0.9, this.K/(d*d)) * m;
+        o.vx = (o.vx||0) + (dx/d)*a; o.vy = (o.vy||0) + (dy/d)*a;
+        return d;
+      };
+      const d = pull(player, 1);
+      if(d < this.inner){ player.hp -= 1.2; addShake(3); }
+      for(const e of enemies) if(!e.dead) pull(e, 0.7);
+      if(typeof debris !== "undefined") for(const w of debris){
+        if(w.dead) continue;
+        const dx=this.gx-w.x, dy=this.gy-w.y, dd=Math.max(40,Math.hypot(dx,dy));
+        w.x += (dx/dd)*0.6; w.y += (dy/dd)*0.6;
+      }
+      for(const s of salvageObjects) if(!s.dead) pull(s, 0.35);
+    },
+    done(){ return cores - this.taken >= 2; },
+    drawWorld(){
+      const t = frameCount*0.02;
+      ctx.save();
+      const g = ctx.createRadialGradient(this.gx,this.gy,10,this.gx,this.gy,this.inner*2.6);
+      g.addColorStop(0,"rgba(0,0,0,1)"); g.addColorStop(0.4,"rgba(30,0,50,0.9)");
+      g.addColorStop(1,"rgba(0,0,0,0)");
+      ctx.fillStyle=g; ctx.beginPath();
+      ctx.arc(this.gx,this.gy,this.inner*2.6,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="rgba(190,90,255,0.5)"; ctx.lineWidth=2;
+      for(let i=0;i<3;i++){
+        ctx.globalAlpha=0.35-i*0.1;
+        ctx.beginPath(); ctx.arc(this.gx,this.gy,this.inner+i*70+Math.sin(t+i)*8,0,Math.PI*2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  },
+
+  // ── Ash Fields (ground targets) ───────────────────────────
+  ashfields: {
+    name: "Ash Fields", brief: "Destroy 6 AA batteries. Lasers cannot hit ground.",
+    setup(){
+      groundLayer = { tint:"rgba(90,60,45,0.20)", scroll:0.55 };
+      const W=window.quadW,H=window.quadH;
+      for(let i=0;i<9;i++)
+        descentObjectives.push({ x: 300+Math.random()*(W-600), y: 120+Math.random()*(H-240),
+          w:40,h:40, hp:900,maxHp:900, kind:"aa", isGround:true, dead:false, t:Math.random()*120 });
+    },
+    tick(){
+      for(const o of descentObjectives){
+        if(o.dead) continue;
+        o.t = (o.t||0)+1;
+        if(o.t > 150){ o.t = 0;
+          const a = Math.atan2(player.y-o.y, player.x-o.x);
+          if(typeof fireBullets==="function" && WEAPON_DEFS.ballistic_cannon){
+            const bs = fireBullets({x:o.x,y:o.y,w:o.w,h:o.h},
+              {...WEAPON_DEFS.ballistic_cannon, damage:14, speed:6, size:3}, a, false);
+            bs.forEach(b=>{ b._fromGround = true; });
+            enemyBullets.push(...bs);
+          }
+        }
+      }
+    },
+    done(){ return descentObjectives.filter(o=>o.dead).length >= 6; }
+  },
+};
+
+// ── Ground layer ──────────────────────────────────────────────
+let groundLayer = null;
+function drawGroundLayer(){
+  if(!groundLayer) return;
+  const W = window.quadW, H = window.quadH;
+  ctx.save();
+  ctx.fillStyle = groundLayer.tint || "rgba(80,60,50,0.18)";
+  ctx.fillRect(0,0,W,H);
+  // cheap terrain: a hatch grid that parallaxes with the camera
+  ctx.globalAlpha = 0.12; ctx.strokeStyle = "#c8a882"; ctx.lineWidth = 1;
+  const step = 140, ox = ((window.camX||0)*(1-(groundLayer.scroll||0.6)))%step;
+  for(let x=-step; x<W+step; x+=step){
+    ctx.beginPath(); ctx.moveTo(x+ox,0); ctx.lineTo(x+ox,H); ctx.stroke();
+  }
+  for(let y=0; y<H; y+=step){
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ── Objectives: damage, draw ──────────────────────────────────
+// Ground targets are immune to lasers. That is the first hard content check
+// your 24 weapons have ever had.
+function objectiveTakeHit(o, bullet){
+  if(o.dead) return false;
+  if(o.isGround){
+    const cat = bullet && bullet.category;
+    const ok = cat === "ballistic" || cat === "lc_ballistic" || bullet.missile || bullet.aoeRadius;
+    if(!ok) return false;
+  }
+  o.hp -= (bullet.damage || 10);
+  if(typeof spawnHitEffect === "function") spawnHitEffect(bullet.x, bullet.y, bullet);
+  if(o.hp <= 0){
+    o.dead = true; addShake(9);
+    if(typeof spawnSalvage === "function"){ spawnSalvage(o.x,o.y,"hulk"); spawnSalvage(o.x+20,o.y,"core"); }
+    alertAdd(ALERT_ON_STRUCTURE);
+    if(typeof showSpecialToast === "function") showSpecialToast("STRUCTURE DOWN");
+  }
+  return true;
+}
+function objectivesCollide(list){
+  for(const b of list){
+    if(b.dead || b._fromGround) continue;
+    for(const o of descentObjectives){
+      if(o.dead) continue;
+      if(b.x < o.x+o.w && b.x+(b.w||2) > o.x && b.y < o.y+o.h && b.y+(b.h||2) > o.y){
+        if(objectiveTakeHit(o,b)) b.dead = true;
+        break;
+      }
+    }
+  }
+}
+function drawObjectives(){
+  for(const o of descentObjectives){
+    if(o.dead) continue;
+    const f = o.hp/o.maxHp;
+    ctx.save();
+    if(o.isGround){ ctx.globalAlpha=0.9; ctx.fillStyle="#6a5a48";
+      ctx.fillRect(o.x,o.y,o.w,o.h);
+      ctx.strokeStyle="#d09a5a"; ctx.lineWidth=2; ctx.strokeRect(o.x,o.y,o.w,o.h);
+    } else {
+      ctx.globalAlpha=0.92; ctx.fillStyle="rgba(60,20,55,0.9)";
+      ctx.fillRect(o.x,o.y,o.w,o.h);
+      ctx.strokeStyle="#c060d0"; ctx.lineWidth=2.5;
+      if(_shadowsEnabled){ ctx.shadowColor="#c060d0"; ctx.shadowBlur=10; }
+      ctx.strokeRect(o.x,o.y,o.w,o.h);
+    }
+    ctx.globalAlpha=0.95; ctx.fillStyle="rgba(0,0,0,0.6)";
+    ctx.fillRect(o.x, o.y-8, o.w, 4);
+    ctx.fillStyle = o.isGround ? "#ffbb55" : "#ff66cc";
+    ctx.fillRect(o.x, o.y-8, o.w*f, 4);
+    ctx.restore();
+  }
+}
+
+// ── Mission driver ────────────────────────────────────────────
+const MISSION_ORDER = ["picket","salvagerun","hunt","quiet","nursery","blackout",
+                       "gravity","ashfields","picket","nursery","hunt","gravity",
+                       "blackout","ashfields","picket"];
+function loadMission(level){
+  const key = MISSION_ORDER[(level-1) % MISSION_ORDER.length];
+  const def = MISSION_DEFS[key];
+  mission = def ? Object.create(def) : null;
+  descentObjectives = [];
+  groundLayer = null;
+  if(mission && mission.setup) { try { mission.setup(); } catch(e){ console.error("mission setup", e); } }
+  if(mission && typeof showSpecialToast === "function")
+    showSpecialToast(mission.name.toUpperCase());
+}
+function missionTick(){
+  if(!mission) return;
+  if(mission.tick) { try { mission.tick(); } catch(e){} }
+  if(!warpGate && mission.done && mission.done()) openWarpGate();
+  if(mission.failed && mission.failed()){
+    // A failed mission you survive is a better story than a reset:
+    // the gate opens anyway, you just leave with nothing.
+    if(!warpGate){ openWarpGate();
+      if(typeof showSpecialToast==="function") showSpecialToast("OBJECTIVE LOST — GET OUT"); }
+  }
+}
+function missionDrawHUD(){
+  if(!mission) return;
+  ctx.save();
+  ctx.font="bold 11px monospace"; ctx.textAlign="center"; ctx.globalAlpha=0.85;
+  ctx.fillStyle="#c9a8d8";
+  ctx.fillText(mission.name.toUpperCase(), GAME_W/2, 18);
+  ctx.font="10px monospace"; ctx.fillStyle="#8090a0";
+  if(mission.brief) ctx.fillText(mission.brief, GAME_W/2, 32);
+  ctx.textAlign="left"; ctx.restore();
+  if(mission.draw) { try { mission.draw(); } catch(e){} }
 }
