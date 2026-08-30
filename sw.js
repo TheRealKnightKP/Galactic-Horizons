@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.10.8";
+const CACHE = "galactic-horizons-v1.10.9";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -272,4 +272,5 @@ Versions:
 -V1.10.6 - Arena V2 Update 7: Rouguelike final changes.
 -V1.10.7 - Descent into the Horrors Part 1: Foundation for Descent mode
 -V1.10.8 - Descent fixes
+-V1.10.9 - Descent fixes 2... yeah. Im doing it again. I dont care. I like doing it. Its MY thing. ELECTRIC BOGALOO
 */
