@@ -1,4 +1,4 @@
-const CACHE = "galactic-horizons-v1.10.9";
+const CACHE = "galactic-horizons-v1.10.10";
 const ASSETS = [
   "./index.html",
   "./style.css",
@@ -273,4 +273,5 @@ Versions:
 -V1.10.7 - Descent into the Horrors Part 1: Foundation for Descent mode
 -V1.10.8 - Descent fixes
 -V1.10.9 - Descent fixes 2... yeah. Im doing it again. I dont care. I like doing it. Its MY thing. ELECTRIC BOGALOO
+-V1.10.10 - One 10/10 update with multiple new descent level mechanics variations and screen shake. Yes,i said one 10/10, 1.10.10, i know its not funny for you, it is for me.
 */
