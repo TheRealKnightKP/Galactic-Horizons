@@ -176,13 +176,42 @@ function updateHunter(){
 function spawnSalvage(x, y, kind){
   const defs = {
     scrapfield: { w: 14, h: 14, value: 3 + Math.floor(Math.random()*6) },
-    hulk:       { w: 46, h: 34, value: 15 + Math.floor(Math.random()*26) },
+    hulk:       { w: 46, h: 34, value: 15 + Math.floor(Math.random()*26), hp: 260 },
     cache:      { w: 34, h: 34, value: 20 },
     core:       { w: 20, h: 20, value: 1 },
   };
   const d = defs[kind] || defs.scrapfield;
-  salvageObjects.push({ x, y, w: d.w, h: d.h, kind, value: d.value, stripT: 0, dead: false });
+  salvageObjects.push({ x, y, w: d.w, h: d.h, kind, value: d.value, stripT: 0, dead: false,
+                        hp: d.hp || 0, maxHp: d.hp || 0 });
 }
+// Shooting a hulk breaks it open. Stripping it while parked is the greedy,
+// slower option that yields more; shooting is fast and loses some.
+function salvageCollide(list){
+  if(!descentActive) return;
+  for(const b of list){
+    if(b.dead || b.visualOnly) continue;
+    for(const s of salvageObjects){
+      if(s.dead || s.kind !== "hulk" || s.hp <= 0) continue;
+      if(b.x < s.x+s.w && b.x+(b.w||2) > s.x && b.y < s.y+s.h && b.y+(b.h||2) > s.y){
+        s.hp -= (b.damage || 10);
+        if(typeof spawnImpactSpark === "function")
+          spawnImpactSpark(b.x, b.y, "#c9a06a", b.vx, b.vy, 1);
+        b.dead = true;
+        if(s.hp <= 0){
+          s.dead = true;
+          if(typeof addShake === "function") addShake(3);
+          // 60% of the value, scattered as pickups
+          const n = 2 + Math.floor(Math.random()*3);
+          for(let i=0;i<n;i++)
+            spawnSalvage(s.x + (Math.random()-0.5)*50, s.y + (Math.random()-0.5)*50, "scrapfield");
+          scrap += Math.round(s.value * 0.25);
+        }
+        break;
+      }
+    }
+  }
+}
+
 function updateSalvage(){
   if(!descentActive) return;
   const pcx = player.x + player.w/2, pcy = player.y + player.h/2;
@@ -222,6 +251,10 @@ function drawSalvage(){
       ctx.fillRect(s.x, s.y, s.w, s.h);
       ctx.strokeStyle = "#bfae82"; ctx.lineWidth = 2;
       ctx.strokeRect(s.x, s.y, s.w, s.h);
+      if(s.maxHp > 0 && s.hp < s.maxHp){
+        ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(s.x, s.y - 5, s.w, 3);
+        ctx.fillStyle = "#c9a06a"; ctx.fillRect(s.x, s.y - 5, s.w * (s.hp/s.maxHp), 3);
+      }
       if(s.stripT > 0){
         ctx.fillStyle = "#ffdd66";
         ctx.fillRect(s.x, s.y - 6, s.w * (s.stripT / HULK_STRIP_FRAMES), 3);
@@ -391,6 +424,7 @@ function descentUpdate(){
   missionTick();
   updateWarpGate();
   try { objectivesCollide(playerBullets); } catch(e){}
+  try { salvageCollide(playerBullets); } catch(e){}
 }
 function descentDrawWorld(){       // inside camera transform
   if(!descentActive) return;
@@ -963,6 +997,12 @@ function objectivesCollide(list){
     }
   }
 }
+let _eldritchStationImg = null;
+function eldritchStationImg(){
+  if(!_eldritchStationImg && typeof getImage === "function")
+    _eldritchStationImg = getImage("EldritchStation.png");
+  return _eldritchStationImg;
+}
 function drawObjectives(){
   for(const o of descentObjectives){
     if(o.dead) continue;
@@ -972,11 +1012,22 @@ function drawObjectives(){
       ctx.fillRect(o.x,o.y,o.w,o.h);
       ctx.strokeStyle="#d09a5a"; ctx.lineWidth=2; ctx.strokeRect(o.x,o.y,o.w,o.h);
     } else {
-      ctx.globalAlpha=0.92; ctx.fillStyle="rgba(60,20,55,0.9)";
-      ctx.fillRect(o.x,o.y,o.w,o.h);
-      ctx.strokeStyle="#c060d0"; ctx.lineWidth=2.5;
-      if(_shadowsEnabled){ ctx.shadowColor="#c060d0"; ctx.shadowBlur=10; }
-      ctx.strokeRect(o.x,o.y,o.w,o.h);
+      // Eldritch structures use the real station sprite, never a placeholder rect
+      const img = eldritchStationImg();
+      if(img && img.complete !== false && img.width){
+        ctx.globalAlpha = 0.95;
+        const pad = (o.kind === "core") ? 1.9 : 1.45;
+        ctx.drawImage(img, o.x - o.w*(pad-1)/2, o.y - o.h*(pad-1)/2, o.w*pad, o.h*pad);
+        ctx.globalAlpha = 0.35 + 0.25*Math.sin(frameCount*0.05);
+        ctx.strokeStyle = "#c060d0"; ctx.lineWidth = 2;
+        if(_shadowsEnabled){ ctx.shadowColor="#c060d0"; ctx.shadowBlur=12; }
+        ctx.strokeRect(o.x-3, o.y-3, o.w+6, o.h+6);
+      } else {
+        ctx.globalAlpha=0.92; ctx.fillStyle="rgba(60,20,55,0.9)";
+        ctx.fillRect(o.x,o.y,o.w,o.h);
+        ctx.strokeStyle="#c060d0"; ctx.lineWidth=2.5;
+        ctx.strokeRect(o.x,o.y,o.w,o.h);
+      }
     }
     ctx.globalAlpha=0.95; ctx.fillStyle="rgba(0,0,0,0.6)";
     ctx.fillRect(o.x, o.y-8, o.w, 4);
@@ -988,8 +1039,8 @@ function drawObjectives(){
 
 // ── Mission driver ────────────────────────────────────────────
 const MISSION_ORDER = ["picket","salvagerun","hunt","quiet","nursery","blackout",
-                       "gravity","ashfields","picket","nursery","hunt","gravity",
-                       "blackout","ashfields","picket"];
+                       "gravity","ashfields","hunt","spire","nursery","gravity",
+                       "blackout","ashfields","spire"];
 function loadMission(level){
   const key = MISSION_ORDER[(level-1) % MISSION_ORDER.length];
   const def = MISSION_DEFS[key];
@@ -1027,3 +1078,97 @@ function missionDrawHUD(){
   ctx.textAlign="left"; ctx.restore();
   if(mission.draw) { try { mission.draw(); } catch(e){} }
 }
+
+// ── 10. The Spire ─────────────────────────────────────────────
+// Four generators at the cardinals, each shielded on a DIFFERENT face, so the
+// fight is a rotation problem rather than a damage problem. They recover after
+// 12s; killing all four opens the core for 8s. Each kill raises alert, so a
+// slow clear summons the Hunter mid-fight.
+MISSION_DEFS.spire = {
+  name: "The Spire", brief: "Kill all 4 generators inside 12s, then the core.",
+  setup(){
+    const W = window.quadW, H = window.quadH;
+    this.cx = W/2; this.cy = H/2;
+    this.recover = 12*60; this.window = 8*60; this.openT = 0;
+    const faces = ["front","right","back","left"];
+    const off = 300;
+    const pts = [[0,-off],[off,0],[0,off],[-off,0]];
+    this.gens = [];
+    for(let i=0;i<4;i++){
+      const g = { x:this.cx+pts[i][0]-30, y:this.cy+pts[i][1]-30, w:60, h:60,
+                  hp:2200, maxHp:2200, kind:"generator", dead:false,
+                  weakFace: faces[i], downT:0 };
+      descentObjectives.push(g); this.gens.push(g);
+    }
+    this.core = { x:this.cx-45, y:this.cy-45, w:90, h:90, hp:9000, maxHp:9000,
+                  kind:"core", dead:false, invuln:true };
+    descentObjectives.push(this.core);
+    this.sweep = 0;
+  },
+  tick(){
+    // generators recover unless all four are down together
+    let down = 0;
+    for(const g of this.gens){
+      if(g.dead){ g.downT++; down++;
+        if(g.downT > this.recover && this.openT <= 0){ g.dead = false; g.hp = g.maxHp; g.downT = 0;
+          if(typeof showSpecialToast==="function") showSpecialToast("GENERATOR RESTORED"); }
+      }
+    }
+    if(down === 4 && this.openT <= 0){
+      this.openT = this.window;
+      this.core.invuln = false;
+      if(typeof addShake==="function") addShake(14);
+      if(typeof showSpecialToast==="function") showSpecialToast("CORE EXPOSED");
+    }
+    if(this.openT > 0){
+      this.openT--;
+      if(this.openT <= 0 && !this.core.dead){
+        this.core.invuln = true;
+        for(const g of this.gens){ g.dead = false; g.hp = g.maxHp; g.downT = 0; }
+        if(typeof showSpecialToast==="function") showSpecialToast("SHIELDS BACK UP");
+      }
+    }
+    // slow rotating sweep: the arena is a moving safe zone
+    this.sweep += 0.012;
+    if(frameCount % 8 === 0 && typeof fireBullets === "function" && WEAPON_DEFS.laser_cannon){
+      const bs = fireBullets({x:this.cx-4,y:this.cy-4,w:8,h:8},
+        {...WEAPON_DEFS.laser_cannon, damage:11, speed:5, size:4}, this.sweep, false);
+      enemyBullets.push(...bs);
+      const bs2 = fireBullets({x:this.cx-4,y:this.cy-4,w:8,h:8},
+        {...WEAPON_DEFS.laser_cannon, damage:11, speed:5, size:4}, this.sweep + Math.PI, false);
+      enemyBullets.push(...bs2);
+    }
+  },
+  done(){ return this.core && this.core.dead; },
+  drawWorld(){
+    ctx.save();
+    if(this.openT > 0){
+      ctx.globalAlpha = 0.25 + 0.2*Math.sin(frameCount*0.2);
+      ctx.fillStyle = "#ff3355";
+      ctx.beginPath(); ctx.arc(this.cx, this.cy, 120, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 0.9; ctx.font = "bold 13px monospace"; ctx.textAlign = "center";
+      ctx.fillStyle = "#ff8899";
+      ctx.fillText(Math.ceil(this.openT/60) + "s", this.cx, this.cy - 110);
+      ctx.textAlign = "left";
+    }
+    // link beams from live generators to the core
+    for(const g of this.gens){
+      if(g.dead) continue;
+      ctx.globalAlpha = 0.22; ctx.strokeStyle = "#c060d0"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(g.x+g.w/2, g.y+g.h/2); ctx.lineTo(this.cx, this.cy); ctx.stroke();
+    }
+    ctx.restore();
+  }
+};
+
+// The core cannot be hurt while any generator lives, and generators resist
+// everything except hits on their exposed face.
+const _origObjectiveTakeHit = objectiveTakeHit;
+objectiveTakeHit = function(o, bullet){
+  if(o.kind === "core" && o.invuln) return false;
+  if(o.kind === "generator" && o.weakFace && typeof getHitFace === "function"){
+    const face = getHitFace(bullet, { x:o.x, y:o.y, w:o.w, h:o.h, rotation:0 });
+    if(face !== o.weakFace) return false;
+  }
+  return _origObjectiveTakeHit(o, bullet);
+};
