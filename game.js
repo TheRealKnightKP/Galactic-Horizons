@@ -38,6 +38,28 @@ function updateShake(){
 }
 
 // ── Geometry-style burst: radial shards on death ──────────────
+// Impact spark: directional shards along the bullet vector + a bright core.
+function spawnImpactSpark(x, y, color, vx, vy, power){
+  const a0 = Math.atan2(vy||0, vx||1) + Math.PI;
+  const n = 4 + Math.floor((power||1)*2);
+  for(let i=0;i<n;i++){
+    const a = a0 + (Math.random()-0.5)*1.5;
+    const sp = 1.5 + Math.random()*3.5;
+    _thrusterParticles.push({ x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+      life:8+Math.random()*8, maxLife:16, color, shape:"classic", size:1.4+Math.random()*1.4 });
+  }
+  hitEffects.push({ x, y, life:7, maxLife:7, color:"#ffffff", r:2, maxR:9+(power||1)*3, ring:true });
+}
+// Shield impact: an arc ripple on the struck face rather than a generic spark.
+function spawnShieldRipple(target, x, y, color){
+  hitEffects.push({ x, y, life:11, maxLife:11, color: color||"#66ccff",
+                    r:3, maxR:22, ring:true });
+  for(let i=0;i<5;i++){
+    const a = Math.random()*Math.PI*2, sp = 0.8+Math.random()*1.8;
+    _thrusterParticles.push({ x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+      life:10, maxLife:10, color: color||"#66ccff", shape:"classic", size:1.6 });
+  }
+}
 function spawnGeoBurst(x, y, color, power){
   const n = 10 + Math.floor(power * 3);
   for(let i=0;i<n;i++){
@@ -442,12 +464,9 @@ function buildMobileControls() {
       mobileAim._lastX = t.clientX; mobileAim._lastY = t.clientY;
       // Screen-anchored: keep the cursor's SCREEN offset and rebuild the world
       // position each frame, so it stays put under your thumb as the map scrolls.
-      aimCursor.sx = Math.max(0, Math.min(GAME_W, (aimCursor.sx===undefined ? GAME_W*0.65 : aimCursor.sx)));
-      aimCursor.sy = Math.max(0, Math.min(GAME_H, (aimCursor.sy===undefined ? GAME_H*0.5  : aimCursor.sy)));
-      aimCursor.x = aimCursor.sx + (window.camX||0);
-      aimCursor.y = aimCursor.sy + (window.camY||0);
+      aimCursor.sx = Math.max(16, Math.min(GAME_W-16, aimCursor.sx));
+      aimCursor.sy = Math.max(16, Math.min(GAME_H-16, aimCursor.sy));
       aimCursor.active = true;
-      mouse.x = aimCursor.x; mouse.y = aimCursor.y;
       // trackpad has no "knob"; keep it centred
       rightKnob.style.left = "50px"; rightKnob.style.top = "50px";
       return;
@@ -1789,6 +1808,7 @@ function applyDamage(target,bullet) {
     target.armor = Math.max(0, target.armor - pen * armorMult);
     const hullFactor = (cat==="corrosion") ? 1.0 : 1 - (target.armor/(target.maxArmor||100));
     const _hpBefore = target.hp;
+    try{ spawnImpactSpark(bullet.x, bullet.y, bullet.color||"#ffaa66", bullet.vx, bullet.vy, bullet.weaponSize||1); }catch(e){}
     target.hp -= hullDmg * hullFactor;
     if (typeof affixOnDamage === "function") affixOnDamage(target, bullet, hullDmg * hullFactor);
     // ── Vengeance Cannon lifesteal ──────────────────────────────
@@ -3019,6 +3039,18 @@ function updatePlayer() {
     player.targetRotation=Math.atan2((mouse.y+window.camY)-player.y-player.h/2,(mouse.x+window.camX)-player.x-player.w/2);
   } else {
     player.targetRotation=Math.atan2(mouse.y-player.y-player.h/2,mouse.x-player.x-player.w/2);
+  }
+  // Crosshair is screen-anchored: rebuild its world position every frame or it
+  // is left behind in the world as the camera scrolls.
+  if(aimMode === "crosshair" && state === "playing"){
+    if(aimCursor.sx === undefined) { aimCursor.sx = GAME_W*0.65; aimCursor.sy = GAME_H*0.5; }
+    aimCursor.sx = Math.max(16, Math.min(GAME_W-16, aimCursor.sx));
+    aimCursor.sy = Math.max(16, Math.min(GAME_H-16, aimCursor.sy));
+    aimCursor.x = aimCursor.sx + (window.camX||0);
+    aimCursor.y = aimCursor.sy + (window.camY||0);
+    aimCursor.active = true;
+    mouse.x = aimCursor.x; mouse.y = aimCursor.y;
+    player.targetRotation = Math.atan2(mouse.y - player.y - player.h/2, mouse.x - player.x - player.w/2);
   }
   if(aimMode === "target" && state === "playing"){ updateTargetAim();
     player.targetRotation = Math.atan2(mouse.y - player.y - player.h/2, mouse.x - player.x - player.w/2); }
