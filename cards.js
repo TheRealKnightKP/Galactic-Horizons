@@ -35,7 +35,30 @@ function buyBaseUpgrade(k) {
 loadBase();
 
 // ── card option count / rerolls come from the base ─────────────
-function cardOptionCount() { return Math.min(6, CARD_OPTIONS + baseLevel("supply")); }
+// Hard cap of 3 offers. Supply Dock levels beyond that convert to supplies
+// at the card screen instead of widening the choice.
+function cardOptionCount() { return 3; }
+function surplusSupplyLevels() { return Math.max(0, (CARD_OPTIONS + baseLevel("supply")) - 3); }
+// Overflow is split evenly: hull, allies, ammo.
+function grantSurplusSupplies(n) {
+  if (n <= 0) return null;
+  const out = { hull: 0, allies: 0, ammo: 0 };
+  const per = n / 3;
+  const hullAmt = player.maxHp * 0.08 * per * 3;
+  player.hp = Math.min(player.maxHp, player.hp + hullAmt);
+  out.hull = Math.round(hullAmt);
+  let healed = 0;
+  const live = allies.filter(a => !a.dead);
+  for (const a of live) {
+    const amt = a.maxHp * 0.08 * per * 3 / Math.max(1, live.length) * live.length;
+    a.hp = Math.min(a.maxHp, a.hp + amt); healed++;
+  }
+  out.allies = healed;
+  if (typeof usesReload === "function" && usesReload(player)) {
+    player.mag = player.magMax; out.ammo = 1;
+  }
+  return out;
+}
 function cardRerollsPerRun() { return baseLevel("comms") >= 3 ? 1 : 0; }
 
 // ── condition tracking ────────────────────────────────────────
@@ -190,6 +213,8 @@ function showCardScreen(wave) {
   const special = isSpecialWave(wave);
   const met = special && nextCondition && conditionMet(nextCondition);
   const RC = { common:"#8899aa", rare:"#3399ff", epic:"#cc66ff", fusion:"#ffcc44" };
+  const ICON = { redline:"\u265B", aspect:"\u25C8", wolfpack:"\u25C6",
+                 salvage:"\u2699", disruption:"\u2622", vendetta:"\u2620" };
 
   let html = '<div style="font:bold 19px monospace;color:#0af">' + (special ? "SPECIAL SALVAGE" : "SALVAGE") + '</div>' +
     '<div style="font:11px monospace;color:#888;margin-bottom:10px">Wave ' + wave +
@@ -205,7 +230,9 @@ function showCardScreen(wave) {
     html += '<div data-card="' + i2 + '" style="cursor:pointer;width:184px;padding:11px;border-radius:9px;' +
       'border:2px solid ' + col + ';background:rgba(255,255,255,0.04)">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">' +
-      '<span style="font:bold 12px monospace;color:' + col + '">' + c.name + '</span>' +
+      '<span style="font:bold 12px monospace;color:' + col + '">' +
+      (a ? '<span style="font-size:15px;color:' + a.color + ';margin-right:5px">' + (ICON[c.arch]||'') + '</span>' : '') +
+      c.name + '</span>' +
       '<span style="font:9px monospace;color:' + col + ';opacity:.8">' + (c.rarity||"").toUpperCase() + '</span></div>' +
       (a ? '<div style="font:9px monospace;color:' + a.color + ';margin-bottom:5px">' + a.name.toUpperCase() +
            (c.role ? ' &middot; ' + c.role : '') + '</div>' : '') +
@@ -238,18 +265,33 @@ function showCardScreen(wave) {
 
   el.querySelectorAll("[data-card]").forEach(node => {
     node.onclick = () => {
-      const k = node.getAttribute("data-card");
-      if (k === "skip") {
-        const bonus = Math.round((window.waveCreditsEarned || 0) * CARD_SKIP_BONUS);
-        money += bonus; window.recordCreditsEarned?.(bonus);
-        runCards.push("(skipped)");
-      } else {
-        applyCard(cards[parseInt(k, 10)]);
+      // Any throw here used to leave cardPending true forever, which froze
+      // gameLoop in its card guard. Always close, whatever happens.
+      try {
+        const k = node.getAttribute("data-card");
+        if (k === "skip") {
+          const bonus = Math.round((window.waveCreditsEarned || 0) * CARD_SKIP_BONUS);
+          money += bonus; window.recordCreditsEarned?.(bonus);
+          runCards.push("(skipped)");
+        } else {
+          applyCard(cards[parseInt(k, 10)]);
+        }
+        if (needsDiscard()) { showDiscardScreen(el); return; }
+      } catch (err) {
+        console.error("card apply failed:", err);
       }
-      if (needsDiscard()) { showDiscardScreen(el); return; }
-      el.style.display = "none"; cardPending = false; resetConditionProgress();
+      closeCardScreen(el);
     };
   });
+}
+
+function closeCardScreen(el) {
+  const sup = grantSurplusSupplies(surplusSupplyLevels());
+  el.style.display = "none";
+  cardPending = false;
+  try { resetConditionProgress(); } catch (e) {}
+  if (sup && typeof showSpecialToast === "function" && (sup.hull || sup.allies || sup.ammo))
+    showSpecialToast("SUPPLIES +" + sup.hull + " HULL" + (sup.allies ? " / " + sup.allies + " ALLIES" : "") + (sup.ammo ? " / AMMO" : ""));
 }
 
 function showDiscardScreen(el) {
@@ -270,8 +312,9 @@ function showDiscardScreen(el) {
   el.innerHTML = html;
   el.querySelectorAll("[data-drop]").forEach(n => {
     n.onclick = () => {
-      discardCard(parseInt(n.getAttribute("data-drop"), 10));
-      el.style.display = "none"; cardPending = false; resetConditionProgress();
+      try { discardCard(parseInt(n.getAttribute("data-drop"), 10)); }
+      catch(err){ console.error("discard failed:", err); }
+      closeCardScreen(el);
     };
   });
 }
