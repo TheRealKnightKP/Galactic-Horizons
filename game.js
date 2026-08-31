@@ -37,6 +37,20 @@ function updateShake(){
   _shakeAmt *= 0.86;
 }
 
+// ── Geometry-style burst: radial shards on death ──────────────
+function spawnGeoBurst(x, y, color, power){
+  const n = 10 + Math.floor(power * 3);
+  for(let i=0;i<n;i++){
+    const a = (i/n)*Math.PI*2 + Math.random()*0.4;
+    const sp = 2.5 + Math.random()*4.5 + power*0.5;
+    _thrusterParticles.push({ x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+      life:22+Math.random()*16, maxLife:34, color, shape:"blade", size:2.2+Math.random()*1.8 });
+  }
+  for(let i=0;i<3;i++)
+    hitEffects.push({ x, y, life:12+i*4, maxLife:12+i*4, color,
+      r:4+i*6, maxR:26+i*18+power*4, ring:true });
+}
+
 function usesOpenMap(){ return window.gameMode === "universe" || window.gameMode === "descent"; }
 function isDescent(){ return window.gameMode === "descent"; }
 
@@ -97,13 +111,15 @@ const keys  = {};
 // "touch"     : tap/drag anywhere on the field; ship aims at that point and fires
 // "crosshair" : right stick moves a free cursor; ship aims at it, fires while held
 let aimMode = "stick";
-let aimCursor = { x: 0, y: 0, active: false, initialised: false };
+let aimCursor = { x: 0, y: 0, sx: 0, sy: 0, active: false, initialised: false };
 let aimTarget = null;          // locked enemy in "target" mode
 let _aimErr = 0;               // current aim error in radians
 function setAimMode(m){
   if(!["stick","touch","crosshair","target"].includes(m)) return;
   aimMode = m;
   aimCursor.active = false; aimCursor.initialised = false;
+  // seed the screen anchor so the crosshair starts somewhere sensible
+  aimCursor.sx = GAME_W * 0.65; aimCursor.sy = GAME_H * 0.5;
   try { localStorage.setItem("gh_aimMode", m); } catch(e) {}
   if (typeof openAccountPanel === "function") openAccountPanel();
   if (typeof _applyAimModeUI === "function") _applyAimModeUI();
@@ -416,19 +432,20 @@ function buildMobileControls() {
       // frame, like a laptop touchpad. A stick pushing a cursor at a constant
       // rate was the thing that felt uncontrollable.
       if(!aimCursor.initialised){
-        aimCursor.x = player.x + player.w/2 + 140;
-        aimCursor.y = player.y + player.h/2;
+        aimCursor.sx = GAME_W*0.65; aimCursor.sy = GAME_H*0.5;
         aimCursor.initialised = true;
       }
       if(mobileAim._lastX !== undefined){
-        aimCursor.x += (t.clientX - mobileAim._lastX) * CROSSHAIR_SENS;
-        aimCursor.y += (t.clientY - mobileAim._lastY) * CROSSHAIR_SENS;
+        aimCursor.sx = (aimCursor.sx===undefined?GAME_W*0.65:aimCursor.sx) + (t.clientX - mobileAim._lastX) * CROSSHAIR_SENS;
+        aimCursor.sy = (aimCursor.sy===undefined?GAME_H*0.5 :aimCursor.sy) + (t.clientY - mobileAim._lastY) * CROSSHAIR_SENS;
       }
       mobileAim._lastX = t.clientX; mobileAim._lastY = t.clientY;
-      const _cw = (typeof usesOpenMap==="function" && usesOpenMap()) ? (window.quadW||GAME_W) : GAME_W;
-      const _chh = (typeof usesOpenMap==="function" && usesOpenMap()) ? (window.quadH||GAME_H) : GAME_H;
-      aimCursor.x = Math.max(0, Math.min(_cw, aimCursor.x));
-      aimCursor.y = Math.max(0, Math.min(_chh, aimCursor.y));
+      // Screen-anchored: keep the cursor's SCREEN offset and rebuild the world
+      // position each frame, so it stays put under your thumb as the map scrolls.
+      aimCursor.sx = Math.max(0, Math.min(GAME_W, (aimCursor.sx===undefined ? GAME_W*0.65 : aimCursor.sx)));
+      aimCursor.sy = Math.max(0, Math.min(GAME_H, (aimCursor.sy===undefined ? GAME_H*0.5  : aimCursor.sy)));
+      aimCursor.x = aimCursor.sx + (window.camX||0);
+      aimCursor.y = aimCursor.sy + (window.camY||0);
       aimCursor.active = true;
       mouse.x = aimCursor.x; mouse.y = aimCursor.y;
       // trackpad has no "knob"; keep it centred
@@ -2067,6 +2084,7 @@ function killEnemy(e, source){
   e.dead = true;
   spawnDeathEffect(e);
   addShake(2 + Math.min(9, ((ENEMIES[e.type]?.size)||1) * 1.2));
+  spawnGeoBurst(e.x+e.w/2, e.y+e.h/2, e.color || "#ff66aa", (ENEMIES[e.type]?.size)||1);
   playExplosion(ENEMIES[e.type]?.size || 2);
   money += (e.score || 0);
   window.waveCreditsEarned = (window.waveCreditsEarned||0) + (e.score||0);
@@ -2618,6 +2636,8 @@ function drawAimCursor() {
   if(state!=="playing") return;
   if(aimMode==="stick") return;
   if(!aimCursor.initialised && !aimCursor.active) return;
+  // drawn inside the camera transform, so add the camera back to keep it
+  // pinned to the screen position the player set.
   const x=aimCursor.x, y=aimCursor.y;
   const live = aimCursor.active;
   ctx.save();
