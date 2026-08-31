@@ -501,10 +501,23 @@ function eldritchNameFor(type){
   for(const k in ELDRITCH_ENEMIES) if(ELDRITCH_ENEMIES[k].base === type) return k;
   return null;
 }
+// Descent enemies wear the Eldritch sprite sets (Shadow Comet / Vengeance),
+// never Harvester or Warden hulls. Small/fast use Comet frames, heavy use
+// Vengeance frames; frame index varies so a group is not identical.
+const ELDRITCH_ART_LIGHT = ["EldritchComet1.png","EldritchComet2.png","EldritchComet3.png"];
+const ELDRITCH_ART_HEAVY = ["EldritchVengeance1.png","EldritchVengeance2.png","EldritchVengeance3.png"];
 function eldritchify(e){
   if(!descentActive || !e) return e;
   const k = eldritchNameFor(e.type);
-  if(k){ e.eldritchName = k; e.color = "#a0407a"; }
+  if(k) e.eldritchName = k;
+  const sz = (typeof ENEMIES!=="undefined" && ENEMIES[e.type]?.size) || 1;
+  const set = sz >= 4 ? ELDRITCH_ART_HEAVY : ELDRITCH_ART_LIGHT;
+  const file = set[Math.floor(Math.random()*set.length)];
+  if(typeof getImage === "function"){
+    const img = getImage(file);
+    if(img) { e.img = img; e._eldritchArt = file; }
+  }
+  e.color = sz >= 4 ? "#c02040" : "#a0407a";
   return e;
 }
 
@@ -577,6 +590,7 @@ let _warpStreaks = [];
 
 function beginWarp(){
   warpPhase = "out"; warpTimer = WARP_OUT;
+  if(typeof addShake === "function") addShake(8);
   _warpStreaks = [];
   for(let i=0;i<90;i++) _warpStreaks.push({
     a: Math.random()*Math.PI*2, r: 40 + Math.random()*400,
@@ -592,6 +606,7 @@ function updateWarp(){
     advanceDescentLevel();          // world swaps mid-travel, unseen
   } else if(warpPhase === "travel"){
     warpPhase = "in"; warpTimer = WARP_IN;
+    if(typeof addShake === "function") addShake(12);
     if(typeof showSpecialToast === "function")
       showSpecialToast(descentSectorDef().name.toUpperCase() + " — LEVEL " + descentLevel);
   } else {
@@ -608,6 +623,11 @@ function drawWarpOverlay(){
   if(warpPhase === "out"){
     ctx.globalAlpha = p * 0.9; ctx.fillStyle = "#000";
     ctx.fillRect(0,0,GAME_W,GAME_H);
+    // collapsing ring: the space around you folding in
+    ctx.globalAlpha = p*0.85; ctx.strokeStyle="#66ffcc"; ctx.lineWidth=3+p*6;
+    ctx.beginPath(); ctx.arc(cx,cy,Math.max(4,420*(1-p)),0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha = p*0.35; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(cx,cy,Math.max(2,560*(1-p*0.8)),0,Math.PI*2); ctx.stroke();
     for(const s of _warpStreaks){
       const r = s.r * (1 - p*0.85);
       ctx.globalAlpha = p * 0.8; ctx.strokeStyle = "#66ffcc"; ctx.lineWidth = 1.6;
@@ -627,6 +647,12 @@ function drawWarpOverlay(){
       ctx.lineTo(cx + Math.cos(s.a)*(s.r + s.len*1.6), cy + Math.sin(s.a)*(s.r + s.len*1.6));
       ctx.stroke();
     }
+    // tunnel walls
+    ctx.globalAlpha = 0.18; ctx.strokeStyle="#1f7a5e"; ctx.lineWidth=2;
+    for(let i=0;i<6;i++){
+      const rr = ((frameCount*7 + i*150) % 900);
+      ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.stroke();
+    }
     // no resupply: state the cost plainly, mid-transit
     ctx.globalAlpha = 0.85; ctx.textAlign = "center";
     ctx.font = "bold 13px monospace"; ctx.fillStyle = "#7fd9bb";
@@ -637,6 +663,9 @@ function drawWarpOverlay(){
   } else {
     ctx.globalAlpha = 1 - p; ctx.fillStyle = "#000";
     ctx.fillRect(0,0,GAME_W,GAME_H);
+    // arrival flash
+    if(p < 0.25){ ctx.globalAlpha = (0.25-p)*2.2; ctx.fillStyle="#bfffe8";
+      ctx.fillRect(0,0,GAME_W,GAME_H); }
     for(const s of _warpStreaks){
       const r = s.r * (0.3 + p*1.4);
       ctx.globalAlpha = (1-p) * 0.7; ctx.strokeStyle = "#66ffcc"; ctx.lineWidth = 1.4;
@@ -725,7 +754,7 @@ const MISSION_DEFS = {
       ctx.font="bold 12px monospace"; ctx.textAlign="center";
       ctx.fillStyle = this.t < 900 ? "#ff6655" : "#c9b98a";
       ctx.fillText("SCRAP " + (scrap-this.start) + "/" + this.target +
-                   "   ·   " + Math.ceil(this.t/60) + "s", GAME_W/2, 34);
+                   "   ·   " + Math.ceil(this.t/60) + "s", GAME_W/2, (IS_MOBILE?150:86));
       ctx.textAlign="left";
     }
   },
@@ -987,9 +1016,14 @@ function missionDrawHUD(){
   ctx.save();
   ctx.font="bold 11px monospace"; ctx.textAlign="center"; ctx.globalAlpha=0.85;
   ctx.fillStyle="#c9a8d8";
-  ctx.fillText(mission.name.toUpperCase(), GAME_W/2, 18);
-  ctx.font="10px monospace"; ctx.fillStyle="#8090a0";
-  if(mission.brief) ctx.fillText(mission.brief, GAME_W/2, 32);
+  // pushed down: at y=18 it sat under the notch / status bar and was unreadable
+  const my = IS_MOBILE ? 116 : 62;
+  ctx.fillStyle = "rgba(0,0,0,0.5)";
+  ctx.fillRect(GAME_W/2-190, my-14, 380, mission.brief ? 34 : 20);
+  ctx.fillStyle="#c9a8d8";
+  ctx.fillText(mission.name.toUpperCase(), GAME_W/2, my);
+  ctx.font="10px monospace"; ctx.fillStyle="#93a3b5";
+  if(mission.brief) ctx.fillText(mission.brief, GAME_W/2, my+14);
   ctx.textAlign="left"; ctx.restore();
   if(mission.draw) { try { mission.draw(); } catch(e){} }
 }
